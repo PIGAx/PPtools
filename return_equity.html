@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>個人量化部位與成本控管系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800 antialiased">
+    <div id="app" class="max-w-7xl mx-auto p-4 md:p-6">
+        
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b pb-4 mb-6 gap-4">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">📊 交易部位與績效追蹤儀表板</h1>
+            
+            <div class="bg-white px-4 py-2 rounded-lg shadow border border-gray-200 flex items-center justify-between sm:justify-start space-x-2 w-full sm:w-auto">
+                <span class="text-sm font-bold text-gray-700">💵 USD/TWD 匯率:</span>
+                <input v-model.number="exchangeRate" type="number" step="0.01" class="border p-1 rounded w-24 text-center font-bold text-blue-600 bg-gray-50" @change="saveData">
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div class="grid grid-cols-1 sm:grid-cols-3 lg:flex lg:flex-col gap-4">
+                <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-blue-500">
+                    <h3 class="text-gray-500 text-xs font-semibold mb-1">總投入成本 (約當 TWD)</h3>
+                    <p class="text-2xl sm:text-xl xl:text-2xl font-bold">{{ formatNumber(totalCostTWD) }}</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-green-500">
+                    <h3 class="text-gray-500 text-xs font-semibold mb-1">當前總市值 (約當 TWD)</h3>
+                    <p class="text-2xl sm:text-xl xl:text-2xl font-bold">{{ formatNumber(totalValueTWD) }}</p>
+                    <p class="text-xs mt-1 font-bold" :class="totalROI >= 0 ? 'text-red-600' : 'text-green-600'">
+                        未實現報酬率: {{ totalROI >= 0 ? '+' : '' }}{{ totalROI }}%
+                    </p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-md border-l-4" :class="totalRealizedPnLTWD >= 0 ? 'border-red-500' : 'border-green-500'">
+                    <h3 class="text-gray-500 text-xs font-semibold mb-1">累積已實現損益 (TWD)</h3>
+                    <p class="text-2xl sm:text-xl xl:text-2xl font-bold" :class="totalRealizedPnLTWD >= 0 ? 'text-red-600' : 'text-green-600'">
+                        {{ totalRealizedPnLTWD >= 0 ? '+' : '' }}{{ formatNumber(totalRealizedPnLTWD) }}
+                    </p>
+                </div>
+            </div>
+            
+            <div class="bg-white p-4 sm:p-5 rounded-lg shadow-md lg:col-span-2">
+                <h3 class="text-gray-800 text-base font-bold mb-2">📈 累積已實現績效曲線 (TWD)</h3>
+                <div class="relative h-48 sm:h-64 w-full">
+                    <canvas id="pnlChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+            
+            <div class="space-y-6">
+                <div class="bg-white p-5 rounded-lg shadow-md">
+                    <h2 class="text-lg font-bold mb-3">➕ 新增建倉</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                        <input v-model="newPosition.ticker" type="text" placeholder="股票代號 (例: 2330 / AAPL)" class="border p-2 rounded uppercase text-sm w-full">
+                        <select v-model="newPosition.market" class="border p-2 rounded text-sm w-full bg-white">
+                            <option value="TW">台股 (TW)</option>
+                            <option value="US">美股 (US)</option>
+                        </select>
+                        <input v-model.number="newPosition.shares" type="number" placeholder="股數" class="border p-2 rounded text-sm w-full">
+                        <input v-model.number="newPosition.price" type="number" step="0.01" placeholder="買進價格" class="border p-2 rounded text-sm w-full">
+                    </div>
+                    <button @click="addPosition" class="w-full bg-blue-600 text-white p-2.5 rounded hover:bg-blue-700 font-bold transition text-sm shadow-sm">加入庫存</button>
+                </div>
+
+                <div class="bg-white p-5 rounded-lg shadow-md">
+                    <h2 class="text-lg font-bold mb-3">📦 當前庫存部位</h2>
+                    <div v-if="positions.length === 0" class="text-gray-500 text-sm py-4 text-center border border-dashed rounded">目前無庫存部位。</div>
+                    
+                    <div v-for="(pos, index) in positions" :key="index" class="border-b pb-5 mb-5 last:border-0 last:mb-0 relative group">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="font-bold text-lg flex items-center">{{ pos.ticker }} 
+                                <span class="text-[10px] px-1.5 py-0.5 rounded ml-1.5 font-normal" :class="pos.market === 'US' ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-800'">{{ pos.market }}</span>
+                            </span>
+                            <div class="flex space-x-2">
+                                <button @click="selectForCalc(pos)" class="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded hover:bg-indigo-200 font-semibold transition">選取試算</button>
+                                <button @click="deletePosition(index)" class="text-xs bg-gray-100 text-red-500 px-2 py-1 rounded hover:bg-red-100 transition" title="刪除此部位">🗑️</button>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-700 mb-3 bg-gray-50 p-3 rounded border border-transparent group-hover:border-gray-200 transition">
+                            <div class="flex justify-between sm:justify-start items-center">
+                                <span class="text-gray-500 sm:w-16">持有股數:</span>
+                                <input v-model.number="pos.shares" type="number" class="border border-gray-300 rounded w-24 px-1 text-center bg-white" @change="saveData">
+                            </div>
+                            <div class="flex justify-between sm:justify-start items-center">
+                                <span class="text-gray-500 sm:w-16">平均成本:</span>
+                                <input v-model.number="pos.price" type="number" step="0.0001" class="border border-gray-300 rounded w-24 px-1 text-center bg-white" @change="saveData">
+                            </div>
+                            <div class="flex justify-between sm:justify-start items-center">
+                                <span class="text-gray-500 sm:w-16">目前市價:</span>
+                                <input v-model.number="pos.currentPrice" type="number" step="0.01" class="border border-blue-300 rounded w-24 px-1 text-center bg-white" @change="saveData">
+                            </div>
+                            <div class="flex justify-between sm:justify-start items-center">
+                                <span class="text-gray-500 sm:w-16">當前損益:</span>
+                                <span :class="getUnrealizedPnL(pos) >= 0 ? 'text-red-600 font-bold' : 'text-green-600 font-bold'">
+                                    {{ getUnrealizedPnL(pos) >= 0 ? '+' : '' }}{{ formatNumber(getUnrealizedPnL(pos)) }}
+                                    ({{ getROI(pos) >= 0 ? '+' : '' }}{{ getROI(pos) }}%)
+                                </span>
+                            </div>
+                            <p v-if="pos.market === 'US'" class="text-xs text-gray-500 text-right sm:col-span-2 mt-1 border-t pt-1 border-gray-200 sm:border-0 sm:pt-0">
+                                ↳ 換算約: <span :class="getUnrealizedPnL(pos) >= 0 ? 'text-red-500' : 'text-green-500'">{{ getUnrealizedPnL(pos) >= 0 ? '+' : '' }}{{ formatNumber(getUnrealizedPnL(pos) * exchangeRate) }} TWD</span>
+                            </p>
+                        </div>
+
+                        <div class="flex flex-wrap sm:flex-nowrap gap-2">
+                            <input v-model.number="pos.closeShares" type="number" placeholder="平倉股數" class="border p-2 flex-1 min-w-[80px] text-sm rounded">
+                            <input v-model.number="pos.closePrice" type="number" step="0.01" placeholder="平倉價格" class="border p-2 flex-1 min-w-[80px] text-sm rounded">
+                            <button @click="closePosition(index)" class="bg-red-500 text-white px-4 py-2 rounded text-sm hover:bg-red-600 font-bold transition w-full sm:w-auto flex-none shadow-sm">出場結算</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-6">
+                <div class="bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500">
+                    <h2 class="text-lg font-bold mb-3">⚖️ 加碼 / 攤平試算器</h2>
+                    <div v-if="calc.selectedTicker" class="bg-indigo-50 p-3 rounded mb-3 border border-indigo-100 text-sm">
+                        <p class="font-bold text-indigo-800 text-base mb-0.5">正在試算: {{ calc.selectedTicker }}</p>
+                        <p class="text-xs text-indigo-600">原持有股數: {{ calc.currentShares }} | 原均價: {{ calc.currentPrice }}</p>
+                    </div>
+                    <div v-else class="text-gray-400 text-sm mb-4 p-4 border border-dashed rounded text-center">請先從左側庫存點選「選取試算」</div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">計畫加碼股數</label>
+                            <input v-model.number="calc.addShares" type="number" class="border p-2 rounded w-full bg-gray-50 focus:bg-white text-sm" :disabled="!calc.selectedTicker">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">計畫加碼價格</label>
+                            <input v-model.number="calc.addPrice" type="number" step="0.01" class="border p-2 rounded w-full bg-gray-50 focus:bg-white text-sm" :disabled="!calc.selectedTicker">
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-100 p-4 rounded border border-gray-200 flex flex-col text-sm">
+                        <div v-if="estimatedAddCost > 0" class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 pb-3 border-b border-gray-300 gap-2">
+                            <div>
+                                <p class="text-xs text-gray-500 font-semibold mb-0.5">預估加碼花費</p>
+                                <div class="flex items-baseline space-x-1">
+                                    <p class="text-xl font-bold text-red-600">{{ formatNumber(estimatedAddCost) }}</p>
+                                    <span class="text-xs text-gray-500 font-bold">{{ calc.market === 'US' ? 'USD' : 'TWD' }}</span>
+                                </div>
+                            </div>
+                            <div class="text-left sm:text-right" v-if="calc.market === 'US'">
+                                <p class="text-xs text-gray-500 font-semibold mb-0.5">約當台幣</p>
+                                <p class="text-base font-bold text-gray-700">{{ formatNumber(estimatedAddCostTWD) }} TWD</p>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <p class="text-xs text-gray-500 font-semibold">試算後總股數</p>
+                                <p class="text-xl font-bold text-gray-800">{{ newTotalShares }}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-xs text-gray-500 font-semibold">試算後新均價</p>
+                                <p class="text-2xl font-bold text-blue-600">{{ formatNumber(newAveragePrice) }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <button @click="executeAddOn" v-if="calc.selectedTicker" class="w-full mt-4 bg-indigo-600 text-white p-2.5 rounded hover:bg-indigo-700 font-bold text-base transition shadow-sm">確認執行加碼 (寫入庫存與明細)</button>
+                </div>
+
+                <div class="bg-white p-5 rounded-lg shadow-md max-h-[500px] overflow-y-auto">
+                    <h2 class="text-lg font-bold mb-3">📜 歷次交易明細帳</h2>
+                    <div v-if="history.length === 0" class="text-gray-500 text-sm py-4 text-center">尚無交易紀錄。</div>
+                    
+                    <ul class="space-y-3">
+                        <li v-for="(record, index) in reversedHistory" :key="record.id || index" class="text-sm border-b pb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center last:border-0 hover:bg-gray-50 p-2 rounded transition gap-2">
+                            <div class="flex-1 w-full">
+                                <div class="flex items-center mb-1">
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold mr-2" 
+                                          :class="record.type === 'BUY' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'">
+                                        {{ record.type === 'BUY' ? '買進' : '賣出' }}
+                                    </span>
+                                    <span class="font-bold text-base text-gray-900">{{ record.ticker }}</span> 
+                                    <span class="text-[10px] bg-gray-200 text-gray-600 px-1 rounded ml-1">{{ record.market }}</span>
+                                </div>
+                                <div class="text-xs text-gray-500 space-y-0.5">
+                                    <p>{{ record.date }}</p>
+                                    <p>異動股數: <span class="font-semibold text-gray-700">{{ record.shares }} 股</span></p>
+                                    <p v-if="record.type === 'SELL'">賣出價格: {{ record.sellPrice }} | 原買入均價: {{ record.buyPrice }}</p>
+                                    <p v-if="record.type === 'BUY'">成交價格: {{ record.buyPrice }}</p>
+                                </div>
+                            </div>
+                            
+                            <div class="text-right flex sm:flex-col items-center sm:items-end justify-between sm:justify-center w-full sm:w-auto border-t sm:border-0 pt-2 sm:pt-0 mt-1 sm:mt-0">
+                                <div v-if="record.type === 'SELL'" class="text-left sm:text-right">
+                                    <span class="font-bold text-base sm:text-lg block" :class="record.pnlTWD >= 0 ? 'text-red-600' : 'text-green-600'">
+                                        {{ record.pnlTWD >= 0 ? '+' : '' }}{{ formatNumber(record.pnlTWD) }} TWD
+                                    </span>
+                                    <span v-if="record.market === 'US'" class="text-[10px] text-gray-400 block">
+                                        (原幣: {{ record.pnlOrig > 0 ? '+' : '' }}{{ record.pnlOrig }} USD)
+                                    </span>
+                                </div>
+                                <div v-else class="text-gray-400 text-xs">- 建倉/加碼 -</div>
+                                
+                                <button @click="deleteHistory(record.id)" class="text-xs text-gray-400 hover:text-red-500 underline ml-4 sm:ml-0 sm:mt-1 font-medium">刪除</button>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+        let chartInstance = null;
+
+        createApp({
+            data() {
+                return {
+                    exchangeRate: 32.50,
+                    newPosition: { ticker: '', market: 'TW', shares: null, price: null },
+                    positions: [],
+                    history: [],
+                    calc: {
+                        selectedIndex: null,
+                        selectedTicker: '',
+                        market: '',
+                        currentShares: 0,
+                        currentPrice: 0,
+                        addShares: null,
+                        addPrice: null
+                    }
+                }
+            },
+            computed: {
+                totalCostTWD() {
+                    return this.positions.reduce((sum, pos) => {
+                        const cost = (pos.shares || 0) * (pos.price || 0);
+                        return sum + (pos.market === 'US' ? cost * this.exchangeRate : cost);
+                    }, 0);
+                },
+                totalValueTWD() {
+                    return this.positions.reduce((sum, pos) => {
+                        const currentP = pos.currentPrice || pos.price || 0;
+                        const value = (pos.shares || 0) * currentP;
+                        return sum + (pos.market === 'US' ? value * this.exchangeRate : value);
+                    }, 0);
+                },
+                totalROI() {
+                    if (this.totalCostTWD === 0) return 0.00;
+                    return (((this.totalValueTWD - this.totalCostTWD) / this.totalCostTWD) * 100).toFixed(2);
+                },
+                totalRealizedPnLTWD() {
+                    return this.history
+                        .filter(h => h.type === 'SELL')
+                        .reduce((sum, record) => sum + (record.pnlTWD || 0), 0);
+                },
+                estimatedAddCost() {
+                    if (!this.calc.addShares || !this.calc.addPrice) return 0;
+                    return this.calc.addShares * this.calc.addPrice;
+                },
+                estimatedAddCostTWD() {
+                    if (!this.calc.market || this.estimatedAddCost === 0) return 0;
+                    return this.calc.market === 'US' ? this.estimatedAddCost * this.exchangeRate : this.estimatedAddCost;
+                },
+                newTotalShares() {
+                    if (!this.calc.selectedTicker || !this.calc.addShares) return 0;
+                    return this.calc.currentShares + this.calc.addShares;
+                },
+                newAveragePrice() {
+                    if (!this.calc.selectedTicker || !this.calc.addShares || !this.calc.addPrice) return 0;
+                    const currentTotal = this.calc.currentShares * this.calc.currentPrice;
+                    const addTotal = this.calc.addShares * this.calc.addPrice;
+                    return (currentTotal + addTotal) / this.newTotalShares;
+                },
+                reversedHistory() {
+                    return [...this.history].reverse();
+                }
+            },
+            watch: {
+                history: {
+                    handler() {
+                        this.updateChart();
+                    },
+                    deep: true
+                }
+            },
+            mounted() {
+                this.loadData();
+                setTimeout(() => {
+                    this.initChart();
+                }, 100);
+            },
+            methods: {
+                generateId() {
+                    return Date.now().toString() + Math.random().toString(36).substr(2, 5);
+                },
+                addPosition() {
+                    if (!this.newPosition.ticker || !this.newPosition.shares || !this.newPosition.price) {
+                        alert('請填寫完整資訊');
+                        return;
+                    }
+                    this.newPosition.ticker = this.newPosition.ticker.toUpperCase();
+                    
+                    this.history.push({
+                        id: this.generateId(),
+                        type: 'BUY',
+                        ticker: this.newPosition.ticker,
+                        market: this.newPosition.market,
+                        shares: this.newPosition.shares,
+                        buyPrice: this.newPosition.price,
+                        date: new Date().toLocaleString('zh-TW', { hour12: false })
+                    });
+
+                    const existingIndex = this.positions.findIndex(p => p.ticker === this.newPosition.ticker && p.market === this.newPosition.market);
+                    if (existingIndex !== -1) {
+                        const ep = this.positions[existingIndex];
+                        const newTotalShares = ep.shares + this.newPosition.shares;
+                        const newAvgPrice = ((ep.shares * ep.price) + (this.newPosition.shares * this.newPosition.price)) / newTotalShares;
+                        ep.shares = newTotalShares;
+                        ep.price = parseFloat(newAvgPrice.toFixed(4));
+                    } else {
+                        this.positions.push({
+                            ...this.newPosition,
+                            currentPrice: this.newPosition.price,
+                            closeShares: null,
+                            closePrice: null
+                        });
+                    }
+                    this.newPosition = { ticker: '', market: 'TW', shares: null, price: null };
+                    this.saveData();
+                },
+                executeAddOn() {
+                    if (!this.calc.addShares || !this.calc.addPrice) return;
+                    const pos = this.positions[this.calc.selectedIndex];
+                    
+                    this.history.push({
+                        id: this.generateId(),
+                        type: 'BUY',
+                        ticker: pos.ticker,
+                        market: pos.market,
+                        shares: this.calc.addShares,
+                        buyPrice: this.calc.addPrice,
+                        date: new Date().toLocaleString('zh-TW', { hour12: false })
+                    });
+
+                    pos.shares = this.newTotalShares;
+                    pos.price = parseFloat(this.newAveragePrice.toFixed(4));
+                    
+                    this.calc = { selectedIndex: null, selectedTicker: '', market: '', currentShares: 0, currentPrice: 0, addShares: null, addPrice: null };
+                    this.saveData();
+                },
+                closePosition(index) {
+                    const pos = this.positions[index];
+                    if (!pos.closeShares || !pos.closePrice) {
+                        alert('請輸入平倉股數與價格');
+                        return;
+                    }
+                    if (pos.closeShares > pos.shares) {
+                        alert('平倉股數不能大於庫存股數');
+                        return;
+                    }
+
+                    const pnlOrig = (pos.closePrice - pos.price) * pos.closeShares;
+                    const pnlTWD = pos.market === 'US' ? pnlOrig * this.exchangeRate : pnlOrig;
+                    
+                    this.history.push({
+                        id: this.generateId(),
+                        type: 'SELL',
+                        ticker: pos.ticker,
+                        market: pos.market,
+                        buyPrice: pos.price,
+                        sellPrice: pos.closePrice,
+                        shares: pos.closeShares,
+                        pnlOrig: parseFloat(pnlOrig.toFixed(2)),
+                        pnlTWD: parseFloat(pnlTWD.toFixed(0)),
+                        date: new Date().toLocaleString('zh-TW', { hour12: false })
+                    });
+
+                    pos.shares -= pos.closeShares;
+                    pos.closeShares = null;
+                    pos.closePrice = null;
+
+                    if (pos.shares === 0) {
+                        this.positions.splice(index, 1);
+                        if (this.calc.selectedIndex === index) {
+                            this.calc.selectedTicker = '';
+                            this.calc.market = '';
+                        }
+                    }
+                    this.saveData();
+                },
+                deletePosition(index) {
+                    if(confirm('確定要從庫存中刪除此部位嗎？(此動作不會刪除歷史明細)')) {
+                        this.positions.splice(index, 1);
+                        this.saveData();
+                    }
+                },
+                deleteHistory(id) {
+                    if(confirm('確定要刪除這筆交易明細嗎？(刪除後庫存數量不會自動變更，需自行手動調整)')) {
+                        const index = this.history.findIndex(h => h.id === id);
+                        if(index !== -1) {
+                            this.history.splice(index, 1);
+                            this.saveData();
+                        }
+                    }
+                },
+                getUnrealizedPnL(pos) {
+                    const current = pos.currentPrice || pos.price || 0;
+                    return (current - (pos.price || 0)) * (pos.shares || 0);
+                },
+                getROI(pos) {
+                    const current = pos.currentPrice || pos.price || 0;
+                    if (!pos.price || pos.price === 0) return 0;
+                    return (((current - pos.price) / pos.price) * 100).toFixed(2);
+                },
+                selectForCalc(pos) {
+                    const index = this.positions.findIndex(p => p.ticker === pos.ticker && p.market === pos.market);
+                    this.calc.selectedIndex = index;
+                    this.calc.selectedTicker = pos.ticker;
+                    this.calc.market = pos.market;
+                    this.calc.currentShares = pos.shares;
+                    this.calc.currentPrice = pos.price;
+                    this.calc.addShares = null;
+                    this.calc.addPrice = pos.currentPrice; 
+                },
+                formatNumber(num) {
+                    if (isNaN(num)) return '0';
+                    return Number(num).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+                },
+                saveData() {
+                    localStorage.setItem('quantPortfolioDataV2', JSON.stringify({
+                        exchangeRate: this.exchangeRate,
+                        positions: this.positions,
+                        history: this.history
+                    }));
+                },
+                loadData() {
+                    const dataV2 = localStorage.getItem('quantPortfolioDataV2');
+                    const dataOld = localStorage.getItem('quantPortfolioData');
+                    
+                    if (dataV2) {
+                        const parsed = JSON.parse(dataV2);
+                        if(parsed.exchangeRate) this.exchangeRate = parsed.exchangeRate;
+                        this.positions = parsed.positions || [];
+                        this.history = parsed.history || [];
+                    } else if (dataOld) {
+                        const parsed = JSON.parse(dataOld);
+                        if(parsed.exchangeRate) this.exchangeRate = parsed.exchangeRate;
+                        this.positions = parsed.positions || [];
+                        this.history = (parsed.history || []).map(h => {
+                            let fixedPnlTWD = h.pnlTWD;
+                            if (isNaN(fixedPnlTWD) || fixedPnlTWD === undefined) {
+                                const basePnl = h.pnlOrig !== undefined ? h.pnlOrig : (h.pnl || 0);
+                                fixedPnlTWD = h.market === 'US' ? basePnl * this.exchangeRate : basePnl;
+                            }
+                            return {
+                                ...h,
+                                id: this.generateId(),
+                                type: 'SELL',
+                                pnlTWD: parseFloat(Number(fixedPnlTWD).toFixed(0))
+                            };
+                        });
+                        this.saveData();
+                    }
+                },
+                initChart() {
+                    const ctx = document.getElementById('pnlChart').getContext('2d');
+                    chartInstance = new Chart(ctx, {
+                        type: 'line',
+                        data: { labels: [], datasets: [] },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            return '累積損益: ' + Number(context.raw).toLocaleString('zh-TW') + ' TWD';
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: { grid: { display: false } },
+                                y: { 
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return value.toLocaleString('zh-TW');
+                                        }
+                                    }
+                                }
+                            },
+                            interaction: { intersect: false, mode: 'index' }
+                        }
+                    });
+                    this.updateChart();
+                },
+                updateChart() {
+                    if (!chartInstance) return;
+
+                    const sellRecords = this.history.filter(h => h.type === 'SELL');
+                    let cumulativePnl = 0;
+                    const labels = [];
+                    const dataPoints = [];
+
+                    if (sellRecords.length === 0) {
+                        labels.push('起始');
+                        dataPoints.push(0);
+                    } else {
+                        // 確保依時間推進排序
+                        const sortedRecords = [...sellRecords].sort((a, b) => 1);
+
+                        sortedRecords.forEach(record => {
+                            cumulativePnl += (record.pnlTWD || 0);
+                            const dateMatch = record.date.match(/(\d{1,2})\/(\d{1,2})/);
+                            const shortDate = dateMatch ? `${dateMatch[1]}/${dateMatch[2]}` : record.date.split(' ')[0];
+                            labels.push(`${record.ticker} (${shortDate})`);
+                            dataPoints.push(cumulativePnl);
+                        });
+                    }
+
+                    chartInstance.data.labels = labels;
+                    chartInstance.data.datasets = [{
+                        label: '累積已實現損益 (TWD)',
+                        data: dataPoints,
+                        borderColor: 'rgb(239, 68, 68)',
+                        backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                        borderWidth: 2,
+                        pointBackgroundColor: 'rgb(239, 68, 68)',
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        fill: true,
+                        tension: 0.2
+                    }];
+                    
+                    if (cumulativePnl >= 0) {
+                        chartInstance.data.datasets[0].borderColor = 'rgb(220, 38, 38)';
+                        chartInstance.data.datasets[0].backgroundColor = 'rgba(220, 38, 38, 0.05)';
+                        chartInstance.data.datasets[0].pointBackgroundColor = 'rgb(220, 38, 38)';
+                    } else {
+                        chartInstance.data.datasets[0].borderColor = 'rgb(22, 163, 74)';
+                        chartInstance.data.datasets[0].backgroundColor = 'rgba(22, 163, 74, 0.05)';
+                        chartInstance.data.datasets[0].pointBackgroundColor = 'rgb(22, 163, 74)';
+                    }
+
+                    chartInstance.update();
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
