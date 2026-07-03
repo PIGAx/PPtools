@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PPtools — 個人投資工具平台</title>
+<style>
+  :root {
+    --sidebar-w: 232px;
+    --sidebar-bg: #141827;
+    --sidebar-hover: #1e2340;
+    --sidebar-active: #262d4a;
+    --sidebar-text: #9ba3c2;
+    --sidebar-text-active: #e4e7f1;
+    --sidebar-accent: #5b7fff;
+    --header-h: 52px;
+    --bg: #f3f4f8;
+    --surface: #ffffff;
+    --border: #e2e4ec;
+    --text: #1a1d2e;
+    --text-muted: #6b7194;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1019;
+      --surface: #171a28;
+      --border: #262a3c;
+      --text: #d8dae5;
+      --text-muted: #7b7f9a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1019;
+    --surface: #171a28;
+    --border: #262a3c;
+    --text: #d8dae5;
+    --text-muted: #7b7f9a;
+  }
+  :root[data-theme="light"] {
+    --bg: #f3f4f8;
+    --surface: #ffffff;
+    --border: #e2e4ec;
+    --text: #1a1d2e;
+    --text-muted: #6b7194;
+  }
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .shell { display: flex; height: 100vh; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: var(--sidebar-w);
+    background: var(--sidebar-bg);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    z-index: 100;
+    transition: transform .25s cubic-bezier(.4,0,.2,1);
+  }
+  .sidebar-brand {
+    padding: 20px 18px 16px;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .sidebar-brand h1 {
+    font-size: 17px;
+    font-weight: 700;
+    color: #e8ebf4;
+    letter-spacing: .3px;
+  }
+  .sidebar-brand p {
+    font-size: 11px;
+    color: var(--sidebar-text);
+    margin-top: 3px;
+    letter-spacing: .2px;
+  }
+  .sidebar-nav {
+    flex: 1;
+    padding: 12px 10px;
+    overflow-y: auto;
+  }
+  .nav-section {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: rgba(155,163,194,.45);
+    padding: 16px 10px 6px;
+  }
+  .nav-section:first-child { padding-top: 4px; }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 7px;
+    color: var(--sidebar-text);
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+    text-decoration: none;
+    user-select: none;
+  }
+  .nav-item:hover { background: var(--sidebar-hover); color: var(--sidebar-text-active); }
+  .nav-item.active {
+    background: var(--sidebar-active);
+    color: var(--sidebar-text-active);
+    font-weight: 600;
+  }
+  .nav-item.active .nav-icon { color: var(--sidebar-accent); }
+  .nav-icon {
+    width: 20px;
+    text-align: center;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+  .sidebar-footer {
+    padding: 14px 18px;
+    border-top: 1px solid rgba(255,255,255,.06);
+    font-size: 11px;
+    color: rgba(155,163,194,.35);
+  }
+
+  /* ── Main ── */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .header {
+    height: var(--header-h);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .menu-btn {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px;
+  }
+  .header-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .header-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .theme-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .theme-btn:hover { border-color: var(--sidebar-accent); color: var(--text); }
+
+  .content-frame {
+    flex: 1;
+    border: none;
+    background: var(--bg);
+  }
+
+  /* ── Overlay for mobile ── */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.45);
+    z-index: 99;
+  }
+
+  /* ── Mobile ── */
+  @media (max-width: 768px) {
+    .sidebar {
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      transform: translateX(-100%);
+    }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-overlay.open { display: block; }
+    .menu-btn { display: block; }
+  }
+
+  /* ── Welcome (default view) ── */
+  .welcome {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    background: var(--bg);
+  }
+  .welcome-inner {
+    text-align: center;
+    max-width: 420px;
+    padding: 40px 24px;
+  }
+  .welcome-inner h2 {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+  .welcome-inner p {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.7;
+  }
+  .module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    margin-top: 24px;
+  }
+  .module-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 14px;
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+    text-align: center;
+  }
+  .module-card:hover {
+    border-color: var(--sidebar-accent);
+    box-shadow: 0 2px 12px rgba(91,127,255,.12);
+  }
+  .module-card .card-icon { font-size: 24px; margin-bottom: 8px; }
+  .module-card .card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .module-card .card-desc { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- Sidebar Overlay (mobile) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <h1>PPtools</h1>
+      <p>個人投資工具平台</p>
+    </div>
+    <nav class="sidebar-nav" id="sidebarNav">
+      <!-- Populated by JS -->
+    </nav>
+    <div class="sidebar-footer">
+      新增模組：編輯 modules 陣列
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <header class="header">
+      <button class="menu-btn" onclick="toggleSidebar()">&#9776;</button>
+      <span class="header-title" id="headerTitle">總覽</span>
+      <div class="header-right">
+        <button class="theme-btn" onclick="cycleTheme()" id="themeBtn">☀ 淺色</button>
+      </div>
+    </header>
+
+    <div id="welcomeView" class="welcome">
+      <div class="welcome-inner">
+        <h2>歡迎使用 PPtools</h2>
+        <p>從左側選單選擇模組，或點擊下方卡片快速開始。</p>
+        <div class="module-grid" id="moduleGrid"></div>
+      </div>
+    </div>
+
+    <iframe id="contentFrame" class="content-frame" style="display:none"></iframe>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════
+//  Module Registry — 新增模組只需在這裡加一筆
+// ════════════════════════════════════════════
+const MODULES = [
+  {
+    id: 'calendar',
+    title: '投資行事曆',
+    icon: '📅',
+    desc: '經濟事件與公司重要日程',
+    src: 'modules/calendar.html',
+    section: '分析工具'
+  },
+  {
+    id: 'forecast',
+    title: '財務預測',
+    icon: '📈',
+    desc: '關注標的財務預測整理',
+    src: 'modules/forecast.html',
+    section: '分析工具'
+  },
+  {
+    id: 'position',
+    title: '部位控管',
+    icon: '💼',
+    desc: '庫存與股票部位管理',
+    src: 'return_equity.html',
+    section: '交易管理'
+  },
+  {
+    id: 'budget',
+    title: '預算管理',
+    icon: '🧮',
+    desc: '資金分配與預算追蹤',
+    src: 'budget.html',
+    section: '交易管理'
+  }
+];
+
+let currentModule = null;
+
+function buildNav() {
+  const nav = document.getElementById('sidebarNav');
+  const grid = document.getElementById('moduleGrid');
+  let lastSection = '';
+
+  // Home item
+  const home = document.createElement('div');
+  home.className = 'nav-item active';
+  home.dataset.id = '__home';
+  home.innerHTML = '<span class="nav-icon">⌂</span> 總覽';
+  home.onclick = () => loadModule(null);
+  nav.appendChild(home);
+
+  MODULES.forEach(m => {
+    if (m.section !== lastSection) {
+      const sec = document.createElement('div');
+      sec.className = 'nav-section';
+      sec.textContent = m.section;
+      nav.appendChild(sec);
+      lastSection = m.section;
+    }
+    const item = document.createElement('div');
+    item.className = 'nav-item';
+    item.dataset.id = m.id;
+    item.innerHTML = `<span class="nav-icon">${m.icon}</span> ${m.title}`;
+    item.onclick = () => loadModule(m);
+    nav.appendChild(item);
+
+    const card = document.createElement('div');
+    card.className = 'module-card';
+    card.onclick = () => loadModule(m);
+    card.innerHTML = `<div class="card-icon">${m.icon}</div><div class="card-title">${m.title}</div><div class="card-desc">${m.desc}</div>`;
+    grid.appendChild(card);
+  });
+}
+
+function loadModule(mod) {
+  const frame = document.getElementById('contentFrame');
+  const welcome = document.getElementById('welcomeView');
+  const title = document.getElementById('headerTitle');
+
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+  if (!mod) {
+    frame.style.display = 'none';
+    frame.src = '';
+    welcome.style.display = 'flex';
+    title.textContent = '總覽';
+    document.querySelector('[data-id="__home"]').classList.add('active');
+    currentModule = null;
+  } else {
+    welcome.style.display = 'none';
+    frame.style.display = 'block';
+    frame.src = mod.src;
+    title.textContent = mod.title;
+    document.querySelector(`[data-id="${mod.id}"]`).classList.add('active');
+    currentModule = mod;
+  }
+
+  // close mobile sidebar
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('open');
+}
+
+// Theme
+function getStoredTheme() { return localStorage.getItem('pptools-theme') || 'system'; }
+function applyTheme(t) {
+  const btn = document.getElementById('themeBtn');
+  if (t === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    btn.textContent = '☾ 深色';
+  } else if (t === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    btn.textContent = '☀ 淺色';
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    btn.textContent = '⚙ 系統';
+  }
+  localStorage.setItem('pptools-theme', t);
+}
+function cycleTheme() {
+  const order = ['system', 'light', 'dark'];
+  const cur = getStoredTheme();
+  applyTheme(order[(order.indexOf(cur) + 1) % 3]);
+}
+
+// Init
+buildNav();
+applyTheme(getStoredTheme());
+</script>
+</body>
+</html>

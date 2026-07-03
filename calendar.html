@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>投資行事曆</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+  :root {
+    --bg: #f3f4f8; --surface: #fff; --surface-alt: #f7f8fb;
+    --border: #e2e4ec; --text: #1a1d2e; --text-muted: #6b7194;
+    --accent: #4361ee; --accent-light: rgba(67,97,238,.08);
+    --red: #ef4444; --green: #22c55e; --amber: #f59e0b;
+    --purple: #8b5cf6; --teal: #14b8a6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1019; --surface: #171a28; --surface-alt: #1c2030;
+      --border: #262a3c; --text: #d8dae5; --text-muted: #7b7f9a;
+      --accent-light: rgba(67,97,238,.15);
+    }
+  }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    line-height: 1.5;
+  }
+  .container { max-width: 1080px; margin: 0 auto; padding: 24px 20px; }
+
+  /* Header */
+  .cal-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+  .cal-header h1 { font-size: 20px; font-weight: 700; }
+  .cal-nav { display: flex; align-items: center; gap: 8px; }
+  .cal-nav button {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--text);
+    transition: border-color .15s;
+  }
+  .cal-nav button:hover { border-color: var(--accent); }
+  .cal-nav .month-label { font-size: 16px; font-weight: 600; min-width: 140px; text-align: center; }
+
+  /* Legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Grid */
+  .cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    background: var(--border); gap: 1px;
+  }
+  .cal-dow {
+    background: var(--surface-alt); padding: 8px 4px; text-align: center;
+    font-size: 11px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: .8px;
+  }
+  .cal-cell {
+    background: var(--surface); min-height: 90px; padding: 6px 7px;
+    cursor: pointer; transition: background .12s; position: relative;
+  }
+  .cal-cell:hover { background: var(--accent-light); }
+  .cal-cell.outside { opacity: .3; }
+  .cal-cell.today { box-shadow: inset 0 0 0 2px var(--accent); }
+  .cal-day { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; margin-bottom: 3px; }
+  .cal-events { display: flex; flex-direction: column; gap: 2px; }
+  .cal-event {
+    font-size: 10px; padding: 2px 5px; border-radius: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: pointer; font-weight: 500; line-height: 1.4;
+  }
+  .cal-event.type-fed { background: rgba(239,68,68,.12); color: var(--red); }
+  .cal-event.type-economic { background: rgba(245,158,11,.1); color: var(--amber); }
+  .cal-event.type-earnings { background: rgba(67,97,238,.1); color: var(--accent); }
+  .cal-event.type-custom { background: rgba(139,92,246,.1); color: var(--purple); }
+  .cal-event.type-dividend { background: rgba(20,184,166,.1); color: var(--teal); }
+  .cal-more { font-size: 10px; color: var(--text-muted); padding: 1px 5px; cursor: pointer; }
+
+  /* Event list panel */
+  .panel { margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 640px) { .panel { grid-template-columns: 1fr; } }
+  .panel-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px; max-height: 420px; overflow-y: auto;
+  }
+  .panel-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+  .event-row {
+    display: flex; align-items: flex-start; gap: 10px; padding: 8px 0;
+    border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .event-row:last-child { border-bottom: none; }
+  .event-date { font-size: 11px; font-weight: 600; color: var(--text-muted); min-width: 48px; font-variant-numeric: tabular-nums; flex-shrink: 0; padding-top: 1px; }
+  .event-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+  .event-info { flex: 1; }
+  .event-title { font-weight: 500; }
+  .event-meta { font-size: 11px; color: var(--text-muted); }
+  .empty-state { font-size: 13px; color: var(--text-muted); text-align: center; padding: 20px 0; }
+
+  /* Add event form */
+  .add-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .add-form input, .add-form select {
+    font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface-alt); color: var(--text); flex: 1; min-width: 100px;
+  }
+  .add-form button {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: opacity .15s;
+  }
+  .add-form button:hover { opacity: .85; }
+  .del-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px;
+    padding: 0 4px; opacity: .5; transition: opacity .15s;
+  }
+  .del-btn:hover { opacity: 1; color: var(--red); }
+</style>
+</head>
+<body>
+<div id="app" class="container">
+  <div class="cal-header">
+    <h1>投資行事曆</h1>
+    <div class="cal-nav">
+      <button @click="prevMonth">&larr;</button>
+      <span class="month-label">{{ monthLabel }}</span>
+      <button @click="nextMonth">&rarr;</button>
+      <button @click="goToday" style="margin-left:4px">今天</button>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>聯準會 / 央行</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span>經濟數據</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#4361ee"></span>財報發布</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#14b8a6"></span>除息 / 配息</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#8b5cf6"></span>自訂事件</div>
+  </div>
+
+  <div class="cal-grid">
+    <div class="cal-dow" v-for="d in dayOfWeekLabels">{{ d }}</div>
+    <div v-for="cell in calendarCells" :key="cell.key"
+         class="cal-cell" :class="{ outside: cell.outside, today: cell.isToday }"
+         @click="selectDate(cell.date)">
+      <div class="cal-day">{{ cell.day }}</div>
+      <div class="cal-events">
+        <div v-for="ev in cell.events.slice(0, 3)" :key="ev.id"
+             class="cal-event" :class="'type-' + ev.type" :title="ev.title">
+          {{ ev.title }}
+        </div>
+        <div v-if="cell.events.length > 3" class="cal-more">+{{ cell.events.length - 3 }} 更多</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <!-- Upcoming events -->
+    <div class="panel-card">
+      <h3>📋 本月即將到來</h3>
+      <div v-if="upcomingEvents.length === 0" class="empty-state">本月無即將到來的事件</div>
+      <div v-for="ev in upcomingEvents" :key="ev.id" class="event-row">
+        <span class="event-date">{{ formatShortDate(ev.date) }}</span>
+        <span class="event-dot" :style="{ background: typeColor(ev.type) }"></span>
+        <div class="event-info">
+          <div class="event-title">{{ ev.title }}</div>
+          <div v-if="ev.note" class="event-meta">{{ ev.note }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom events -->
+    <div class="panel-card">
+      <h3>📌 自訂事件</h3>
+      <div v-if="customEvents.length === 0" class="empty-state">尚未新增自訂事件</div>
+      <div v-for="ev in customEventsSorted" :key="ev.id" class="event-row">
+        <span class="event-date">{{ formatShortDate(ev.date) }}</span>
+        <span class="event-dot" :style="{ background: typeColor(ev.type) }"></span>
+        <div class="event-info">
+          <div class="event-title">{{ ev.title }}</div>
+          <div v-if="ev.note" class="event-meta">{{ ev.note }}</div>
+        </div>
+        <button class="del-btn" @click="removeCustomEvent(ev.id)" title="刪除">&times;</button>
+      </div>
+
+      <div class="add-form">
+        <input v-model="newEvent.date" type="date" />
+        <input v-model="newEvent.title" placeholder="事件名稱" />
+        <select v-model="newEvent.type">
+          <option value="custom">自訂</option>
+          <option value="earnings">財報</option>
+          <option value="dividend">配息</option>
+        </select>
+        <input v-model="newEvent.note" placeholder="備註（選填）" />
+        <button @click="addCustomEvent">新增</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+
+// Pre-loaded economic events for 2025-2026
+function getBuiltinEvents() {
+  const events = [];
+  let id = 1;
+  const add = (date, title, type, note) => events.push({ id: 'b' + (id++), date, title, type, note });
+
+  // 2026 FOMC meetings (projected schedule)
+  const fomc2026 = [
+    ['2026-01-27','2026-01-28'], ['2026-03-17','2026-03-18'],
+    ['2026-04-28','2026-04-29'], ['2026-06-16','2026-06-17'],
+    ['2026-07-28','2026-07-29'], ['2026-09-15','2026-09-16'],
+    ['2026-11-03','2026-11-04'], ['2026-12-15','2026-12-16']
+  ];
+  fomc2026.forEach(([d1, d2]) => {
+    add(d1, 'FOMC 會議 (第一天)', 'fed', '聯邦公開市場委員會');
+    add(d2, 'FOMC 利率決議', 'fed', '會後聲明與記者會');
+  });
+
+  // US CPI releases 2026
+  ['2026-01-13','2026-02-11','2026-03-11','2026-04-14',
+   '2026-05-12','2026-06-10','2026-07-14','2026-08-12',
+   '2026-09-11','2026-10-13','2026-11-12','2026-12-10'
+  ].forEach(d => add(d, '美國 CPI 公布', 'economic', '消費者物價指數'));
+
+  // US Non-Farm Payrolls 2026
+  ['2026-01-09','2026-02-06','2026-03-06','2026-04-03',
+   '2026-05-08','2026-06-05','2026-07-02','2026-08-07',
+   '2026-09-04','2026-10-02','2026-11-06','2026-12-04'
+  ].forEach(d => add(d, '非農就業報告', 'economic', 'Non-Farm Payrolls'));
+
+  // US GDP releases 2026
+  ['2026-01-29','2026-04-29','2026-07-29','2026-10-29'
+  ].forEach(d => add(d, '美國 GDP 公布', 'economic', '國內生產總值'));
+
+  // Taiwan central bank rate decisions 2026
+  ['2026-03-19','2026-06-18','2026-09-17','2026-12-17'
+  ].forEach(d => add(d, '台灣央行理監事會', 'fed', '利率決議'));
+
+  return events;
+}
+
+createApp({
+  setup() {
+    const today = new Date();
+    const viewYear = ref(today.getFullYear());
+    const viewMonth = ref(today.getMonth());
+    const customEvents = ref([]);
+    const builtinEvents = getBuiltinEvents();
+
+    const newEvent = ref({ date: '', title: '', type: 'custom', note: '' });
+
+    const dayOfWeekLabels = ['日', '一', '二', '三', '四', '五', '六'];
+
+    const monthLabel = computed(() => `${viewYear.value} 年 ${viewMonth.value + 1} 月`);
+
+    function allEvents() {
+      return [...builtinEvents, ...customEvents.value];
+    }
+
+    function eventsForDate(dateStr) {
+      return allEvents().filter(e => e.date === dateStr);
+    }
+
+    const calendarCells = computed(() => {
+      const y = viewYear.value, m = viewMonth.value;
+      const firstDay = new Date(y, m, 1).getDay();
+      const daysInMonth = new Date(y, m + 1, 0).getDate();
+      const daysInPrev = new Date(y, m, 0).getDate();
+      const cells = [];
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+      // prev month fill
+      for (let i = firstDay - 1; i >= 0; i--) {
+        const d = daysInPrev - i;
+        const pm = m === 0 ? 11 : m - 1;
+        const py = m === 0 ? y - 1 : y;
+        const dateStr = `${py}-${String(pm+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        cells.push({ key: 'p'+d, day: d, date: dateStr, outside: true, isToday: dateStr===todayStr, events: eventsForDate(dateStr) });
+      }
+      // current month
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        cells.push({ key: 'c'+d, day: d, date: dateStr, outside: false, isToday: dateStr===todayStr, events: eventsForDate(dateStr) });
+      }
+      // next month fill
+      const remaining = 42 - cells.length;
+      for (let d = 1; d <= remaining; d++) {
+        const nm = m === 11 ? 0 : m + 1;
+        const ny = m === 11 ? y + 1 : y;
+        const dateStr = `${ny}-${String(nm+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        cells.push({ key: 'n'+d, day: d, date: dateStr, outside: true, isToday: dateStr===todayStr, events: eventsForDate(dateStr) });
+      }
+      return cells;
+    });
+
+    const upcomingEvents = computed(() => {
+      const y = viewYear.value, m = viewMonth.value;
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+      const monthStart = `${y}-${String(m+1).padStart(2,'0')}-01`;
+      const monthEnd = `${y}-${String(m+1).padStart(2,'0')}-31`;
+      return allEvents()
+        .filter(e => e.date >= todayStr && e.date >= monthStart && e.date <= monthEnd)
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .slice(0, 15);
+    });
+
+    const customEventsSorted = computed(() =>
+      [...customEvents.value].sort((a, b) => a.date.localeCompare(b.date))
+    );
+
+    function prevMonth() {
+      if (viewMonth.value === 0) { viewMonth.value = 11; viewYear.value--; }
+      else viewMonth.value--;
+    }
+    function nextMonth() {
+      if (viewMonth.value === 11) { viewMonth.value = 0; viewYear.value++; }
+      else viewMonth.value++;
+    }
+    function goToday() { viewYear.value = today.getFullYear(); viewMonth.value = today.getMonth(); }
+
+    function selectDate(dateStr) {
+      newEvent.value.date = dateStr;
+    }
+
+    function addCustomEvent() {
+      const ne = newEvent.value;
+      if (!ne.date || !ne.title.trim()) return;
+      customEvents.value.push({
+        id: 'u' + Date.now(),
+        date: ne.date,
+        title: ne.title.trim(),
+        type: ne.type,
+        note: ne.note.trim()
+      });
+      ne.title = ''; ne.note = '';
+      saveCustom();
+    }
+
+    function removeCustomEvent(id) {
+      customEvents.value = customEvents.value.filter(e => e.id !== id);
+      saveCustom();
+    }
+
+    function saveCustom() {
+      localStorage.setItem('pptools-calendar-custom', JSON.stringify(customEvents.value));
+    }
+
+    function loadCustom() {
+      try {
+        const raw = localStorage.getItem('pptools-calendar-custom');
+        if (raw) customEvents.value = JSON.parse(raw);
+      } catch(e) {}
+    }
+
+    function formatShortDate(dateStr) {
+      const parts = dateStr.split('-');
+      return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
+    }
+
+    function typeColor(type) {
+      return { fed: '#ef4444', economic: '#f59e0b', earnings: '#4361ee', dividend: '#14b8a6', custom: '#8b5cf6' }[type] || '#8b5cf6';
+    }
+
+    onMounted(loadCustom);
+
+    return {
+      viewYear, viewMonth, monthLabel, dayOfWeekLabels,
+      calendarCells, upcomingEvents, customEvents, customEventsSorted,
+      newEvent, prevMonth, nextMonth, goToday, selectDate,
+      addCustomEvent, removeCustomEvent, formatShortDate, typeColor
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

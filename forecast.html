@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>財務預測整理</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root {
+    --bg: #f3f4f8; --surface: #fff; --surface-alt: #f7f8fb;
+    --border: #e2e4ec; --text: #1a1d2e; --text-muted: #6b7194;
+    --accent: #4361ee; --accent-light: rgba(67,97,238,.08);
+    --red: #ef4444; --green: #22c55e; --amber: #f59e0b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1019; --surface: #171a28; --surface-alt: #1c2030;
+      --border: #262a3c; --text: #d8dae5; --text-muted: #7b7f9a;
+      --accent-light: rgba(67,97,238,.15);
+    }
+  }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+  }
+  .container { max-width: 1080px; margin: 0 auto; padding: 24px 20px; }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 20px; }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; align-items: center; }
+  .toolbar input, .toolbar select {
+    font-size: 12px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text);
+  }
+  .toolbar input { min-width: 120px; }
+  .btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 7px 16px; font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: opacity .15s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn-outline {
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  }
+  .btn-outline:hover { border-color: var(--accent); }
+  .btn-danger { background: transparent; color: var(--red); border: 1px solid var(--border); }
+  .btn-danger:hover { border-color: var(--red); }
+
+  /* Cards grid */
+  .stock-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .stock-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; transition: box-shadow .2s;
+  }
+  .stock-card:hover { box-shadow: 0 2px 16px rgba(0,0,0,.06); }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+  }
+  .card-ticker { font-size: 16px; font-weight: 700; }
+  .card-name { font-size: 12px; color: var(--text-muted); margin-left: 8px; font-weight: 400; }
+  .card-market {
+    font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 600;
+    letter-spacing: .5px;
+  }
+  .market-us { background: rgba(67,97,238,.1); color: var(--accent); }
+  .market-tw { background: rgba(107,113,148,.1); color: var(--text-muted); }
+  .card-body { padding: 14px 16px; }
+  .metric-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px;
+  }
+  .metric { text-align: center; }
+  .metric-label { font-size: 10px; color: var(--text-muted); font-weight: 500; margin-bottom: 2px; letter-spacing: .3px; }
+  .metric-value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .metric-sub { font-size: 10px; color: var(--text-muted); }
+  .positive { color: var(--red); }
+  .negative { color: var(--green); }
+
+  .chart-wrap { height: 140px; margin: 8px 0; }
+  .chart-wrap canvas { width: 100% !important; height: 100% !important; }
+
+  /* Forecast table */
+  .forecast-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .forecast-table th {
+    text-align: left; font-weight: 600; font-size: 10px; color: var(--text-muted);
+    padding: 6px 8px; border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .6px;
+  }
+  .forecast-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .forecast-table tr:last-child td { border-bottom: none; }
+  .editable {
+    background: var(--surface-alt); border: 1px solid transparent; border-radius: 4px;
+    padding: 3px 6px; width: 80px; font-size: 12px; color: var(--text);
+    font-variant-numeric: tabular-nums; text-align: right;
+  }
+  .editable:focus { border-color: var(--accent); outline: none; }
+
+  .card-actions { display: flex; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--border); }
+
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+  }
+  .empty-state p { font-size: 14px; margin-bottom: 16px; }
+
+  .note-input {
+    width: 100%; margin-top: 10px; padding: 8px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--surface-alt); color: var(--text);
+    font-size: 12px; resize: vertical; min-height: 40px;
+  }
+</style>
+</head>
+<body>
+<div id="app" class="container">
+  <h1>財務預測整理</h1>
+
+  <div class="toolbar">
+    <input v-model="newStock.ticker" placeholder="股票代號" @keyup.enter="addStock" style="text-transform:uppercase" />
+    <input v-model="newStock.name" placeholder="公司名稱" @keyup.enter="addStock" />
+    <select v-model="newStock.market">
+      <option value="US">美股</option>
+      <option value="TW">台股</option>
+    </select>
+    <button class="btn" @click="addStock">新增追蹤</button>
+  </div>
+
+  <div v-if="stocks.length === 0" class="empty-state">
+    <p>尚未追蹤任何標的。<br>輸入股票代號開始建立財務預測。</p>
+  </div>
+
+  <div class="stock-cards">
+    <div v-for="(stock, si) in stocks" :key="stock.ticker" class="stock-card">
+      <div class="card-head">
+        <div>
+          <span class="card-ticker">{{ stock.ticker }}</span>
+          <span class="card-name">{{ stock.name }}</span>
+        </div>
+        <span class="card-market" :class="stock.market === 'US' ? 'market-us' : 'market-tw'">{{ stock.market }}</span>
+      </div>
+      <div class="card-body">
+        <!-- Key metrics -->
+        <div class="metric-grid">
+          <div class="metric">
+            <div class="metric-label">目前股價</div>
+            <div class="metric-value">{{ stock.currentPrice || '—' }}</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">目標價</div>
+            <div class="metric-value">{{ stock.targetPrice || '—' }}</div>
+            <div v-if="stock.currentPrice && stock.targetPrice" class="metric-sub"
+                 :class="stock.targetPrice > stock.currentPrice ? 'positive' : 'negative'">
+              {{ upsidePercent(stock) }}
+            </div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">本益比 (預估)</div>
+            <div class="metric-value">{{ stock.forwardPE || '—' }}</div>
+          </div>
+        </div>
+
+        <!-- Revenue / EPS forecast table -->
+        <table class="forecast-table">
+          <thead>
+            <tr>
+              <th>年度</th>
+              <th style="text-align:right">營收預估</th>
+              <th style="text-align:right">EPS 預估</th>
+              <th style="text-align:right">YoY %</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, ri) in stock.forecasts" :key="ri">
+              <td>{{ row.year }}</td>
+              <td style="text-align:right">
+                <input class="editable" v-model="row.revenue" @change="save" placeholder="—" />
+              </td>
+              <td style="text-align:right">
+                <input class="editable" v-model="row.eps" @change="save" placeholder="—" />
+              </td>
+              <td style="text-align:right" :class="parseFloat(row.yoy) >= 0 ? 'positive' : 'negative'">
+                <input class="editable" v-model="row.yoy" @change="save" placeholder="—" style="width:60px" />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn-outline btn" style="font-size:11px;padding:4px 10px" @click="addForecastYear(si)">+ 年度</button>
+          <button v-if="stock.forecasts.length > 0" class="btn-danger btn" style="font-size:11px;padding:4px 10px" @click="removeForecastYear(si)">- 年度</button>
+        </div>
+
+        <!-- chart placeholder -->
+        <div class="chart-wrap">
+          <canvas :ref="el => setChartRef(el, si)"></canvas>
+        </div>
+
+        <!-- Current price / target input -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
+          <div>
+            <div class="metric-label">目前股價</div>
+            <input class="editable" style="width:100%" v-model.number="stock.currentPrice" @change="save" />
+          </div>
+          <div>
+            <div class="metric-label">目標價</div>
+            <input class="editable" style="width:100%" v-model.number="stock.targetPrice" @change="save" />
+          </div>
+          <div>
+            <div class="metric-label">預估本益比</div>
+            <input class="editable" style="width:100%" v-model.number="stock.forwardPE" @change="save" />
+          </div>
+        </div>
+
+        <textarea class="note-input" v-model="stock.notes" @change="save" placeholder="備註 / 投資論點..."></textarea>
+      </div>
+      <div class="card-actions">
+        <button class="btn-danger btn" @click="removeStock(si)">移除</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, onMounted, nextTick, watch } = Vue;
+
+createApp({
+  setup() {
+    const stocks = ref([]);
+    const newStock = ref({ ticker: '', name: '', market: 'US' });
+    const chartRefs = {};
+    const chartInstances = {};
+
+    function save() {
+      localStorage.setItem('pptools-forecast', JSON.stringify(stocks.value));
+      nextTick(() => renderAllCharts());
+    }
+
+    function load() {
+      try {
+        const raw = localStorage.getItem('pptools-forecast');
+        if (raw) stocks.value = JSON.parse(raw);
+      } catch(e) {}
+    }
+
+    function addStock() {
+      const t = newStock.value.ticker.trim().toUpperCase();
+      if (!t) return;
+      if (stocks.value.find(s => s.ticker === t)) return;
+      const currentYear = new Date().getFullYear();
+      stocks.value.push({
+        ticker: t,
+        name: newStock.value.name.trim() || t,
+        market: newStock.value.market,
+        currentPrice: null,
+        targetPrice: null,
+        forwardPE: null,
+        notes: '',
+        forecasts: [
+          { year: currentYear, revenue: '', eps: '', yoy: '' },
+          { year: currentYear + 1, revenue: '', eps: '', yoy: '' },
+          { year: currentYear + 2, revenue: '', eps: '', yoy: '' }
+        ]
+      });
+      newStock.value.ticker = '';
+      newStock.value.name = '';
+      save();
+    }
+
+    function removeStock(i) {
+      stocks.value.splice(i, 1);
+      save();
+    }
+
+    function addForecastYear(si) {
+      const fc = stocks.value[si].forecasts;
+      const lastYear = fc.length > 0 ? fc[fc.length - 1].year + 1 : new Date().getFullYear();
+      fc.push({ year: lastYear, revenue: '', eps: '', yoy: '' });
+      save();
+    }
+
+    function removeForecastYear(si) {
+      stocks.value[si].forecasts.pop();
+      save();
+    }
+
+    function upsidePercent(stock) {
+      if (!stock.currentPrice || !stock.targetPrice) return '';
+      const pct = ((stock.targetPrice - stock.currentPrice) / stock.currentPrice * 100).toFixed(1);
+      return (pct >= 0 ? '+' : '') + pct + '%';
+    }
+
+    function setChartRef(el, si) {
+      if (el) chartRefs[si] = el;
+    }
+
+    function renderAllCharts() {
+      stocks.value.forEach((stock, si) => {
+        const canvas = chartRefs[si];
+        if (!canvas) return;
+        if (chartInstances[si]) chartInstances[si].destroy();
+
+        const labels = stock.forecasts.map(f => String(f.year));
+        const epsData = stock.forecasts.map(f => parseFloat(f.eps) || null);
+        const revData = stock.forecasts.map(f => parseFloat(f.revenue) || null);
+
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const gridColor = isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+        const labelColor = isDark ? '#7b7f9a' : '#6b7194';
+
+        chartInstances[si] = new Chart(canvas, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: '營收',
+                data: revData,
+                backgroundColor: 'rgba(67,97,238,.18)',
+                borderColor: 'rgba(67,97,238,.6)',
+                borderWidth: 1,
+                borderRadius: 3,
+                yAxisID: 'y'
+              },
+              {
+                label: 'EPS',
+                data: epsData,
+                type: 'line',
+                borderColor: '#ef4444',
+                backgroundColor: 'rgba(239,68,68,.08)',
+                borderWidth: 2,
+                pointRadius: 3,
+                pointBackgroundColor: '#ef4444',
+                tension: .3,
+                fill: true,
+                yAxisID: 'y1'
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { display: true, position: 'top', labels: { font: { size: 10 }, color: labelColor, boxWidth: 12 } }
+            },
+            scales: {
+              x: { grid: { display: false }, ticks: { font: { size: 10 }, color: labelColor } },
+              y: { position: 'left', grid: { color: gridColor }, ticks: { font: { size: 10 }, color: labelColor }, title: { display: true, text: '營收', font: { size: 10 }, color: labelColor } },
+              y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { font: { size: 10 }, color: labelColor }, title: { display: true, text: 'EPS', font: { size: 10 }, color: labelColor } }
+            }
+          }
+        });
+      });
+    }
+
+    onMounted(() => {
+      load();
+      nextTick(() => renderAllCharts());
+    });
+
+    watch(stocks, () => nextTick(() => renderAllCharts()), { deep: true });
+
+    return {
+      stocks, newStock, addStock, removeStock,
+      addForecastYear, removeForecastYear,
+      upsidePercent, save, setChartRef
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
