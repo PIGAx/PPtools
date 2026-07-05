@@ -14,9 +14,16 @@
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b pb-4 mb-6 gap-4">
             <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">📊 交易部位與績效追蹤儀表板</h1>
             
-            <div class="bg-white px-4 py-2 rounded-lg shadow border border-gray-200 flex items-center justify-between sm:justify-start space-x-2 w-full sm:w-auto">
-                <span class="text-sm font-bold text-gray-700">💵 USD/TWD 匯率:</span>
-                <input v-model.number="exchangeRate" type="number" step="0.01" class="border p-1 rounded w-24 text-center font-bold text-blue-600 bg-gray-50" @change="saveData">
+            <div class="flex flex-col items-stretch sm:items-end gap-1 w-full sm:w-auto">
+                <div class="bg-white px-4 py-2 rounded-lg shadow border border-gray-200 flex items-center justify-between sm:justify-start space-x-2 w-full sm:w-auto">
+                    <span class="text-sm font-bold text-gray-700">💵 USD/TWD 匯率:</span>
+                    <input v-model.number="exchangeRate" type="number" step="0.01" class="border p-1 rounded w-24 text-center font-bold text-blue-600 bg-gray-50" @change="saveData">
+                    <button @click="refreshQuotes(false)" :disabled="quoteLoading"
+                            class="text-xs bg-blue-600 text-white px-3 py-1.5 rounded font-bold hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-wait whitespace-nowrap">
+                        {{ quoteLoading ? '更新中…' : '🔄 更新報價' }}
+                    </button>
+                </div>
+                <p class="text-[11px] text-gray-400 text-right pr-1">{{ quoteStatus || '報價每日自動更新一次 (Yahoo Finance)' }}</p>
             </div>
         </div>
 
@@ -42,8 +49,18 @@
             </div>
             
             <div class="bg-white p-4 sm:p-5 rounded-lg shadow-md lg:col-span-2">
-                <h3 class="text-gray-800 text-base font-bold mb-2">📈 累積已實現績效曲線 (TWD)</h3>
-                <div class="relative h-48 sm:h-64 w-full">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                    <h3 class="text-gray-800 text-base font-bold">{{ chartTab === 'net' ? '📈 每日淨值走勢 (約當 TWD)' : '📈 累積已實現績效曲線 (TWD)' }}</h3>
+                    <div class="flex rounded-lg overflow-hidden border border-gray-300 text-xs font-semibold self-start sm:self-auto">
+                        <button @click="switchTab('net')" class="px-3 py-1.5 transition" :class="chartTab === 'net' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'">每日淨值</button>
+                        <button @click="switchTab('pnl')" class="px-3 py-1.5 transition border-l border-gray-300" :class="chartTab === 'pnl' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'">已實現績效</button>
+                    </div>
+                </div>
+                <div v-show="chartTab === 'net'" class="relative h-48 sm:h-64 w-full">
+                    <canvas id="netChart"></canvas>
+                </div>
+                <p v-if="chartTab === 'net' && netHistory.length < 2" class="text-xs text-gray-400 text-center mt-1">淨值紀錄從今天開始累積，每天打開頁面或更新報價就會記錄一筆。</p>
+                <div v-show="chartTab === 'pnl'" class="relative h-48 sm:h-64 w-full">
                     <canvas id="pnlChart"></canvas>
                 </div>
             </div>
@@ -111,6 +128,14 @@
                             <input v-model.number="pos.closePrice" type="number" step="0.01" placeholder="平倉價格" class="border p-2 flex-1 min-w-[80px] text-sm rounded">
                             <button @click="closePosition(index)" class="bg-red-500 text-white px-4 py-2 rounded text-sm hover:bg-red-600 font-bold transition w-full sm:w-auto flex-none shadow-sm">出場結算</button>
                         </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-lg shadow-md">
+                    <h2 class="text-lg font-bold mb-3">🥧 部位比例 (約當 TWD 市值)</h2>
+                    <div v-if="positions.length === 0" class="text-gray-500 text-sm py-4 text-center border border-dashed rounded">目前無庫存部位。</div>
+                    <div v-show="positions.length > 0" class="relative h-64 sm:h-72 w-full">
+                        <canvas id="allocChart"></canvas>
                     </div>
                 </div>
             </div>
@@ -211,6 +236,18 @@
     <script>
         const { createApp } = Vue;
         let chartInstance = null;
+        let netChartInstance = null;
+        let allocChartInstance = null;
+
+        // 圓餅圖固定配色（依部位加入順序指派，不隨市值排名變動）
+        const VIZ_COLORS = ['#2a78d6', '#1baf7a', '#eda100', '#008300', '#4a3aa7', '#e34948', '#e87ba4', '#eb6834'];
+        const VIZ_OTHER = '#898781';
+
+        // Yahoo Finance 沒開放 CORS，透過公開代理依序嘗試
+        const CORS_PROXIES = [
+            u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+            u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
+        ];
 
         createApp({
             data() {
@@ -219,6 +256,11 @@
                     newPosition: { ticker: '', market: 'TW', shares: null, price: null },
                     positions: [],
                     history: [],
+                    netHistory: [],
+                    lastQuoteAt: null,
+                    quoteLoading: false,
+                    quoteStatus: '',
+                    chartTab: 'net',
                     calc: {
                         selectedIndex: null,
                         selectedTicker: '',
@@ -287,7 +329,17 @@
                 this.loadData();
                 setTimeout(() => {
                     this.initChart();
+                    this.initNetChart();
+                    this.initAllocChart();
+                    this.updateNetChart();
+                    this.updateAllocChart();
                 }, 100);
+                // 每天第一次打開頁面時自動更新報價並記錄淨值
+                if (this.positions.length > 0 && this.quoteDateStr(this.lastQuoteAt) !== this.todayStr()) {
+                    this.refreshQuotes(true);
+                } else if (this.lastQuoteAt) {
+                    this.quoteStatus = '上次報價更新: ' + new Date(this.lastQuoteAt).toLocaleString('zh-TW', { hour12: false });
+                }
             },
             methods: {
                 generateId() {
@@ -426,12 +478,98 @@
                     if (isNaN(num)) return '0';
                     return Number(num).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
                 },
+                todayStr() {
+                    return new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD（本地時區）
+                },
+                quoteDateStr(ts) {
+                    return ts ? new Date(ts).toLocaleDateString('en-CA') : null;
+                },
+                async fetchJsonViaProxy(url) {
+                    let lastErr = new Error('no proxy available');
+                    for (const wrap of CORS_PROXIES) {
+                        try {
+                            const ctrl = new AbortController();
+                            const timer = setTimeout(() => ctrl.abort(), 10000);
+                            const res = await fetch(wrap(url), { signal: ctrl.signal });
+                            clearTimeout(timer);
+                            if (!res.ok) throw new Error('HTTP ' + res.status);
+                            return await res.json();
+                        } catch (e) { lastErr = e; }
+                    }
+                    throw lastErr;
+                },
+                async fetchYahooPrice(symbol) {
+                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`;
+                    const data = await this.fetchJsonViaProxy(url);
+                    const result = data && data.chart && data.chart.result && data.chart.result[0];
+                    const meta = result && result.meta;
+                    let price = meta && (meta.regularMarketPrice ?? meta.previousClose);
+                    if (price == null && result && result.indicators) {
+                        const closes = (((result.indicators.quote || [])[0] || {}).close || []).filter(v => v != null);
+                        if (closes.length) price = closes[closes.length - 1];
+                    }
+                    if (price == null || isNaN(price)) throw new Error('no price for ' + symbol);
+                    return price;
+                },
+                async refreshQuotes(auto = false) {
+                    if (this.quoteLoading) return;
+                    if (this.positions.length === 0) {
+                        if (!auto) alert('目前無庫存部位，先加入庫存再更新報價。');
+                        return;
+                    }
+                    this.quoteLoading = true;
+                    this.quoteStatus = '報價更新中…';
+                    try { // 順便更新 USD/TWD 匯率
+                        const fx = await this.fetchYahooPrice('TWD=X');
+                        if (fx > 0) this.exchangeRate = Math.round(fx * 100) / 100;
+                    } catch (e) { /* 抓不到就沿用手動匯率 */ }
+                    const failed = [];
+                    for (const pos of this.positions) {
+                        try {
+                            let price;
+                            if (pos.market === 'US') {
+                                price = await this.fetchYahooPrice(pos.ticker);
+                            } else {
+                                try { price = await this.fetchYahooPrice(pos.ticker + '.TW'); }
+                                catch (e) { price = await this.fetchYahooPrice(pos.ticker + '.TWO'); } // 上櫃
+                            }
+                            pos.currentPrice = Math.round(price * 100) / 100;
+                        } catch (e) { failed.push(pos.ticker); }
+                    }
+                    this.lastQuoteAt = Date.now();
+                    const time = new Date().toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
+                    this.quoteStatus = failed.length
+                        ? `已更新 (${time})，這幾檔失敗: ${failed.join(', ')}`
+                        : `報價已更新 (${time})`;
+                    this.saveData();
+                    this.quoteLoading = false;
+                },
+                recordTodayNetValue() {
+                    if (this.positions.length === 0) return;
+                    const d = this.todayStr();
+                    const entry = { date: d, value: Math.round(this.totalValueTWD), cost: Math.round(this.totalCostTWD) };
+                    const idx = this.netHistory.findIndex(h => h.date === d);
+                    if (idx !== -1) this.netHistory[idx] = entry;
+                    else this.netHistory.push(entry);
+                },
+                switchTab(tab) {
+                    this.chartTab = tab;
+                    this.$nextTick(() => {
+                        const inst = tab === 'net' ? netChartInstance : chartInstance;
+                        if (inst) { inst.resize(); inst.update(); }
+                    });
+                },
                 saveData() {
+                    this.recordTodayNetValue();
                     localStorage.setItem('quantPortfolioDataV2', JSON.stringify({
                         exchangeRate: this.exchangeRate,
                         positions: this.positions,
-                        history: this.history
+                        history: this.history,
+                        netHistory: this.netHistory,
+                        lastQuoteAt: this.lastQuoteAt
                     }));
+                    this.updateNetChart();
+                    this.updateAllocChart();
                 },
                 loadData() {
                     const dataV2 = localStorage.getItem('quantPortfolioDataV2');
@@ -442,6 +580,8 @@
                         if(parsed.exchangeRate) this.exchangeRate = parsed.exchangeRate;
                         this.positions = parsed.positions || [];
                         this.history = parsed.history || [];
+                        this.netHistory = parsed.netHistory || [];
+                        this.lastQuoteAt = parsed.lastQuoteAt || null;
                     } else if (dataOld) {
                         const parsed = JSON.parse(dataOld);
                         if(parsed.exchangeRate) this.exchangeRate = parsed.exchangeRate;
@@ -461,6 +601,118 @@
                         });
                         this.saveData();
                     }
+                },
+                initNetChart() {
+                    const vm = this;
+                    const ctx = document.getElementById('netChart').getContext('2d');
+                    netChartInstance = new Chart(ctx, {
+                        type: 'line',
+                        data: { labels: [], datasets: [] },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    callbacks: {
+                                        title: (items) => (vm.netHistory[items[0].dataIndex] || {}).date || '',
+                                        label: (ctx) => '淨值: ' + Number(ctx.raw).toLocaleString('zh-TW') + ' TWD',
+                                        afterLabel: (ctx) => {
+                                            const h = vm.netHistory[ctx.dataIndex];
+                                            return h ? '投入成本: ' + Number(h.cost).toLocaleString('zh-TW') + ' TWD' : '';
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: { grid: { display: false } },
+                                y: { ticks: { callback: v => v.toLocaleString('zh-TW') } }
+                            },
+                            interaction: { intersect: false, mode: 'index' }
+                        }
+                    });
+                },
+                updateNetChart() {
+                    if (!netChartInstance) return;
+                    const labels = this.netHistory.map(h => {
+                        const [, m, d] = h.date.split('-');
+                        return `${Number(m)}/${Number(d)}`;
+                    });
+                    netChartInstance.data.labels = labels;
+                    netChartInstance.data.datasets = [{
+                        label: '每日淨值 (TWD)',
+                        data: this.netHistory.map(h => h.value),
+                        borderColor: '#2a78d6',
+                        backgroundColor: 'rgba(42, 120, 214, 0.06)',
+                        borderWidth: 2,
+                        pointBackgroundColor: '#2a78d6',
+                        pointRadius: this.netHistory.length > 60 ? 0 : 3,
+                        pointHoverRadius: 5,
+                        fill: true,
+                        tension: 0.2
+                    }];
+                    netChartInstance.update();
+                },
+                initAllocChart() {
+                    const ctx = document.getElementById('allocChart').getContext('2d');
+                    allocChartInstance = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: { labels: [], datasets: [] },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            cutout: '55%',
+                            plugins: {
+                                legend: {
+                                    position: 'right',
+                                    labels: { usePointStyle: true, boxWidth: 8, font: { size: 12 } }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: (ctx) => {
+                                            const total = ctx.dataset.data.reduce((s, v) => s + v, 0);
+                                            const pct = total > 0 ? (ctx.raw / total * 100).toFixed(1) : 0;
+                                            return `${ctx.label}: ${Number(ctx.raw).toLocaleString('zh-TW')} TWD (${pct}%)`;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                },
+                updateAllocChart() {
+                    if (!allocChartInstance) return;
+                    // 顏色跟著部位的加入順序走，前 8 檔各自一色，之後合併為「其他」
+                    const labels = [];
+                    const values = [];
+                    const colors = [];
+                    let otherValue = 0;
+                    this.positions.forEach((pos, i) => {
+                        const currentP = pos.currentPrice || pos.price || 0;
+                        const valueTWD = (pos.shares || 0) * currentP * (pos.market === 'US' ? this.exchangeRate : 1);
+                        if (valueTWD <= 0) return;
+                        if (i < VIZ_COLORS.length) {
+                            labels.push(pos.ticker + (pos.market === 'US' ? ' (US)' : ''));
+                            values.push(Math.round(valueTWD));
+                            colors.push(VIZ_COLORS[i]);
+                        } else {
+                            otherValue += valueTWD;
+                        }
+                    });
+                    if (otherValue > 0) {
+                        labels.push('其他');
+                        values.push(Math.round(otherValue));
+                        colors.push(VIZ_OTHER);
+                    }
+                    allocChartInstance.data.labels = labels;
+                    allocChartInstance.data.datasets = [{
+                        data: values,
+                        backgroundColor: colors,
+                        borderColor: '#ffffff',
+                        borderWidth: 2,
+                        hoverOffset: 6
+                    }];
+                    allocChartInstance.update();
                 },
                 initChart() {
                     const ctx = document.getElementById('pnlChart').getContext('2d');
