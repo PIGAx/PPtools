@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>資料中心 — PPtools</title>
+<script src="pp-store.js"></script>
+<style>
+  :root {
+    --bg: #f3f4f8;
+    --surface: #ffffff;
+    --border: #e2e4ec;
+    --text: #1a1d2e;
+    --text-muted: #6b7194;
+    --accent: #5b7fff;
+    --accent-soft: #eef1ff;
+    --green: #16a34a;
+    --green-soft: #f0fdf4;
+    --red: #dc2626;
+    --red-soft: #fef2f2;
+    --amber: #d97706;
+    --amber-soft: #fffbeb;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1019;
+      --surface: #171a28;
+      --border: #262a3c;
+      --text: #d8dae5;
+      --text-muted: #7b7f9a;
+      --accent-soft: #1d2340;
+      --green-soft: #10241a;
+      --red-soft: #2a1414;
+      --amber-soft: #2a2110;
+    }
+  }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 24px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+  .page-head h1 { font-size: 19px; font-weight: 700; }
+  .page-head p { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+  .card-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .card-sub { font-size: 12.5px; color: var(--text-muted); margin-bottom: 14px; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } body { padding: 14px; } }
+
+  label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
+  input[type=text], input[type=password] {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    font-size: 13.5px;
+    background: var(--bg);
+    color: var(--text);
+    outline: none;
+    transition: border-color .15s;
+  }
+  input:focus { border-color: var(--accent); }
+  .field { margin-bottom: 12px; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 16px;
+    border-radius: 7px;
+    font-size: 13px; font-weight: 600;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #4a6ef0; color: #fff; }
+  .btn-danger:hover { border-color: var(--red); color: var(--red); }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+
+  .badge {
+    display: inline-block; padding: 2px 9px;
+    border-radius: 20px; font-size: 11px; font-weight: 600;
+  }
+  .badge-green { background: var(--green-soft); color: var(--green); }
+  .badge-red { background: var(--red-soft); color: var(--red); }
+  .badge-amber { background: var(--amber-soft); color: var(--amber); }
+  .badge-muted { background: var(--bg); color: var(--text-muted); }
+
+  .msg { font-size: 12.5px; margin-top: 10px; min-height: 18px; }
+  .msg.ok { color: var(--green); }
+  .msg.err { color: var(--red); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11.5px; font-weight: 600; color: var(--text-muted); padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  .key-name { font-weight: 600; }
+  .key-code { font-size: 11px; color: var(--text-muted); font-family: ui-monospace, monospace; }
+
+  .status-line { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12.5px; color: var(--text-muted); margin-bottom: 12px; }
+  .status-line b { color: var(--text); font-weight: 600; }
+
+  details { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; font-size: 13px; margin-top: 12px; background: var(--bg); }
+  summary { cursor: pointer; font-weight: 600; font-size: 12.5px; color: var(--text-muted); user-select: none; }
+  details ol { margin: 10px 0 4px 20px; }
+  details li { margin-bottom: 6px; }
+  details code { background: var(--surface); border: 1px solid var(--border); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; }
+  .switch-row .sw-label { font-size: 13px; font-weight: 600; }
+  .switch-row .sw-desc { font-size: 12px; color: var(--text-muted); }
+  .toggle { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle .slider {
+    position: absolute; inset: 0; border-radius: 24px;
+    background: var(--border); transition: .2s; cursor: pointer;
+  }
+  .toggle .slider::before {
+    content: ''; position: absolute; width: 18px; height: 18px;
+    left: 3px; top: 3px; border-radius: 50%;
+    background: #fff; transition: .2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  }
+  .toggle input:checked + .slider { background: var(--accent); }
+  .toggle input:checked + .slider::before { transform: translateX(18px); }
+
+  .hist-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .hist-row:last-child { border-bottom: none; }
+  .hist-info .h-msg { font-weight: 600; font-size: 12.5px; }
+  .hist-info .h-date { font-size: 11.5px; color: var(--text-muted); font-family: ui-monospace, monospace; }
+  .empty { font-size: 13px; color: var(--text-muted); padding: 8px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="page-head">
+    <h1>☁ 資料中心</h1>
+    <p>所有模組資料的跨裝置同步、備份與版本還原，資料存放於你的 GitHub 私人 Repo。</p>
+  </div>
+
+  <!-- ══ 同步狀態 ══ -->
+  <div class="card">
+    <div class="card-title">同步狀態 <span id="connBadge" class="badge badge-muted">未設定</span></div>
+    <div class="status-line" id="statusLine">
+      <span>上次備份：<b id="stPush">—</b></span>
+      <span>上次還原：<b id="stPull">—</b></span>
+      <span>遠端版本：<b id="stRemote">—</b></span>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnPush" onclick="doPush()">⬆ 立即備份到 GitHub</button>
+      <button class="btn" id="btnPull" onclick="doPull()">⬇ 從 GitHub 還原</button>
+      <button class="btn" onclick="refreshRemote()">↻ 檢查遠端</button>
+    </div>
+    <div class="switch-row">
+      <div>
+        <div class="sw-label">自動備份</div>
+        <div class="sw-desc">開啟後，PPtools 開站期間每 5 分鐘檢查一次，資料有變動才自動備份（不會產生重複 commit）。</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="msg" id="syncMsg"></div>
+  </div>
+
+  <!-- ══ GitHub 連線設定 ══ -->
+  <div class="card">
+    <div class="card-title">GitHub 連線設定</div>
+    <div class="card-sub">建議使用一個獨立的<b>私人 Repo</b> 專門存放資料，與工具程式碼分開。</div>
+    <div class="grid2">
+      <div class="field">
+        <label>GitHub 帳號</label>
+        <input type="text" id="cfgOwner" placeholder="PIGAx">
+      </div>
+      <div class="field">
+        <label>資料 Repo 名稱（私人）</label>
+        <input type="text" id="cfgRepo" placeholder="pp-data">
+      </div>
+      <div class="field">
+        <label>分支</label>
+        <input type="text" id="cfgBranch" placeholder="main">
+      </div>
+      <div class="field">
+        <label>Fine-grained PAT</label>
+        <input type="password" id="cfgToken" placeholder="github_pat_...">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="saveCfg()">儲存設定</button>
+      <button class="btn" onclick="testConn()">測試連線</button>
+      <button class="btn btn-danger" onclick="clearCfg()">清除設定</button>
+    </div>
+    <div class="msg" id="cfgMsg"></div>
+
+    <details>
+      <summary>第一次設定教學（建立私人 Repo 與 PAT）</summary>
+      <ol>
+        <li>到 GitHub 建立新 Repo：名稱 <code>pp-data</code>，勾選 <b>Private</b>，勾選「Add a README file」（讓 main 分支存在）。</li>
+        <li>進 GitHub 右上角頭像 → <b>Settings</b> → 最下方 <b>Developer settings</b> → <b>Personal access tokens</b> → <b>Fine-grained tokens</b> → <b>Generate new token</b>。</li>
+        <li>Token name 隨意（如 <code>pptools-sync</code>），Expiration 建議選 90 天或自訂一年。</li>
+        <li><b>Repository access</b> 選「Only select repositories」→ 只勾 <code>pp-data</code>。</li>
+        <li><b>Permissions → Repository permissions → Contents</b> 設為 <b>Read and write</b>，其他都不用動。</li>
+        <li>產生後複製 <code>github_pat_</code> 開頭的字串，貼到上方 PAT 欄位，按「儲存設定」再「測試連線」。</li>
+      </ol>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">
+        安全性說明：PAT 只儲存在這台裝置的瀏覽器 localStorage，網站訪客看不到。因為 PAT 權限只限 pp-data 這個 Repo 的內容讀寫，即使外洩影響範圍也僅止於此。PAT 到期後重新產生一個貼上即可。
+      </p>
+    </details>
+  </div>
+
+  <!-- ══ 資料總覽 ══ -->
+  <div class="card">
+    <div class="card-title">資料總覽</div>
+    <div class="card-sub">目前這台裝置上各模組的資料狀態，備份時會全部打包成單一 JSON。</div>
+    <table>
+      <thead><tr><th>模組</th><th>localStorage Key</th><th>大小</th><th>狀態</th></tr></thead>
+      <tbody id="dataTable"></tbody>
+    </table>
+  </div>
+
+  <!-- ══ 版本歷史 ══ -->
+  <div class="card">
+    <div class="card-title">版本歷史</div>
+    <div class="card-sub">每次備份都是一個 Git commit，可以還原到任何一個歷史時間點。</div>
+    <div id="histList"><div class="empty">按下方按鈕載入歷史紀錄。</div></div>
+    <div class="btn-row">
+      <button class="btn" onclick="loadHistory()">載入最近 10 筆備份紀錄</button>
+    </div>
+    <div class="msg" id="histMsg"></div>
+  </div>
+
+  <!-- ══ 本機備份 ══ -->
+  <div class="card">
+    <div class="card-title">本機備份</div>
+    <div class="card-sub">不經過 GitHub 的離線備份方式，匯出的 JSON 與雲端備份格式相同、可互相匯入。</div>
+    <div class="btn-row">
+      <button class="btn" onclick="exportLocal()">⬇ 匯出 JSON 檔</button>
+      <button class="btn" onclick="document.getElementById('importFile').click()">⬆ 匯入 JSON 檔</button>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importLocal(event)">
+    </div>
+    <div class="msg" id="localMsg"></div>
+  </div>
+
+</div>
+
+<script>
+/* ════════ 資料中心 UI 邏輯（引擎在 pp-store.js） ════════ */
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  return d.toLocaleString('zh-TW', { hour12: false });
+}
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+}
+function setMsg(id, text, ok) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg ' + (ok ? 'ok' : 'err');
+  if (ok) setTimeout(function () { if (el.textContent === text) el.textContent = ''; }, 6000);
+}
+
+/* ── 設定表單 ── */
+function loadCfgForm() {
+  const c = PPStore.getCfg();
+  document.getElementById('cfgOwner').value = c.owner || '';
+  document.getElementById('cfgRepo').value = c.repo || '';
+  document.getElementById('cfgBranch').value = c.branch || 'main';
+  document.getElementById('cfgToken').value = c.token || '';
+  document.getElementById('autoToggle').checked = !!c.auto;
+  updateConnBadge();
+}
+function saveCfg() {
+  const c = PPStore.getCfg();
+  c.owner = document.getElementById('cfgOwner').value.trim();
+  c.repo = document.getElementById('cfgRepo').value.trim();
+  c.branch = document.getElementById('cfgBranch').value.trim() || 'main';
+  c.token = document.getElementById('cfgToken').value.trim();
+  PPStore.setCfg(c);
+  updateConnBadge();
+  setMsg('cfgMsg', '設定已儲存', true);
+}
+function clearCfg() {
+  if (!confirm('確定清除連線設定？（不會刪除任何資料，只清除 Repo 與 PAT 設定）')) return;
+  PPStore.setCfg({});
+  loadCfgForm();
+  setMsg('cfgMsg', '設定已清除', true);
+}
+async function testConn() {
+  saveCfgSilently();
+  setMsg('cfgMsg', '測試中…', true);
+  try {
+    const r = await PPStore.testConnection();
+    setMsg('cfgMsg', '連線成功：' + r.fullName + (r.isPrivate ? '（私人 ✓）' : '（⚠ 這是公開 Repo，建議改成私人）'), r.isPrivate);
+    updateConnBadge();
+  } catch (e) {
+    setMsg('cfgMsg', e.message, false);
+  }
+}
+function saveCfgSilently() {
+  const c = PPStore.getCfg();
+  c.owner = document.getElementById('cfgOwner').value.trim();
+  c.repo = document.getElementById('cfgRepo').value.trim();
+  c.branch = document.getElementById('cfgBranch').value.trim() || 'main';
+  c.token = document.getElementById('cfgToken').value.trim();
+  PPStore.setCfg(c);
+}
+function updateConnBadge() {
+  const b = document.getElementById('connBadge');
+  if (PPStore.cfgReady()) { b.textContent = '已設定'; b.className = 'badge badge-green'; }
+  else { b.textContent = '未設定'; b.className = 'badge badge-muted'; }
+}
+function toggleAuto(on) {
+  const c = PPStore.getCfg();
+  c.auto = on;
+  PPStore.setCfg(c);
+  setMsg('syncMsg', on ? '自動備份已開啟（PPtools 開站期間生效）' : '自動備份已關閉', true);
+}
+
+/* ── 同步操作 ── */
+async function doPush() {
+  const btn = document.getElementById('btnPush');
+  btn.disabled = true;
+  setMsg('syncMsg', '備份中…', true);
+  try {
+    const snap = await PPStore.push();
+    setMsg('syncMsg', '備份完成（' + Object.keys(snap.data).length + ' 個模組資料）', true);
+    renderStatus();
+    renderDataTable();
+  } catch (e) {
+    setMsg('syncMsg', e.message, false);
+  }
+  btn.disabled = false;
+}
+async function doPull() {
+  const btn = document.getElementById('btnPull');
+  btn.disabled = true;
+  setMsg('syncMsg', '讀取遠端中…', true);
+  try {
+    const remote = await PPStore.getRemote();
+    if (!remote) { setMsg('syncMsg', '遠端尚無備份檔，請先執行一次備份', false); btn.disabled = false; return; }
+    const snap = remote.snapshot;
+    const n = Object.keys(snap.data || {}).length;
+    const ok = confirm(
+      '遠端備份時間：' + fmtTime(snap.exportedAt) + '\n' +
+      '包含 ' + n + ' 個模組資料。\n\n' +
+      '還原會覆蓋這台裝置上的對應資料，確定執行？\n（建議先按「立即備份」或「匯出 JSON」保留現況）'
+    );
+    if (!ok) { setMsg('syncMsg', '已取消還原', true); btn.disabled = false; return; }
+    const applied = PPStore.applySnapshot(snap);
+    setMsg('syncMsg', '還原完成（' + applied.length + ' 個模組），請重新整理各模組頁面', true);
+    renderStatus();
+    renderDataTable();
+  } catch (e) {
+    setMsg('syncMsg', e.message, false);
+  }
+  btn.disabled = false;
+}
+async function refreshRemote() {
+  setMsg('syncMsg', '檢查中…', true);
+  try {
+    const remote = await PPStore.getRemote();
+    document.getElementById('stRemote').textContent = remote ? fmtTime(remote.snapshot.exportedAt) : '尚無備份';
+    setMsg('syncMsg', remote ? '遠端最新備份：' + fmtTime(remote.snapshot.exportedAt) : '遠端尚無備份檔', true);
+  } catch (e) {
+    setMsg('syncMsg', e.message, false);
+  }
+}
+function renderStatus() {
+  const m = PPStore.getMeta();
+  document.getElementById('stPush').textContent = fmtTime(m.lastPushAt);
+  document.getElementById('stPull').textContent = fmtTime(m.lastPullAt);
+}
+
+/* ── 資料總覽 ── */
+function renderDataTable() {
+  const tbody = document.getElementById('dataTable');
+  tbody.innerHTML = '';
+  PPStore.REGISTRY.forEach(function (it) {
+    const v = localStorage.getItem(it.key);
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><div class="key-name">' + it.name + '</div><div class="key-code" style="font-family:inherit;font-size:11.5px;color:var(--text-muted)">' + it.desc + '</div></td>' +
+      '<td><span class="key-code">' + it.key + '</span></td>' +
+      '<td>' + (v === null ? '—' : fmtSize(new Blob([v]).size)) + '</td>' +
+      '<td>' + (v === null ? '<span class="badge badge-muted">無資料</span>' : '<span class="badge badge-green">有資料</span>') + '</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+/* ── 版本歷史 ── */
+async function loadHistory() {
+  const list = document.getElementById('histList');
+  list.innerHTML = '<div class="empty">載入中…</div>';
+  try {
+    const hist = await PPStore.listHistory(10);
+    if (!hist.length) { list.innerHTML = '<div class="empty">尚無備份紀錄。</div>'; return; }
+    list.innerHTML = '';
+    hist.forEach(function (h) {
+      const row = document.createElement('div');
+      row.className = 'hist-row';
+      const info = document.createElement('div');
+      info.className = 'hist-info';
+      info.innerHTML = '<div class="h-msg">' + h.message.split('\n')[0].slice(0, 60) + '</div>' +
+        '<div class="h-date">' + fmtTime(h.date) + ' · ' + h.sha.slice(0, 7) + '</div>';
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.textContent = '還原此版本';
+      btn.onclick = function () { restoreVersion(h); };
+      row.appendChild(info);
+      row.appendChild(btn);
+      list.appendChild(row);
+    });
+  } catch (e) {
+    setMsg('histMsg', e.message, false);
+    list.innerHTML = '<div class="empty">載入失敗。</div>';
+  }
+}
+async function restoreVersion(h) {
+  try {
+    const snap = await PPStore.getVersion(h.sha);
+    const ok = confirm(
+      '還原到這個版本？\n\n備份時間：' + fmtTime(snap.exportedAt) + '\nCommit：' + h.sha.slice(0, 7) +
+      '\n\n會覆蓋這台裝置上的對應資料。'
+    );
+    if (!ok) return;
+    const applied = PPStore.applySnapshot(snap);
+    setMsg('histMsg', '已還原到 ' + h.sha.slice(0, 7) + '（' + applied.length + ' 個模組），請重新整理各模組頁面', true);
+    renderStatus();
+    renderDataTable();
+  } catch (e) {
+    setMsg('histMsg', e.message, false);
+  }
+}
+
+/* ── 本機備份 ── */
+function exportLocal() {
+  const snap = PPStore.buildSnapshot();
+  const blob = new Blob([JSON.stringify(snap, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'pptools-data_' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  setMsg('localMsg', '已匯出 ' + Object.keys(snap.data).length + ' 個模組資料', true);
+}
+function importLocal(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function () {
+    try {
+      const snap = JSON.parse(reader.result);
+      if (!snap.data) throw new Error('格式不符：找不到 data 欄位');
+      const ok = confirm('匯入備份（' + fmtTime(snap.exportedAt) + '，' + Object.keys(snap.data).length + ' 個模組）？\n會覆蓋這台裝置上的對應資料。');
+      if (!ok) return;
+      const applied = PPStore.applySnapshot(snap);
+      setMsg('localMsg', '匯入完成（' + applied.length + ' 個模組），請重新整理各模組頁面', true);
+      renderDataTable();
+    } catch (e) {
+      setMsg('localMsg', '匯入失敗：' + e.message, false);
+    }
+  };
+  reader.readAsText(file);
+  ev.target.value = '';
+}
+
+/* ── 初始化 ── */
+loadCfgForm();
+renderStatus();
+renderDataTable();
+if (PPStore.cfgReady()) refreshRemote();
+</script>
+</body>
+</html>
