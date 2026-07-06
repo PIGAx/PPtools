@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>觀察清單</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root {
+    --bg: #f3f4f8; --surface: #fff; --surface-alt: #f7f8fb;
+    --border: #e2e4ec; --text: #1a1d2e; --text-muted: #6b7194;
+    --accent: #4361ee; --accent-light: rgba(67,97,238,.08);
+    --red: #ef4444; --green: #22c55e; --amber: #f59e0b;
+    --purple: #8b5cf6; --teal: #14b8a6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1019; --surface: #171a28; --surface-alt: #1c2030;
+      --border: #262a3c; --text: #d8dae5; --text-muted: #7b7f9a;
+      --accent-light: rgba(67,97,238,.15);
+    }
+  }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+
+  .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+  .page-header h1 { font-size: 20px; font-weight: 700; }
+
+  /* Add form */
+  .add-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+  .add-bar input, .add-bar select {
+    font-size: 13px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface-alt); color: var(--text);
+  }
+  .add-bar input { flex: 1; min-width: 120px; }
+  .add-bar select { min-width: 90px; }
+  .btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-danger { background: var(--red); }
+  .btn-outline { background: none; border: 1px solid var(--border); color: var(--text); }
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Stock list */
+  .stock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .stock-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; transition: box-shadow .2s;
+  }
+  .stock-card:hover { box-shadow: 0 2px 12px rgba(91,127,255,.1); }
+  .stock-card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+  }
+  .stock-ticker { font-size: 16px; font-weight: 700; }
+  .stock-name { font-size: 12px; color: var(--text-muted); margin-left: 8px; }
+  .stock-market {
+    font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px;
+    background: var(--accent-light); color: var(--accent);
+  }
+  .stock-price-row { display: flex; align-items: baseline; gap: 8px; padding: 10px 16px; }
+  .stock-price { font-size: 22px; font-weight: 700; }
+  .stock-change { font-size: 13px; font-weight: 600; }
+  .stock-change.up { color: var(--red); }
+  .stock-change.down { color: var(--green); }
+  .stock-meta { font-size: 11px; color: var(--text-muted); padding: 0 16px 8px; }
+
+  /* Tabs */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .tab {
+    padding: 8px 14px; font-size: 12px; font-weight: 500; cursor: pointer;
+    color: var(--text-muted); border-bottom: 2px solid transparent; transition: all .15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab-content { padding: 12px 16px 16px; min-height: 200px; }
+
+  /* Chart container */
+  .chart-box { position: relative; width: 100%; height: 200px; }
+  .chart-box canvas { width: 100% !important; height: 100% !important; }
+
+  /* Info table */
+  .info-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .info-table th { text-align: left; padding: 6px 8px; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--border); }
+  .info-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .info-table tr:last-child td { border-bottom: none; }
+
+  /* News list */
+  .news-item { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .news-item:last-child { border-bottom: none; }
+  .news-title { font-size: 13px; font-weight: 500; }
+  .news-date { font-size: 11px; color: var(--text-muted); }
+  .news-source { font-size: 10px; color: var(--accent); }
+
+  /* Loading */
+  .loading { text-align: center; padding: 20px; color: var(--text-muted); font-size: 13px; }
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+  .empty-state h3 { font-size: 16px; margin-bottom: 8px; color: var(--text); }
+
+  /* MOPS link */
+  .mops-link { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--accent); text-decoration: none; padding: 4px 8px; border-radius: 4px; background: var(--accent-light); }
+  .mops-link:hover { opacity: .8; }
+
+  /* Delete btn */
+  .del-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 16px; padding: 2px 6px; opacity: .5; transition: opacity .15s;
+  }
+  .del-btn:hover { opacity: 1; color: var(--red); }
+
+  /* Status bar */
+  .status-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 8px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+  .status-text { color: var(--text-muted); }
+
+  /* K-line tooltip */
+  .kline-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--text-muted); padding: 4px 0; }
+  .kline-legend span { display: flex; align-items: center; gap: 3px; }
+  .kline-legend .dot { width: 8px; height: 8px; border-radius: 2px; }
+
+  @media (max-width: 640px) {
+    .stock-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div id="app" class="container">
+  <div class="page-header">
+    <h1>📋 觀察清單</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="status-text">{{ statusText }}</span>
+      <button class="btn btn-sm btn-outline" @click="refreshAll" :disabled="loading">
+        {{ loading ? '更新中…' : '🔄 全部更新' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="add-bar">
+    <select v-model="newStock.market">
+      <option value="TW">🇹🇼 台股</option>
+      <option value="US">🇺🇸 美股</option>
+    </select>
+    <input v-model="newStock.ticker" :placeholder="newStock.market === 'TW' ? '股票代號 (如 2330)' : '股票代號 (如 AAPL)'" @keydown.enter="addStock" />
+    <input v-model="newStock.name" placeholder="名稱（選填，如 台積電）" @keydown.enter="addStock" />
+    <button class="btn" @click="addStock" :disabled="!newStock.ticker.trim()">＋ 加入觀察</button>
+  </div>
+
+  <div v-if="stocks.length === 0" class="empty-state">
+    <h3>尚無觀察標的</h3>
+    <p>輸入台股或美股代號，加入您的觀察清單</p>
+  </div>
+
+  <div class="stock-grid">
+    <div v-for="stock in stocks" :key="stock.id" class="stock-card">
+      <div class="stock-card-header">
+        <div>
+          <span class="stock-ticker">{{ stock.ticker }}</span>
+          <span class="stock-name">{{ stock.name }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="stock-market">{{ stock.market === 'TW' ? '台股' : '美股' }}</span>
+          <button class="del-btn" @click="removeStock(stock.id)" title="移除">×</button>
+        </div>
+      </div>
+
+      <div class="stock-price-row" v-if="stock.price != null">
+        <span class="stock-price">{{ formatPrice(stock.price, stock.market) }}</span>
+        <span class="stock-change" :class="stock.change >= 0 ? 'up' : 'down'" v-if="stock.change != null">
+          {{ stock.change >= 0 ? '▲' : '▼' }} {{ Math.abs(stock.change).toFixed(2) }}
+          ({{ stock.changePct != null ? (stock.changePct >= 0 ? '+' : '') + stock.changePct.toFixed(2) + '%' : '' }})
+        </span>
+      </div>
+      <div v-else class="stock-price-row">
+        <span style="font-size:13px;color:var(--text-muted)">{{ stock.loading ? '載入中…' : '點擊更新取得報價' }}</span>
+      </div>
+
+      <div class="stock-meta" v-if="stock.lastUpdate">
+        更新時間：{{ new Date(stock.lastUpdate).toLocaleString('zh-TW', { hour12: false }) }}
+        <template v-if="stock.market === 'TW'">
+          &nbsp;·&nbsp;
+          <a class="mops-link" :href="mopsUrl(stock.ticker)" target="_blank" rel="noopener">📄 公開資訊觀測站</a>
+        </template>
+      </div>
+
+      <div class="tabs">
+        <div class="tab" :class="{ active: stock.activeTab === 'chart' }" @click="stock.activeTab = 'chart'; saveStocks()">走勢圖</div>
+        <div class="tab" :class="{ active: stock.activeTab === 'kline' }" @click="stock.activeTab = 'kline'; renderKline(stock)">K線</div>
+        <div class="tab" :class="{ active: stock.activeTab === 'info' }" @click="stock.activeTab = 'info'; fetchFinancialInfo(stock)">財務資訊</div>
+        <div class="tab" :class="{ active: stock.activeTab === 'news' }" @click="stock.activeTab = 'news'; fetchNews(stock)">重大消息</div>
+      </div>
+
+      <div class="tab-content">
+        <!-- 走勢圖 -->
+        <div v-show="stock.activeTab === 'chart'">
+          <div class="chart-box">
+            <canvas :id="'chart-' + stock.id"></canvas>
+          </div>
+        </div>
+
+        <!-- K線圖 -->
+        <div v-show="stock.activeTab === 'kline'">
+          <div class="kline-legend">
+            <span><span class="dot" style="background:var(--red)"></span>陽線（上漲）</span>
+            <span><span class="dot" style="background:var(--green)"></span>陰線（下跌）</span>
+            <span><span class="dot" style="background:var(--amber)"></span>成交量</span>
+          </div>
+          <div class="chart-box" style="height:240px">
+            <canvas :id="'kline-' + stock.id"></canvas>
+          </div>
+        </div>
+
+        <!-- 財務資訊 -->
+        <div v-show="stock.activeTab === 'info'">
+          <div v-if="stock.infoLoading" class="loading">載入財務資訊中…</div>
+          <div v-else-if="stock.financialInfo">
+            <table class="info-table">
+              <tr v-for="item in stock.financialInfo" :key="item.label">
+                <th>{{ item.label }}</th>
+                <td>{{ item.value }}</td>
+              </tr>
+            </table>
+            <div style="margin-top:10px" v-if="stock.market === 'TW'">
+              <a class="mops-link" :href="mopsFinanceUrl(stock.ticker)" target="_blank" rel="noopener">📊 查看完整財報（公開資訊觀測站）</a>
+              &nbsp;
+              <a class="mops-link" :href="mopsDividendUrl(stock.ticker)" target="_blank" rel="noopener">💰 股利分派情形</a>
+            </div>
+          </div>
+          <div v-else class="loading">點擊此分頁載入財務資訊</div>
+        </div>
+
+        <!-- 重大消息 -->
+        <div v-show="stock.activeTab === 'news'">
+          <div v-if="stock.newsLoading" class="loading">載入消息中…</div>
+          <div v-else-if="stock.news && stock.news.length">
+            <div v-for="(item, idx) in stock.news" :key="idx" class="news-item">
+              <div class="news-title">{{ item.title }}</div>
+              <div class="news-date">{{ item.date }} <span class="news-source" v-if="item.source">· {{ item.source }}</span></div>
+            </div>
+            <div style="margin-top:10px" v-if="stock.market === 'TW'">
+              <a class="mops-link" :href="mopsNewsUrl(stock.ticker)" target="_blank" rel="noopener">📰 更多重大訊息（公開資訊觀測站）</a>
+            </div>
+          </div>
+          <div v-else class="loading">{{ stock.news ? '暫無重大消息' : '點擊此分頁載入消息' }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, onMounted, nextTick, watch } = Vue;
+
+const STORAGE_KEY = 'pptools-watchlist';
+const CORS_PROXIES = [
+  u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+  u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
+];
+
+async function fetchViaProxy(url) {
+  let lastErr = new Error('no proxy available');
+  for (const wrap of CORS_PROXIES) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      const res = await fetch(wrap(url), { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+
+async function fetchJsonViaProxy(url) {
+  const res = await fetchViaProxy(url);
+  return res.json();
+}
+
+function yahooSymbol(ticker, market) {
+  if (market === 'US') return ticker;
+  return ticker + '.TW';
+}
+
+function yahooSymbolFallback(ticker) {
+  return ticker + '.TWO';
+}
+
+createApp({
+  setup() {
+    const stocks = ref([]);
+    const newStock = ref({ ticker: '', name: '', market: 'TW' });
+    const loading = ref(false);
+    const statusText = ref('');
+    const chartInstances = {};
+
+    function loadStocks() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          stocks.value = parsed.map(s => ({
+            ...s,
+            activeTab: s.activeTab || 'chart',
+            loading: false,
+            infoLoading: false,
+            newsLoading: false,
+            financialInfo: null,
+            news: null,
+            chartData: s.chartData || null,
+            klineData: s.klineData || null
+          }));
+        }
+      } catch (e) { console.warn('loadStocks error', e); }
+    }
+
+    function saveStocks() {
+      const data = stocks.value.map(s => ({
+        id: s.id, ticker: s.ticker, name: s.name, market: s.market,
+        price: s.price, change: s.change, changePct: s.changePct,
+        prevClose: s.prevClose, open: s.open, high: s.high, low: s.low, volume: s.volume,
+        lastUpdate: s.lastUpdate, activeTab: s.activeTab,
+        chartData: s.chartData, klineData: s.klineData
+      }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function addStock() {
+      const t = newStock.value.ticker.trim().toUpperCase();
+      if (!t) return;
+      if (stocks.value.some(s => s.ticker === t && s.market === newStock.value.market)) {
+        alert('此標的已在觀察清單中');
+        return;
+      }
+      const stock = {
+        id: 'w' + Date.now(),
+        ticker: t,
+        name: newStock.value.name.trim(),
+        market: newStock.value.market,
+        price: null, change: null, changePct: null,
+        prevClose: null, open: null, high: null, low: null, volume: null,
+        lastUpdate: null,
+        activeTab: 'chart',
+        loading: false, infoLoading: false, newsLoading: false,
+        financialInfo: null, news: null,
+        chartData: null, klineData: null
+      };
+      stocks.value.push(stock);
+      newStock.value.ticker = '';
+      newStock.value.name = '';
+      saveStocks();
+      fetchQuote(stock);
+    }
+
+    function removeStock(id) {
+      stocks.value = stocks.value.filter(s => s.id !== id);
+      if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
+      if (chartInstances['k-' + id]) { chartInstances['k-' + id].destroy(); delete chartInstances['k-' + id]; }
+      saveStocks();
+    }
+
+    async function fetchYahooChart(symbol, range, interval) {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
+      const data = await fetchJsonViaProxy(url);
+      const result = data?.chart?.result?.[0];
+      if (!result) throw new Error('No data for ' + symbol);
+      return result;
+    }
+
+    async function fetchQuote(stock) {
+      stock.loading = true;
+      try {
+        let sym = yahooSymbol(stock.ticker, stock.market);
+        let result;
+        try {
+          result = await fetchYahooChart(sym, '1mo', '1d');
+        } catch (e) {
+          if (stock.market === 'TW') {
+            sym = yahooSymbolFallback(stock.ticker);
+            result = await fetchYahooChart(sym, '1mo', '1d');
+          } else throw e;
+        }
+
+        const meta = result.meta;
+        const quote = result.indicators?.quote?.[0] || {};
+        const timestamps = result.timestamp || [];
+        const closes = quote.close || [];
+        const opens = quote.open || [];
+        const highs = quote.high || [];
+        const lows = quote.low || [];
+        const volumes = quote.volume || [];
+
+        const lastIdx = closes.length - 1;
+        if (lastIdx >= 0 && closes[lastIdx] != null) {
+          stock.price = closes[lastIdx];
+          stock.prevClose = meta.chartPreviousClose ?? meta.previousClose;
+          stock.open = opens[lastIdx];
+          stock.high = highs[lastIdx];
+          stock.low = lows[lastIdx];
+          stock.volume = volumes[lastIdx];
+
+          if (stock.prevClose) {
+            stock.change = stock.price - stock.prevClose;
+            stock.changePct = (stock.change / stock.prevClose) * 100;
+          }
+        }
+
+        if (!stock.name && meta.shortName) {
+          stock.name = meta.shortName;
+        }
+
+        stock.chartData = {
+          labels: timestamps.map(t => {
+            const d = new Date(t * 1000);
+            return `${d.getMonth()+1}/${d.getDate()}`;
+          }),
+          closes: closes,
+          volumes: volumes
+        };
+
+        stock.klineData = {
+          labels: timestamps.map(t => {
+            const d = new Date(t * 1000);
+            return `${d.getMonth()+1}/${d.getDate()}`;
+          }),
+          opens, highs, lows, closes, volumes
+        };
+
+        stock.lastUpdate = new Date().toISOString();
+        saveStocks();
+        await nextTick();
+        renderChart(stock);
+        if (stock.activeTab === 'kline') renderKline(stock);
+      } catch (e) {
+        console.warn('fetchQuote error for', stock.ticker, e);
+      } finally {
+        stock.loading = false;
+      }
+    }
+
+    function renderChart(stock) {
+      if (!stock.chartData) return;
+      const canvasId = 'chart-' + stock.id;
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+
+      if (chartInstances[stock.id]) chartInstances[stock.id].destroy();
+
+      const ctx = canvas.getContext('2d');
+      const data = stock.chartData;
+      const validCloses = data.closes.map((v, i) => v != null ? v : null);
+
+      chartInstances[stock.id] = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.labels,
+          datasets: [{
+            label: stock.ticker + ' 收盤價',
+            data: validCloses,
+            borderColor: '#4361ee',
+            backgroundColor: 'rgba(67,97,238,.08)',
+            borderWidth: 1.5,
+            pointRadius: 2,
+            pointHoverRadius: 4,
+            fill: true,
+            tension: 0.3,
+            spanGaps: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { font: { size: 10 }, maxTicksLimit: 8 }, grid: { display: false } },
+            y: { ticks: { font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.06)' } }
+          },
+          interaction: { mode: 'index', intersect: false }
+        }
+      });
+    }
+
+    function renderKline(stock) {
+      if (!stock.klineData) return;
+      stock.activeTab = 'kline';
+      saveStocks();
+
+      nextTick(() => {
+        const canvasId = 'kline-' + stock.id;
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+
+        const key = 'k-' + stock.id;
+        if (chartInstances[key]) chartInstances[key].destroy();
+
+        const ctx = canvas.getContext('2d');
+        const kd = stock.klineData;
+
+        const candleColors = kd.closes.map((c, i) => {
+          const o = kd.opens[i];
+          if (c == null || o == null) return 'rgba(0,0,0,0.2)';
+          return c >= o ? '#ef4444' : '#22c55e';
+        });
+
+        const barData = kd.closes.map((c, i) => {
+          const o = kd.opens[i];
+          if (c == null || o == null) return [0, 0];
+          return c >= o ? [o, c] : [c, o];
+        });
+
+        const wickData = kd.highs.map((h, i) => {
+          const l = kd.lows[i];
+          if (h == null || l == null) return [0, 0];
+          return [l, h];
+        });
+
+        chartInstances[key] = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: kd.labels,
+            datasets: [
+              {
+                label: '實體',
+                data: barData,
+                backgroundColor: candleColors,
+                barPercentage: 0.6,
+                categoryPercentage: 0.8,
+                yAxisID: 'y'
+              },
+              {
+                label: '影線',
+                data: wickData,
+                backgroundColor: candleColors.map(c => c.replace(')', ',0.4)').replace('rgb', 'rgba')),
+                barPercentage: 0.08,
+                categoryPercentage: 0.8,
+                yAxisID: 'y'
+              },
+              {
+                label: '成交量',
+                data: kd.volumes.map(v => v || 0),
+                backgroundColor: 'rgba(245,158,11,.25)',
+                barPercentage: 0.5,
+                yAxisID: 'y1'
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: {
+              callbacks: {
+                label(ctx) {
+                  const i = ctx.dataIndex;
+                  if (ctx.datasetIndex <= 1) {
+                    return `開:${kd.opens[i]?.toFixed(2)} 高:${kd.highs[i]?.toFixed(2)} 低:${kd.lows[i]?.toFixed(2)} 收:${kd.closes[i]?.toFixed(2)}`;
+                  }
+                  return '量: ' + (kd.volumes[i] || 0).toLocaleString();
+                }
+              }
+            }},
+            scales: {
+              x: { ticks: { font: { size: 10 }, maxTicksLimit: 8 }, grid: { display: false }, stacked: false },
+              y: { position: 'left', ticks: { font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.06)' }, stacked: false },
+              y1: { position: 'right', ticks: { display: false }, grid: { display: false }, beginAtZero: true, max: Math.max(...(kd.volumes.filter(v => v != null))) * 4 }
+            }
+          }
+        });
+      });
+    }
+
+    async function fetchFinancialInfo(stock) {
+      stock.activeTab = 'info';
+      saveStocks();
+      if (stock.financialInfo || stock.infoLoading) return;
+      stock.infoLoading = true;
+
+      try {
+        const sym = stock.market === 'US' ? stock.ticker : (stock.ticker + '.TW');
+        const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=defaultKeyStatistics,financialData,summaryDetail,earningsQuarterlyGrowth`;
+        const data = await fetchJsonViaProxy(url);
+        const qs = data?.quoteSummary?.result?.[0];
+
+        if (!qs) {
+          if (stock.market === 'TW') {
+            const url2 = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(stock.ticker + '.TWO')}?modules=defaultKeyStatistics,financialData,summaryDetail`;
+            const data2 = await fetchJsonViaProxy(url2);
+            const qs2 = data2?.quoteSummary?.result?.[0];
+            if (qs2) { parseFinancialInfo(stock, qs2); return; }
+          }
+          stock.financialInfo = [{ label: '狀態', value: '無法取得財務資訊' }];
+          return;
+        }
+        parseFinancialInfo(stock, qs);
+      } catch (e) {
+        console.warn('fetchFinancialInfo error', e);
+        stock.financialInfo = [{ label: '狀態', value: '載入失敗：' + e.message }];
+      } finally {
+        stock.infoLoading = false;
+      }
+    }
+
+    function parseFinancialInfo(stock, qs) {
+      const fd = qs.financialData || {};
+      const sd = qs.summaryDetail || {};
+      const ks = qs.defaultKeyStatistics || {};
+
+      const fmt = (obj) => obj?.fmt || obj?.raw?.toString() || '-';
+      const fmtN = (obj) => {
+        if (!obj) return '-';
+        if (obj.fmt) return obj.fmt;
+        if (obj.raw != null) return obj.raw.toLocaleString();
+        return '-';
+      };
+
+      const info = [];
+      info.push({ label: '市值', value: fmtN(sd.marketCap) });
+      info.push({ label: '本益比 (P/E)', value: fmt(sd.trailingPE) });
+      info.push({ label: '預估本益比', value: fmt(sd.forwardPE) });
+      info.push({ label: '股價淨值比 (P/B)', value: fmt(ks.priceToBook) });
+      info.push({ label: 'EPS (TTM)', value: fmt(ks.trailingEps) });
+      info.push({ label: '殖利率', value: fmt(sd.dividendYield) });
+      info.push({ label: '52週最高', value: fmt(sd.fiftyTwoWeekHigh) });
+      info.push({ label: '52週最低', value: fmt(sd.fiftyTwoWeekLow) });
+      info.push({ label: '營收成長 (YoY)', value: fmt(fd.revenueGrowth) });
+      info.push({ label: '毛利率', value: fmt(fd.grossMargins) });
+      info.push({ label: '營業利益率', value: fmt(fd.operatingMargins) });
+      info.push({ label: 'ROE', value: fmt(fd.returnOnEquity) });
+      info.push({ label: '負債比', value: fmt(fd.debtToEquity) });
+      info.push({ label: '目標價 (均)', value: fmt(fd.targetMeanPrice) });
+      info.push({ label: '分析師建議', value: fmt(fd.recommendationKey) });
+
+      stock.financialInfo = info.filter(i => i.value !== '-');
+    }
+
+    async function fetchNews(stock) {
+      stock.activeTab = 'news';
+      saveStocks();
+      if (stock.news || stock.newsLoading) return;
+      stock.newsLoading = true;
+
+      try {
+        if (stock.market === 'TW') {
+          await fetchTWNews(stock);
+        } else {
+          await fetchUSNews(stock);
+        }
+      } catch (e) {
+        console.warn('fetchNews error', e);
+        stock.news = [];
+      } finally {
+        stock.newsLoading = false;
+      }
+    }
+
+    async function fetchTWNews(stock) {
+      try {
+        const mopsUrl = `https://mops.twse.com.tw/mops/web/ajax_t05st01?encodeURIComponent=1&step=1&firstin=1&off=1&keyword4=${stock.ticker}&code1=&TYPEK2=&checkbtn=1&queryName=co_id&TYPEK=all&co_id=${stock.ticker}`;
+        const res = await fetchViaProxy(mopsUrl);
+        const html = await res.text();
+        const news = parseMopsNews(html, stock.ticker);
+        if (news.length > 0) {
+          stock.news = news;
+          return;
+        }
+      } catch (e) {
+        console.warn('MOPS fetch failed, falling back to Yahoo', e);
+      }
+
+      const sym = stock.ticker + '.TW';
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`;
+      try {
+        await fetchJsonViaProxy(url);
+        stock.news = [
+          { title: `${stock.ticker} ${stock.name || ''} — 請點擊下方連結查看公開資訊觀測站最新重大訊息`, date: '即時', source: '公開資訊觀測站' }
+        ];
+      } catch (e) {
+        stock.news = [
+          { title: '請至公開資訊觀測站查詢最新重大訊息', date: '', source: 'MOPS' }
+        ];
+      }
+    }
+
+    function parseMopsNews(html, ticker) {
+      const news = [];
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const rows = doc.querySelectorAll('table.hasBorder tr');
+        rows.forEach((row, idx) => {
+          if (idx === 0) return;
+          const cells = row.querySelectorAll('td');
+          if (cells.length >= 4) {
+            const date = cells[0]?.textContent?.trim() || '';
+            const title = cells[3]?.textContent?.trim() || cells[2]?.textContent?.trim() || '';
+            if (title && date) {
+              news.push({ title, date, source: '公開資訊觀測站' });
+            }
+          }
+        });
+      } catch (e) { console.warn('parseMopsNews error', e); }
+      return news.slice(0, 15);
+    }
+
+    async function fetchUSNews(stock) {
+      try {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(stock.ticker)}?interval=1d&range=5d`;
+        await fetchJsonViaProxy(url);
+        stock.news = [
+          { title: `${stock.ticker} ${stock.name || ''} — 可透過 Yahoo Finance 查看最新消息`, date: '即時', source: 'Yahoo Finance' }
+        ];
+      } catch (e) {
+        stock.news = [];
+      }
+    }
+
+    async function refreshAll() {
+      if (loading.value) return;
+      loading.value = true;
+      statusText.value = '更新中…';
+      let success = 0, fail = 0;
+      for (const stock of stocks.value) {
+        try {
+          await fetchQuote(stock);
+          success++;
+        } catch (e) {
+          fail++;
+        }
+      }
+      loading.value = false;
+      statusText.value = `更新完成：${success} 成功` + (fail > 0 ? `，${fail} 失敗` : '');
+      setTimeout(() => { statusText.value = ''; }, 5000);
+    }
+
+    function formatPrice(price, market) {
+      if (price == null) return '-';
+      return market === 'US'
+        ? '$' + price.toFixed(2)
+        : price.toFixed(2);
+    }
+
+    function mopsUrl(ticker) {
+      return `https://mops.twse.com.tw/mops/web/t05st01?encodeURIComponent=1&step=1&firstin=1&off=1&keyword4=${ticker}&code1=&TYPEK2=&checkbtn=1&queryName=co_id&TYPEK=all&co_id=${ticker}`;
+    }
+    function mopsFinanceUrl(ticker) {
+      return `https://mops.twse.com.tw/mops/web/t164sb03?encodeURIComponent=1&step=1&firstin=1&off=1&co_id=${ticker}&TYPEK=all&year=&season=`;
+    }
+    function mopsDividendUrl(ticker) {
+      return `https://mops.twse.com.tw/mops/web/t05st09?encodeURIComponent=1&step=1&firstin=1&off=1&co_id=${ticker}&TYPEK=all`;
+    }
+    function mopsNewsUrl(ticker) {
+      return `https://mops.twse.com.tw/mops/web/t05st01?encodeURIComponent=1&step=1&firstin=1&off=1&keyword4=${ticker}&code1=&TYPEK2=&checkbtn=1&queryName=co_id&TYPEK=all&co_id=${ticker}`;
+    }
+
+    onMounted(() => {
+      loadStocks();
+      nextTick(() => {
+        stocks.value.forEach(s => {
+          if (s.chartData) renderChart(s);
+        });
+      });
+    });
+
+    return {
+      stocks, newStock, loading, statusText,
+      addStock, removeStock, refreshAll,
+      fetchQuote, renderChart, renderKline,
+      fetchFinancialInfo, fetchNews,
+      formatPrice, mopsUrl, mopsFinanceUrl, mopsDividendUrl, mopsNewsUrl,
+      saveStocks
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
