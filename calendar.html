@@ -2,148 +2,114 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>投資行事曆</title>
+<link rel="stylesheet" href="pp-ui.css">
+<script src="pp-theme.js"></script>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <style>
-  :root {
-    --bg: #f3f4f8; --surface: #fff; --surface-alt: #f7f8fb;
-    --border: #e2e4ec; --text: #1a1d2e; --text-muted: #6b7194;
-    --accent: #4361ee; --accent-light: rgba(67,97,238,.08);
-    --red: #ef4444; --green: #22c55e; --amber: #f59e0b;
-    --purple: #8b5cf6; --teal: #14b8a6;
-    --orange: #f97316;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0e1019; --surface: #171a28; --surface-alt: #1c2030;
-      --border: #262a3c; --text: #d8dae5; --text-muted: #7b7f9a;
-      --accent-light: rgba(67,97,238,.15);
-    }
-  }
-  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    background: var(--bg); color: var(--text);
-    line-height: 1.5;
-  }
-  .container { max-width: 1080px; margin: 0 auto; padding: 24px 20px; }
+  .container { max-width: 1080px; margin: 0 auto; padding: 24px 20px 40px; }
 
   /* Header */
-  .cal-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
-  .cal-header h1 { font-size: 20px; font-weight: 700; }
+  .cal-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+  .cal-header h1 { font-size: 21px; font-weight: 800; letter-spacing: .2px; }
   .cal-nav { display: flex; align-items: center; gap: 8px; }
-  .cal-nav button {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
-    padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--text);
-    transition: border-color .15s;
-  }
-  .cal-nav button:hover { border-color: var(--accent); }
-  .cal-nav .month-label { font-size: 16px; font-weight: 600; min-width: 140px; text-align: center; }
+  .cal-nav .month-label { font-size: 16px; font-weight: 700; min-width: 130px; text-align: center; font-variant-numeric: tabular-nums; }
 
   /* Legend */
   .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
   .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); }
   .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-  /* Grid */
+  /* Grid — 玻璃月曆（minmax(0,1fr) 防止事件文字把欄寬撐爆、手機版水平溢出） */
   .cal-grid {
-    display: grid; grid-template-columns: repeat(7, 1fr);
-    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
-    background: var(--border); gap: 1px;
+    display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+    border-radius: var(--radius-lg); overflow: hidden;
   }
   .cal-dow {
-    background: var(--surface-alt); padding: 8px 4px; text-align: center;
-    font-size: 11px; font-weight: 600; color: var(--text-muted);
+    padding: 10px 4px 8px; text-align: center;
+    font-size: 11px; font-weight: 700; color: var(--text-muted);
     text-transform: uppercase; letter-spacing: .8px;
+    border-bottom: 1px solid var(--stroke);
   }
   .cal-cell {
-    background: var(--surface); min-height: 90px; padding: 6px 7px;
+    min-height: 92px; padding: 6px 7px;
     cursor: pointer; transition: background .12s; position: relative;
+    border-bottom: 1px solid var(--stroke);
+    border-right: 1px solid var(--stroke);
   }
+  .cal-cell:nth-child(7n) { border-right: none; }
   .cal-cell:hover { background: var(--accent-light); }
-  .cal-cell.outside { opacity: .3; }
-  .cal-cell.today { box-shadow: inset 0 0 0 2px var(--accent); }
-  .cal-day { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; margin-bottom: 3px; }
+  .cal-cell.outside { opacity: .35; }
+  .cal-cell.today { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-light); }
+  .cal-day { font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; margin-bottom: 3px; }
   .cal-events { display: flex; flex-direction: column; gap: 2px; }
   .cal-event {
-    font-size: 10px; padding: 2px 5px; border-radius: 3px;
+    font-size: 10px; padding: 2px 7px; border-radius: 999px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    cursor: pointer; font-weight: 500; line-height: 1.4;
+    cursor: pointer; font-weight: 550; line-height: 1.5;
   }
-  .cal-event.type-fed { background: rgba(239,68,68,.12); color: var(--red); }
-  .cal-event.type-economic { background: rgba(245,158,11,.1); color: var(--amber); }
-  .cal-event.type-earnings { background: rgba(67,97,238,.1); color: var(--accent); }
-  .cal-event.type-custom { background: rgba(139,92,246,.1); color: var(--purple); }
-  .cal-event.type-dividend { background: rgba(20,184,166,.1); color: var(--teal); }
-  .cal-event.type-stock { background: rgba(249,115,22,.1); color: var(--orange); }
+  .cal-event.type-fed { background: color-mix(in srgb, var(--red) 13%, transparent); color: var(--red); }
+  .cal-event.type-economic { background: color-mix(in srgb, var(--amber) 13%, transparent); color: var(--amber); }
+  .cal-event.type-earnings { background: var(--accent-light); color: var(--accent); }
+  .cal-event.type-custom { background: color-mix(in srgb, var(--purple) 13%, transparent); color: var(--purple); }
+  .cal-event.type-dividend { background: color-mix(in srgb, var(--teal) 13%, transparent); color: var(--teal); }
+  .cal-event.type-stock { background: color-mix(in srgb, var(--orange) 13%, transparent); color: var(--orange); }
   .cal-more { font-size: 10px; color: var(--text-muted); padding: 1px 5px; cursor: pointer; }
 
   /* Event list panel */
-  .panel { margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  @media (max-width: 640px) { .panel { grid-template-columns: 1fr; } }
+  .panel { margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) {
+    .panel { grid-template-columns: 1fr; }
+    .container { padding: 16px 12px 32px; }
+    .cal-cell { min-height: 68px; padding: 4px 5px; }
+    .cal-event { padding: 1px 5px; }
+  }
   .panel-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    border-radius: var(--radius-lg);
     padding: 18px; max-height: 420px; overflow-y: auto;
   }
-  .panel-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+  .panel-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
   .event-row {
     display: flex; align-items: flex-start; gap: 10px; padding: 8px 0;
-    border-bottom: 1px solid var(--border); font-size: 13px;
+    border-bottom: 1px solid var(--stroke); font-size: 13px;
   }
   .event-row:last-child { border-bottom: none; }
-  .event-date { font-size: 11px; font-weight: 600; color: var(--text-muted); min-width: 48px; font-variant-numeric: tabular-nums; flex-shrink: 0; padding-top: 1px; }
+  .event-date { font-size: 11px; font-weight: 650; color: var(--text-muted); min-width: 48px; font-variant-numeric: tabular-nums; flex-shrink: 0; padding-top: 1px; }
   .event-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
   .event-info { flex: 1; }
-  .event-title { font-weight: 500; }
+  .event-title { font-weight: 550; }
   .event-meta { font-size: 11px; color: var(--text-muted); }
   .empty-state { font-size: 13px; color: var(--text-muted); text-align: center; padding: 20px 0; }
 
   /* Add event form */
-  .add-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-  .add-form input, .add-form select {
-    font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
-    background: var(--surface-alt); color: var(--text); flex: 1; min-width: 100px;
-  }
-  .add-form button {
-    background: var(--accent); color: #fff; border: none; border-radius: 6px;
-    padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
-    transition: opacity .15s;
-  }
-  .add-form button:hover { opacity: .85; }
+  .add-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 14px; border-top: 1px solid var(--stroke); }
+  .add-form input, .add-form select { flex: 1; min-width: 100px; font-size: 12px; padding: 7px 11px; }
   .del-btn {
     background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px;
     padding: 0 4px; opacity: .5; transition: opacity .15s;
   }
   .del-btn:hover { opacity: 1; color: var(--red); }
 
-  /* Watchlist panel */
-  .watchlist-panel { margin-top: 20px; }
-  .watchlist-panel .panel-card { max-height: none; }
-  .watchlist-bar {
-    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;
-  }
+  /* Watchlist quick bar */
+  .watchlist-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
   .wl-chip {
-    font-size: 11px; padding: 4px 10px; border-radius: 20px;
-    border: 1px solid var(--border); background: var(--surface-alt);
+    font-size: 11px; padding: 5px 12px; border-radius: 999px;
     color: var(--text-muted); cursor: default; display: flex; align-items: center; gap: 4px;
   }
-  .wl-chip .wl-price { font-weight: 600; color: var(--text); }
+  .wl-chip .wl-price { font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; }
   .wl-chip .wl-change.up { color: var(--red); }
   .wl-chip .wl-change.down { color: var(--green); }
 
   /* Stock events section */
-  .stock-events-section { margin-top: 24px; }
-  .stock-events-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+  .stock-events-section { margin-top: 22px; }
+  .stock-events-section h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
   .stock-event-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-  .stock-event-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    padding: 12px 14px; font-size: 12px;
-  }
-  .stock-event-card .sec-ticker { font-weight: 700; font-size: 14px; }
+  .stock-event-card { border-radius: var(--radius); padding: 14px 16px; font-size: 12px; }
+  .stock-event-card .sec-ticker { font-weight: 750; font-size: 14px; }
   .stock-event-card .sec-name { color: var(--text-muted); margin-left: 6px; }
   .stock-event-card .sec-detail { margin-top: 6px; color: var(--text-muted); font-size: 11px; }
-  .stock-event-card .sec-price { font-size: 16px; font-weight: 700; margin-top: 4px; }
+  .stock-event-card .sec-price { font-size: 16px; font-weight: 750; margin-top: 4px; font-variant-numeric: tabular-nums; }
   .sec-change.up { color: var(--red); }
   .sec-change.down { color: var(--green); }
 </style>
@@ -153,10 +119,10 @@
   <div class="cal-header">
     <h1>投資行事曆</h1>
     <div class="cal-nav">
-      <button @click="prevMonth">&larr;</button>
+      <button class="btn btn-sm" @click="prevMonth" aria-label="上個月">&larr;</button>
       <span class="month-label">{{ monthLabel }}</span>
-      <button @click="nextMonth">&rarr;</button>
-      <button @click="goToday" style="margin-left:4px">今天</button>
+      <button class="btn btn-sm" @click="nextMonth" aria-label="下個月">&rarr;</button>
+      <button class="btn btn-sm" @click="goToday" style="margin-left:4px">今天</button>
     </div>
   </div>
 
@@ -171,7 +137,7 @@
 
   <!-- Watchlist quick bar -->
   <div v-if="watchlistStocks.length > 0" class="watchlist-bar">
-    <div v-for="s in watchlistStocks" :key="s.id" class="wl-chip">
+    <div v-for="s in watchlistStocks" :key="s.id" class="wl-chip glass">
       <span>{{ s.market === 'TW' ? '🇹🇼' : '🇺🇸' }}</span>
       <span style="font-weight:600">{{ s.ticker }}</span>
       <span class="wl-price" v-if="s.price != null">{{ s.market === 'US' ? '$' : '' }}{{ s.price?.toFixed(2) }}</span>
@@ -181,7 +147,7 @@
     </div>
   </div>
 
-  <div class="cal-grid">
+  <div class="cal-grid glass">
     <div class="cal-dow" v-for="d in dayOfWeekLabels">{{ d }}</div>
     <div v-for="cell in calendarCells" :key="cell.key"
          class="cal-cell" :class="{ outside: cell.outside, today: cell.isToday }"
@@ -199,7 +165,7 @@
 
   <div class="panel">
     <!-- Upcoming events -->
-    <div class="panel-card">
+    <div class="panel-card glass">
       <h3>📋 本月即將到來</h3>
       <div v-if="upcomingEvents.length === 0" class="empty-state">本月無即將到來的事件</div>
       <div v-for="ev in upcomingEvents" :key="ev.id" class="event-row">
@@ -213,7 +179,7 @@
     </div>
 
     <!-- Custom events -->
-    <div class="panel-card">
+    <div class="panel-card glass">
       <h3>📌 自訂事件</h3>
       <div v-if="customEvents.length === 0" class="empty-state">尚未新增自訂事件</div>
       <div v-for="ev in customEventsSorted" :key="ev.id" class="event-row">
@@ -227,16 +193,16 @@
       </div>
 
       <div class="add-form">
-        <input v-model="newEvent.date" type="date" />
-        <input v-model="newEvent.title" placeholder="事件名稱" />
-        <select v-model="newEvent.type">
+        <input class="pp-field" v-model="newEvent.date" type="date" />
+        <input class="pp-field" v-model="newEvent.title" placeholder="事件名稱" />
+        <select class="pp-field" v-model="newEvent.type">
           <option value="custom">自訂</option>
           <option value="earnings">財報</option>
           <option value="dividend">配息</option>
           <option value="stock">觀察標的</option>
         </select>
-        <input v-model="newEvent.note" placeholder="備註（選填）" />
-        <button @click="addCustomEvent">新增</button>
+        <input class="pp-field" v-model="newEvent.note" placeholder="備註（選填）" />
+        <button class="btn btn-primary btn-sm" @click="addCustomEvent">新增</button>
       </div>
     </div>
   </div>
@@ -245,7 +211,7 @@
   <div v-if="watchlistStocks.length > 0" class="stock-events-section">
     <h3>📊 觀察清單標的概況</h3>
     <div class="stock-event-grid">
-      <div v-for="s in watchlistStocks" :key="s.id" class="stock-event-card">
+      <div v-for="s in watchlistStocks" :key="s.id" class="stock-event-card glass">
         <div>
           <span class="sec-ticker">{{ s.ticker }}</span>
           <span class="sec-name">{{ s.name }}</span>

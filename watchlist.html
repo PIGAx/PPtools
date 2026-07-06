@@ -2,86 +2,66 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>觀察清單</title>
+<link rel="stylesheet" href="pp-ui.css">
+<script src="pp-theme.js"></script>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-  :root {
-    --bg: #f3f4f8; --surface: #fff; --surface-alt: #f7f8fb;
-    --border: #e2e4ec; --text: #1a1d2e; --text-muted: #6b7194;
-    --accent: #4361ee; --accent-light: rgba(67,97,238,.08);
-    --red: #ef4444; --green: #22c55e; --amber: #f59e0b;
-    --purple: #8b5cf6; --teal: #14b8a6;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0e1019; --surface: #171a28; --surface-alt: #1c2030;
-      --border: #262a3c; --text: #d8dae5; --text-muted: #7b7f9a;
-      --accent-light: rgba(67,97,238,.15);
-    }
-  }
-  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    background: var(--bg); color: var(--text); line-height: 1.5;
-  }
-  .container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px 20px 40px; }
 
-  .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
-  .page-header h1 { font-size: 20px; font-weight: 700; }
+  .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+  .page-header h1 { font-size: 21px; font-weight: 800; letter-spacing: .2px; }
 
   /* Add form */
-  .add-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
-  .add-bar input, .add-bar select {
-    font-size: 13px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px;
-    background: var(--surface-alt); color: var(--text);
-  }
+  .add-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; padding: 12px; border-radius: var(--radius-lg); }
   .add-bar input { flex: 1; min-width: 120px; }
-  .add-bar select { min-width: 90px; }
-  .btn {
-    background: var(--accent); color: #fff; border: none; border-radius: 6px;
-    padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s;
-  }
-  .btn:hover { opacity: .85; }
-  .btn:disabled { opacity: .5; cursor: not-allowed; }
-  .btn-sm { padding: 4px 10px; font-size: 12px; }
-  .btn-danger { background: var(--red); }
-  .btn-outline { background: none; border: 1px solid var(--border); color: var(--text); }
-  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+  .add-bar select { min-width: 96px; }
 
   /* Stock list */
   .stock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
   .stock-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-    overflow: hidden; transition: box-shadow .2s;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: transform .22s cubic-bezier(.3,.7,.4,1.2), box-shadow .22s;
   }
-  .stock-card:hover { box-shadow: 0 2px 12px rgba(91,127,255,.1); }
+  .stock-card:hover { transform: translateY(-2px); box-shadow: var(--shadow), inset 0 1px 0 var(--glass-inner); }
   .stock-card-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    padding: 15px 18px 12px; border-bottom: 1px solid var(--stroke);
   }
-  .stock-ticker { font-size: 16px; font-weight: 700; }
+  .stock-ticker { font-size: 16px; font-weight: 750; }
   .stock-name { font-size: 12px; color: var(--text-muted); margin-left: 8px; }
   .stock-market {
-    font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px;
+    font-size: 10px; font-weight: 650; padding: 3px 9px; border-radius: 999px;
     background: var(--accent-light); color: var(--accent);
   }
-  .stock-price-row { display: flex; align-items: baseline; gap: 8px; padding: 10px 16px; }
-  .stock-price { font-size: 22px; font-weight: 700; }
-  .stock-change { font-size: 13px; font-weight: 600; }
+  .stock-price-row { display: flex; align-items: baseline; gap: 8px; padding: 12px 18px 0; }
+  .stock-price { font-size: 24px; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
+  .stock-change { font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
   .stock-change.up { color: var(--red); }
   .stock-change.down { color: var(--green); }
-  .stock-meta { font-size: 11px; color: var(--text-muted); padding: 0 16px 8px; }
+  .stock-meta { font-size: 11px; color: var(--text-muted); padding: 4px 18px 10px; }
 
-  /* Tabs */
-  .tabs { display: flex; border-bottom: 1px solid var(--border); }
+  /* Tabs — 玻璃分段控制器 */
+  .tabs {
+    display: flex; gap: 2px; margin: 4px 14px 0;
+    padding: 3px; border-radius: 999px;
+    background: var(--surface-alt);
+  }
   .tab {
-    padding: 8px 14px; font-size: 12px; font-weight: 500; cursor: pointer;
-    color: var(--text-muted); border-bottom: 2px solid transparent; transition: all .15s;
+    flex: 1; text-align: center;
+    padding: 6px 10px; font-size: 12px; font-weight: 550; cursor: pointer;
+    color: var(--text-muted); border-radius: 999px; white-space: nowrap;
+    transition: all .18s;
   }
   .tab:hover { color: var(--text); }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab.active {
+    color: var(--text); font-weight: 650;
+    background: var(--glass-strong);
+    box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-inner);
+  }
   .tab-content { padding: 12px 16px 16px; min-height: 200px; }
 
   /* Chart container */
@@ -90,12 +70,12 @@
 
   /* Info table */
   .info-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .info-table th { text-align: left; padding: 6px 8px; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--border); }
-  .info-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .info-table th { text-align: left; padding: 6px 8px; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--stroke); }
+  .info-table td { padding: 6px 8px; border-bottom: 1px solid var(--stroke); font-variant-numeric: tabular-nums; }
   .info-table tr:last-child td { border-bottom: none; }
 
   /* News list */
-  .news-item { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .news-item { padding: 8px 0; border-bottom: 1px solid var(--stroke); }
   .news-item:last-child { border-bottom: none; }
   .news-title { font-size: 13px; font-weight: 500; }
   .news-date { font-size: 11px; color: var(--text-muted); }
@@ -103,30 +83,29 @@
 
   /* Loading */
   .loading { text-align: center; padding: 20px; color: var(--text-muted); font-size: 13px; }
-  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+  .empty-state { text-align: center; padding: 48px 20px; color: var(--text-muted); }
   .empty-state h3 { font-size: 16px; margin-bottom: 8px; color: var(--text); }
 
   /* MOPS link */
-  .mops-link { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--accent); text-decoration: none; padding: 4px 8px; border-radius: 4px; background: var(--accent-light); }
+  .mops-link { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--accent); text-decoration: none; padding: 4px 10px; border-radius: 999px; background: var(--accent-light); transition: opacity .15s; }
   .mops-link:hover { opacity: .8; }
 
   /* Delete btn */
   .del-btn {
     background: none; border: none; color: var(--text-muted); cursor: pointer;
-    font-size: 16px; padding: 2px 6px; opacity: .5; transition: opacity .15s;
+    font-size: 16px; padding: 2px 8px; opacity: .5; border-radius: 8px; transition: opacity .15s;
   }
   .del-btn:hover { opacity: 1; color: var(--red); }
 
-  /* Status bar */
-  .status-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 8px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
-  .status-text { color: var(--text-muted); }
+  .status-text { color: var(--text-muted); font-size: 12px; }
 
-  /* K-line tooltip */
+  /* K-line legend */
   .kline-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--text-muted); padding: 4px 0; }
   .kline-legend span { display: flex; align-items: center; gap: 3px; }
   .kline-legend .dot { width: 8px; height: 8px; border-radius: 2px; }
 
   @media (max-width: 640px) {
+    .container { padding: 16px 12px 32px; }
     .stock-grid { grid-template-columns: 1fr; }
   }
 </style>
@@ -137,20 +116,20 @@
     <h1>📋 觀察清單</h1>
     <div style="display:flex;gap:8px;align-items:center">
       <span class="status-text">{{ statusText }}</span>
-      <button class="btn btn-sm btn-outline" @click="refreshAll" :disabled="loading">
+      <button class="btn btn-sm" @click="refreshAll" :disabled="loading">
         {{ loading ? '更新中…' : '🔄 全部更新' }}
       </button>
     </div>
   </div>
 
-  <div class="add-bar">
-    <select v-model="newStock.market">
+  <div class="add-bar glass">
+    <select class="pp-field" v-model="newStock.market">
       <option value="TW">🇹🇼 台股</option>
       <option value="US">🇺🇸 美股</option>
     </select>
-    <input v-model="newStock.ticker" :placeholder="newStock.market === 'TW' ? '股票代號 (如 2330)' : '股票代號 (如 AAPL)'" @keydown.enter="addStock" />
-    <input v-model="newStock.name" placeholder="名稱（選填，如 台積電）" @keydown.enter="addStock" />
-    <button class="btn" @click="addStock" :disabled="!newStock.ticker.trim()">＋ 加入觀察</button>
+    <input class="pp-field" v-model="newStock.ticker" :placeholder="newStock.market === 'TW' ? '股票代號 (如 2330)' : '股票代號 (如 AAPL)'" @keydown.enter="addStock" />
+    <input class="pp-field" v-model="newStock.name" placeholder="名稱（選填，如 台積電）" @keydown.enter="addStock" />
+    <button class="btn btn-primary" @click="addStock" :disabled="!newStock.ticker.trim()">＋ 加入觀察</button>
   </div>
 
   <div v-if="stocks.length === 0" class="empty-state">
@@ -159,7 +138,7 @@
   </div>
 
   <div class="stock-grid">
-    <div v-for="stock in stocks" :key="stock.id" class="stock-card">
+    <div v-for="stock in stocks" :key="stock.id" class="stock-card glass">
       <div class="stock-card-header">
         <div>
           <span class="stock-ticker">{{ stock.ticker }}</span>
@@ -457,6 +436,7 @@ createApp({
       const data = stock.chartData;
       const validCloses = data.closes.map((v, i) => v != null ? v : null);
 
+      const tc = PPTheme.chartColors();
       chartInstances[stock.id] = new Chart(ctx, {
         type: 'line',
         data: {
@@ -464,8 +444,8 @@ createApp({
           datasets: [{
             label: stock.ticker + ' 收盤價',
             data: validCloses,
-            borderColor: '#4361ee',
-            backgroundColor: 'rgba(67,97,238,.08)',
+            borderColor: '#5b8cff',
+            backgroundColor: 'rgba(91,140,255,.1)',
             borderWidth: 1.5,
             pointRadius: 2,
             pointHoverRadius: 4,
@@ -479,8 +459,8 @@ createApp({
           maintainAspectRatio: false,
           plugins: { legend: { display: false } },
           scales: {
-            x: { ticks: { font: { size: 10 }, maxTicksLimit: 8 }, grid: { display: false } },
-            y: { ticks: { font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.06)' } }
+            x: { ticks: { font: { size: 10 }, maxTicksLimit: 8, color: tc.tick }, grid: { display: false } },
+            y: { ticks: { font: { size: 10 }, color: tc.tick }, grid: { color: tc.grid } }
           },
           interaction: { mode: 'index', intersect: false }
         }
@@ -502,6 +482,7 @@ createApp({
 
         const ctx = canvas.getContext('2d');
         const kd = stock.klineData;
+        const tc = PPTheme.chartColors();
 
         const candleColors = kd.closes.map((c, i) => {
           const o = kd.opens[i];
@@ -566,8 +547,8 @@ createApp({
               }
             }},
             scales: {
-              x: { ticks: { font: { size: 10 }, maxTicksLimit: 8 }, grid: { display: false }, stacked: false },
-              y: { position: 'left', ticks: { font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.06)' }, stacked: false },
+              x: { ticks: { font: { size: 10 }, maxTicksLimit: 8, color: tc.tick }, grid: { display: false }, stacked: false },
+              y: { position: 'left', ticks: { font: { size: 10 }, color: tc.tick }, grid: { color: tc.grid }, stacked: false },
               y1: { position: 'right', ticks: { display: false }, grid: { display: false }, beginAtZero: true, max: Math.max(...(kd.volumes.filter(v => v != null))) * 4 }
             }
           }
@@ -763,6 +744,13 @@ createApp({
       nextTick(() => {
         stocks.value.forEach(s => {
           if (s.chartData) renderChart(s);
+        });
+      });
+      // 日夜模式切換時，用新配色重繪所有圖表
+      window.addEventListener('pp-theme-change', () => {
+        stocks.value.forEach(s => {
+          if (s.chartData) renderChart(s);
+          if (s.activeTab === 'kline' && s.klineData) renderKline(s);
         });
       });
     });

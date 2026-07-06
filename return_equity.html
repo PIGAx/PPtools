@@ -2,11 +2,103 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>個人量化部位與成本控管系統</title>
+    <link rel="stylesheet" href="pp-ui.css">
+    <script src="pp-theme.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      /* ══════════════════════════════════════════════════════════
+         液態玻璃覆寫層：把本頁的 Tailwind 工具類別對應到 pp-ui.css
+         的設計代幣。深淺色由代幣自動切換 —— 本頁原本完全沒有
+         深色樣式（手機夜間模式會整頁刺眼白底），由此層一併修復。
+         選擇器都以 html 開頭墊高特異性，蓋過 CDN 於執行期注入的
+         Tailwind 樣式。
+         ══════════════════════════════════════════════════════════ */
+      html body { background: var(--bg-base); color: var(--text); }
+      html *, html ::before, html ::after { border-color: var(--stroke); }
+
+      /* 卡片 → 玻璃面板 */
+      html .bg-white.shadow-md, html .bg-white.shadow {
+        background: var(--glass);
+        -webkit-backdrop-filter: var(--blur);
+        backdrop-filter: var(--blur);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-inner);
+      }
+      html .bg-gray-100:not(body), html .bg-gray-50, html .bg-gray-200 { background-color: var(--surface-alt); }
+      /* 無 shadow 的 bg-white（例如圖表切換鈕）也不能在深色下保持亮白 */
+      html .bg-white { background-color: var(--surface-alt); }
+
+      /* 表單元件 */
+      html input, html select {
+        background-color: var(--surface-alt);
+        color: var(--text);
+        border-color: var(--stroke);
+        border-radius: 10px;
+        transition: border-color .15s, box-shadow .15s;
+      }
+      html input:focus, html select:focus { border-color: var(--accent); box-shadow: var(--ring); outline: none; }
+      html input.bg-white, html select.bg-white { background-color: var(--surface-alt); }
+
+      /* 文字灰階 → 代幣 */
+      html .text-gray-900, html .text-gray-800 { color: var(--text); }
+      html .text-gray-700, html .text-gray-600 { color: color-mix(in srgb, var(--text) 78%, var(--text-muted)); }
+      html .text-gray-500, html .text-gray-400 { color: var(--text-muted); }
+
+      /* 語意色 → 代幣（台股慣例紅漲綠跌） */
+      html .text-red-600, html .text-red-500 { color: var(--red); }
+      html .text-green-600, html .text-green-500 { color: var(--green); }
+      html .text-blue-600 { color: var(--accent); }
+      html .text-blue-800, html .text-blue-700 { color: var(--accent); }
+      html .text-indigo-600, html .text-indigo-700, html .text-indigo-800 { color: var(--purple); }
+
+      /* 彩色底 chip / 區塊 */
+      html .bg-blue-100 { background-color: var(--accent-light); }
+      html .bg-indigo-50 { background-color: color-mix(in srgb, var(--purple) 10%, transparent); }
+      html .bg-indigo-100 { background-color: color-mix(in srgb, var(--purple) 16%, transparent); }
+      html .bg-red-100 { background-color: color-mix(in srgb, var(--red) 14%, transparent); }
+      html .border-indigo-100 { border-color: color-mix(in srgb, var(--purple) 25%, transparent); }
+      html .border-blue-300 { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+      /* hover 狀態 */
+      html .hover\:bg-gray-100:hover, html .hover\:bg-gray-50:hover { background-color: var(--surface-alt); }
+      html .hover\:bg-indigo-200:hover { background-color: color-mix(in srgb, var(--purple) 24%, transparent); }
+      html .hover\:bg-red-100:hover { background-color: color-mix(in srgb, var(--red) 20%, transparent); }
+
+      /* 主要按鈕 → 玻璃膠囊 */
+      html button.bg-blue-600, html button.bg-indigo-600, html button.bg-red-500 {
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, .3);
+        transition: transform .15s cubic-bezier(.3,.7,.4,1.2), box-shadow .2s, filter .2s;
+      }
+      html button.bg-blue-600 {
+        background: linear-gradient(135deg, #6d96ff, var(--accent-deep));
+        box-shadow: 0 6px 20px rgba(74, 125, 255, .3), inset 0 1px 0 rgba(255,255,255,.35);
+      }
+      html button.bg-indigo-600 {
+        background: linear-gradient(135deg, #a78bfa, #7c3aed);
+        box-shadow: 0 6px 20px rgba(139, 92, 246, .3), inset 0 1px 0 rgba(255,255,255,.35);
+      }
+      html button.bg-red-500 {
+        background: linear-gradient(135deg, #ff8a80, #e6483d);
+        box-shadow: 0 6px 20px rgba(230, 72, 61, .28), inset 0 1px 0 rgba(255,255,255,.35);
+      }
+      html button.hover\:bg-blue-700:hover, html button.hover\:bg-indigo-700:hover, html button.hover\:bg-red-600:hover {
+        filter: brightness(1.06);
+        transform: translateY(-1px);
+      }
+      html button:active { transform: scale(.97); }
+
+      /* 左側彩條統計卡的彩條保留原色 */
+      html .border-blue-500 { border-color: var(--accent); }
+      html .border-green-500 { border-color: var(--green); }
+      html .border-red-500 { border-color: var(--red); }
+      html .border-indigo-500 { border-color: var(--purple); }
+    </style>
 </head>
 <body class="bg-gray-100 font-sans text-gray-800 antialiased">
     <div id="app" class="max-w-7xl mx-auto p-4 md:p-6">
@@ -238,6 +330,19 @@
         let chartInstance = null;
         let netChartInstance = null;
         let allocChartInstance = null;
+
+        // 圖表配色隨日夜模式切換（Chart.js 於 update 時重新解析 defaults）
+        function applyChartTheme() {
+            const tc = PPTheme.chartColors();
+            Chart.defaults.color = tc.tick;
+            Chart.defaults.borderColor = tc.grid;
+            if (allocChartInstance && allocChartInstance.data.datasets[0]) {
+                allocChartInstance.data.datasets[0].borderColor = PPTheme.isDark() ? '#141a2e' : '#ffffff';
+            }
+            [chartInstance, netChartInstance, allocChartInstance].forEach(c => c && c.update());
+        }
+        applyChartTheme();
+        window.addEventListener('pp-theme-change', applyChartTheme);
 
         // 圓餅圖固定配色（依部位加入順序指派，不隨市值排名變動）
         const VIZ_COLORS = ['#2a78d6', '#1baf7a', '#eda100', '#008300', '#4a3aa7', '#e34948', '#e87ba4', '#eb6834'];
@@ -708,7 +813,7 @@
                     allocChartInstance.data.datasets = [{
                         data: values,
                         backgroundColor: colors,
-                        borderColor: '#ffffff',
+                        borderColor: PPTheme.isDark() ? '#141a2e' : '#ffffff',
                         borderWidth: 2,
                         hoverOffset: 6
                     }];

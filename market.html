@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>市場指標</title>
+<link rel="stylesheet" href="pp-ui.css">
+<script src="pp-theme.js"></script>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  .container { max-width: 1080px; margin: 0 auto; padding: 24px 20px 40px; }
+
+  .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+  .page-header h1 { font-size: 21px; font-weight: 800; letter-spacing: .2px; }
+  .status-text { color: var(--text-muted); font-size: 12px; }
+
+  /* 指標統計磚 */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .stat-tile { padding: 16px 18px; border-radius: var(--radius-lg); transition: transform .22s cubic-bezier(.3,.7,.4,1.2), box-shadow .22s; }
+  .stat-tile:hover { transform: translateY(-2px); box-shadow: var(--shadow), inset 0 1px 0 var(--glass-inner); }
+  .stat-label { font-size: 12px; font-weight: 650; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+  .stat-value { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.4px; margin-top: 4px; }
+  .stat-sub { font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .stat-note { font-size: 10.5px; color: var(--text-muted); margin-top: 6px; }
+  .up { color: var(--red); }
+  .down { color: var(--green); }
+  .flat { color: var(--text-muted); }
+
+  /* 圖表卡 */
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } .container { padding: 16px 12px 32px; } }
+  .chart-card { padding: 16px 18px; border-radius: var(--radius-lg); }
+  .chart-card h3 { font-size: 13.5px; font-weight: 700; margin-bottom: 10px; }
+  .chart-box { position: relative; width: 100%; height: 190px; }
+  .chart-box canvas { width: 100% !important; height: 100% !important; }
+
+  /* 詳細表格卡 */
+  .detail-card { padding: 18px; border-radius: var(--radius-lg); margin-bottom: 14px; }
+  .detail-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .detail-sub { font-size: 11.5px; color: var(--text-muted); margin-bottom: 12px; }
+  .detail-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .detail-table th { text-align: left; font-size: 11px; font-weight: 650; color: var(--text-muted); padding: 7px 10px; border-bottom: 1px solid var(--stroke); text-transform: uppercase; letter-spacing: .5px; }
+  .detail-table td { padding: 8px 10px; border-bottom: 1px solid var(--stroke); }
+  .detail-table tr:last-child td { border-bottom: none; }
+  .detail-table td.num { text-align: right; font-weight: 650; }
+  .detail-table th.num { text-align: right; }
+
+  .err-note { font-size: 12px; color: var(--amber); padding: 8px 0; }
+  .src-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .src-link { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--accent); text-decoration: none; padding: 4px 10px; border-radius: 999px; background: var(--accent-light); transition: opacity .15s; }
+  .src-link:hover { opacity: .8; }
+</style>
+</head>
+<body>
+<div id="app" class="container">
+  <div class="page-header">
+    <h1>📊 市場指標</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="status-text">{{ statusText }}</span>
+      <button class="btn btn-sm" @click="refreshAll" :disabled="loading">
+        {{ loading ? '更新中…' : '🔄 全部更新' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- 指標統計磚 -->
+  <div class="stat-grid">
+    <div class="stat-tile glass">
+      <div class="stat-label">💵 美元／台幣</div>
+      <div class="stat-value">{{ fx.price != null ? fx.price.toFixed(3) : '—' }}</div>
+      <div class="stat-sub" :class="pnClass(fx.changePct)" v-if="fx.changePct != null">
+        {{ sign(fx.change, 3) }} ({{ sign(fx.changePct, 2) }}%)
+      </div>
+      <div class="stat-note">Yahoo Finance · USD/TWD</div>
+    </div>
+
+    <div class="stat-tile glass">
+      <div class="stat-label">🇹🇼 加權指數</div>
+      <div class="stat-value">{{ twii.price != null ? fmt(twii.price, 0) : '—' }}</div>
+      <div class="stat-sub" :class="pnClass(twii.changePct)" v-if="twii.changePct != null">
+        {{ sign(twii.change, 0) }} ({{ sign(twii.changePct, 2) }}%)
+      </div>
+      <div class="stat-note">Yahoo Finance · ^TWII</div>
+    </div>
+
+    <div class="stat-tile glass">
+      <div class="stat-label">📈 台指期（近月）</div>
+      <div class="stat-value">{{ tx.last != null ? fmt(tx.last, 0) : '—' }}</div>
+      <div class="stat-sub" :class="pnClass(tx.changePct)" v-if="tx.changePct != null">
+        {{ sign(tx.change, 0) }} ({{ sign(tx.changePct, 2) }}%)
+      </div>
+      <div class="stat-sub flat" v-if="basis != null">
+        期現價差 <b :class="pnClass(basis)">{{ sign(basis, 0) }}</b>
+      </div>
+      <div class="stat-note">期交所 OpenAPI{{ tx.month ? ' · ' + tx.month : '' }}{{ tx.date ? ' · ' + tx.date : '' }}</div>
+    </div>
+
+    <div class="stat-tile glass">
+      <div class="stat-label">🌏 外資台指期淨未平倉</div>
+      <div class="stat-value" :class="pnClass(fi.netOI)">{{ fi.netOI != null ? sign(fi.netOI, 0) : '—' }}</div>
+      <div class="stat-sub flat" v-if="fi.shortOI != null">空方 {{ fmt(fi.shortOI, 0) }} 口 ｜ 多方 {{ fmt(fi.longOI, 0) }} 口</div>
+      <div class="stat-note">期交所三大法人 · 外資及陸資{{ fi.date ? ' · ' + fi.date : '' }}</div>
+    </div>
+  </div>
+
+  <!-- 走勢圖 -->
+  <div class="chart-grid">
+    <div class="chart-card glass">
+      <h3>美元／台幣 — 近一個月</h3>
+      <div class="chart-box"><canvas id="fxChart"></canvas></div>
+    </div>
+    <div class="chart-card glass">
+      <h3>加權指數 — 近一個月</h3>
+      <div class="chart-box"><canvas id="twiiChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- 台指期詳細 -->
+  <div class="detail-card glass" v-if="tx.last != null || tx.error">
+    <h3>台指期近月合約</h3>
+    <div class="detail-sub">臺灣期貨交易所每日行情（日盤）{{ tx.date ? ' · 資料日期 ' + tx.date : '' }}</div>
+    <div v-if="tx.error" class="err-note">⚠ {{ tx.error }}</div>
+    <table class="detail-table" v-else>
+      <tr><th>合約月份</th><th class="num">開盤</th><th class="num">最高</th><th class="num">最低</th><th class="num">收盤</th><th class="num">漲跌</th><th class="num">成交量</th><th class="num">未平倉</th></tr>
+      <tr>
+        <td>{{ tx.month || '—' }}</td>
+        <td class="num">{{ fmt(tx.open, 0) }}</td>
+        <td class="num">{{ fmt(tx.high, 0) }}</td>
+        <td class="num">{{ fmt(tx.low, 0) }}</td>
+        <td class="num">{{ fmt(tx.last, 0) }}</td>
+        <td class="num" :class="pnClass(tx.change)">{{ sign(tx.change, 0) }}</td>
+        <td class="num">{{ fmt(tx.volume, 0) }}</td>
+        <td class="num">{{ fmt(tx.oi, 0) }}</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- 外資期貨部位詳細 -->
+  <div class="detail-card glass" v-if="fi.netOI != null || fi.error">
+    <h3>外資及陸資 — 台指期未平倉部位</h3>
+    <div class="detail-sub">三大法人期貨契約買賣（口數）{{ fi.date ? ' · 資料日期 ' + fi.date : '' }}</div>
+    <div v-if="fi.error" class="err-note">⚠ {{ fi.error }}</div>
+    <table class="detail-table" v-else>
+      <tr><th></th><th class="num">多方口數</th><th class="num">空方口數</th><th class="num">多空淨額</th></tr>
+      <tr>
+        <td>未平倉餘額</td>
+        <td class="num up">{{ fmt(fi.longOI, 0) }}</td>
+        <td class="num down">{{ fmt(fi.shortOI, 0) }}</td>
+        <td class="num" :class="pnClass(fi.netOI)">{{ sign(fi.netOI, 0) }}</td>
+      </tr>
+      <tr v-if="fi.netTrade != null">
+        <td>當日交易淨額</td>
+        <td class="num">{{ fmt(fi.longTrade, 0) }}</td>
+        <td class="num">{{ fmt(fi.shortTrade, 0) }}</td>
+        <td class="num" :class="pnClass(fi.netTrade)">{{ sign(fi.netTrade, 0) }}</td>
+      </tr>
+    </table>
+    <div class="src-links">
+      <a class="src-link" href="https://www.taifex.com.tw/cht/3/futContractsDate" target="_blank" rel="noopener">📄 期交所三大法人</a>
+      <a class="src-link" href="https://www.taifex.com.tw/cht/3/futDailyMarketReport" target="_blank" rel="noopener">📈 期交所每日行情</a>
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, nextTick } = Vue;
+
+const CACHE_KEY = 'pptools-market-cache';
+const STALE_MS = 10 * 60 * 1000; // 快取超過 10 分鐘自動重抓
+
+/* 期交所 OpenAPI 端點（回傳最近一個交易日資料）。
+   若期交所調整端點名稱，改這裡即可。 */
+const TAIFEX_FUT_URL = 'https://openapi.taifex.com.tw/v1/DailyMarketReportFut';
+const TAIFEX_INST_URL = 'https://openapi.taifex.com.tw/v1/MarketDataOfMajorInstitutionalTradersDetailsOfFuturesContractsBytheDate';
+
+/* 部分來源沒開 CORS，先直連、失敗再走公開代理（與其他模組相同模式） */
+const FETCHERS = [
+  u => u,
+  u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+  u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
+];
+
+async function fetchJson(url) {
+  let lastErr = new Error('無可用來源');
+  for (const wrap of FETCHERS) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      const res = await fetch(wrap(url), { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+
+/* ── 寬容欄位取值：期交所 OpenAPI 欄位名稱可能是英文或中文 ── */
+function pick(row, patterns) {
+  for (const key of Object.keys(row)) {
+    for (const p of patterns) {
+      if (p.test(key)) return row[key];
+    }
+  }
+  return null;
+}
+function num(v) {
+  if (v == null) return null;
+  const n = parseFloat(String(v).replace(/[,，\s%]/g, ''));
+  return isNaN(n) ? null : n;
+}
+
+createApp({
+  setup() {
+    const loading = ref(false);
+    const statusText = ref('');
+    const fx = ref({});
+    const twii = ref({});
+    const tx = ref({});
+    const fi = ref({});
+    const charts = {};
+
+    const basis = computed(() => {
+      if (tx.value.last == null || twii.value.price == null) return null;
+      return tx.value.last - twii.value.price;
+    });
+
+    /* ── Yahoo 指數/匯率（與觀察清單相同來源） ── */
+    async function fetchYahoo(symbol) {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1mo&interval=1d&includePrePost=false`;
+      const data = await fetchJson(url);
+      const result = data?.chart?.result?.[0];
+      if (!result) throw new Error('no data for ' + symbol);
+      const meta = result.meta || {};
+      const closes = (result.indicators?.quote?.[0]?.close || []);
+      const timestamps = result.timestamp || [];
+      const validIdx = closes.map((v, i) => v != null ? i : -1).filter(i => i >= 0);
+      const lastIdx = validIdx[validIdx.length - 1];
+      const price = lastIdx != null ? closes[lastIdx] : (meta.regularMarketPrice ?? null);
+      const prev = meta.chartPreviousClose ?? meta.previousClose ?? (validIdx.length > 1 ? closes[validIdx[validIdx.length - 2]] : null);
+      const out = {
+        price,
+        change: (price != null && prev != null) ? price - prev : null,
+        changePct: (price != null && prev) ? (price - prev) / prev * 100 : null,
+        labels: timestamps.map(t => { const d = new Date(t * 1000); return `${d.getMonth() + 1}/${d.getDate()}`; }),
+        closes
+      };
+      return out;
+    }
+
+    /* ── 期交所：台指期近月每日行情 ── */
+    async function fetchTaifexTX() {
+      const rows = await fetchJson(TAIFEX_FUT_URL);
+      if (!Array.isArray(rows)) throw new Error('回傳格式不符');
+      const txRows = rows.filter(r => {
+        const c = pick(r, [/^contract$/i, /契約/]);
+        return c === 'TX' || String(c).includes('臺股期貨');
+      }).filter(r => {
+        const m = String(pick(r, [/contractmonth/i, /到期月份|交割月份/]) || '');
+        return /^\d{6}$/.test(m.trim()); // 排除週選/價差等非單一月份合約
+      }).filter(r => {
+        const s = String(pick(r, [/session/i, /盤別|交易時段/]) || '');
+        return !/after|盤後|夜/i.test(s); // 只取日盤
+      });
+      if (!txRows.length) throw new Error('查無台指期資料');
+      txRows.sort((a, b) => {
+        const ma = String(pick(a, [/contractmonth/i, /到期月份|交割月份/])).trim();
+        const mb = String(pick(b, [/contractmonth/i, /到期月份|交割月份/])).trim();
+        return ma.localeCompare(mb);
+      });
+      const r = txRows[0]; // 近月
+      const last = num(pick(r, [/^last$/i, /close/i, /收盤|最後成交/]));
+      const change = num(pick(r, [/^change$/i, /漲跌價|漲跌$/]));
+      return {
+        month: String(pick(r, [/contractmonth/i, /到期月份|交割月份/]) || '').trim(),
+        date: String(pick(r, [/^date$/i, /日期/]) || '').trim(),
+        open: num(pick(r, [/^open$/i, /開盤/])),
+        high: num(pick(r, [/^high$/i, /最高/])),
+        low: num(pick(r, [/^low$/i, /最低/])),
+        last,
+        change,
+        changePct: (change != null && last != null && last - change !== 0) ? change / (last - change) * 100 : num(pick(r, [/%change/i, /漲跌幅/])),
+        volume: num(pick(r, [/^volume$/i, /成交量/])),
+        oi: num(pick(r, [/openinterest/i, /未沖銷|未平倉/]))
+      };
+    }
+
+    /* ── 期交所：三大法人 → 外資台指期未平倉 ── */
+    async function fetchTaifexForeign() {
+      const rows = await fetchJson(TAIFEX_INST_URL);
+      if (!Array.isArray(rows)) throw new Error('回傳格式不符');
+      const r = rows.find(x => {
+        const c = String(pick(x, [/contract/i, /商品|契約/]) || '');
+        const inv = String(pick(x, [/investor|institut/i, /身份別|身分別/]) || '');
+        return (c === 'TX' || c.includes('臺股期貨')) && inv.includes('外資');
+      });
+      if (!r) throw new Error('查無外資台指期資料');
+      return {
+        date: String(pick(r, [/^date$/i, /日期/]) || '').trim(),
+        longOI: num(pick(r, [/long.*open.*interest.*(volume|lots)?/i, /多方未平倉口數|未平倉.*多方.*口/])),
+        shortOI: num(pick(r, [/short.*open.*interest.*(volume|lots)?/i, /空方未平倉口數|未平倉.*空方.*口/])),
+        netOI: num(pick(r, [/net.*open.*interest.*(volume|lots)?/i, /未平倉.*淨額.*口|多空.*淨額.*未平倉/])),
+        longTrade: num(pick(r, [/long.*trading.*volume/i, /多方交易口數/])),
+        shortTrade: num(pick(r, [/short.*trading.*volume/i, /空方交易口數/])),
+        netTrade: num(pick(r, [/net.*trading.*volume/i, /交易.*淨額.*口/]))
+      };
+    }
+
+    function renderLine(canvasId, series, color) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas || !series || !series.closes) return;
+      if (charts[canvasId]) charts[canvasId].destroy();
+      const tc = PPTheme.chartColors();
+      charts[canvasId] = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: series.labels,
+          datasets: [{
+            data: series.closes,
+            borderColor: color,
+            backgroundColor: color.replace('rgb', 'rgba').replace(')', ',.1)'),
+            borderWidth: 1.5,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            fill: true,
+            tension: .3,
+            spanGaps: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { font: { size: 10 }, maxTicksLimit: 7, color: tc.tick }, grid: { display: false } },
+            y: { ticks: { font: { size: 10 }, color: tc.tick }, grid: { color: tc.grid } }
+          },
+          interaction: { mode: 'index', intersect: false }
+        }
+      });
+    }
+
+    function renderCharts() {
+      nextTick(() => {
+        renderLine('fxChart', fx.value.series, 'rgb(91,140,255)');
+        renderLine('twiiChart', twii.value.series, 'rgb(139,92,246)');
+      });
+    }
+
+    function saveCache() {
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({
+          fetchedAt: Date.now(),
+          fx: fx.value, twii: twii.value, tx: tx.value, fi: fi.value
+        }));
+      } catch (e) {}
+    }
+    function loadCache() {
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (!raw) return null;
+        const c = JSON.parse(raw);
+        fx.value = c.fx || {};
+        twii.value = c.twii || {};
+        tx.value = c.tx || {};
+        fi.value = c.fi || {};
+        return c.fetchedAt || null;
+      } catch (e) { return null; }
+    }
+
+    async function refreshAll() {
+      if (loading.value) return;
+      loading.value = true;
+      statusText.value = '更新中…';
+      const errs = [];
+
+      const [fxr, twr, txr, fir] = await Promise.allSettled([
+        fetchYahoo('TWD=X'), fetchYahoo('^TWII'), fetchTaifexTX(), fetchTaifexForeign()
+      ]);
+
+      if (fxr.status === 'fulfilled') {
+        const v = fxr.value;
+        fx.value = { price: v.price, change: v.change, changePct: v.changePct, series: { labels: v.labels, closes: v.closes } };
+      } else errs.push('匯率');
+      if (twr.status === 'fulfilled') {
+        const v = twr.value;
+        twii.value = { price: v.price, change: v.change, changePct: v.changePct, series: { labels: v.labels, closes: v.closes } };
+      } else errs.push('加權指數');
+      if (txr.status === 'fulfilled') tx.value = txr.value;
+      else { tx.value = { ...tx.value, error: '期交所資料暫時無法取得（' + txr.reason.message + '）' }; errs.push('台指期'); }
+      if (fir.status === 'fulfilled') fi.value = fir.value;
+      else { fi.value = { ...fi.value, error: '期交所資料暫時無法取得（' + fir.reason.message + '）' }; errs.push('外資部位'); }
+
+      renderCharts();
+      saveCache();
+      loading.value = false;
+      statusText.value = errs.length
+        ? `部分更新失敗：${errs.join('、')}`
+        : '更新完成 ' + new Date().toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
+      setTimeout(() => { statusText.value = ''; }, 8000);
+    }
+
+    /* ── 顯示輔助 ── */
+    function fmt(v, d) { return v == null ? '—' : Number(v).toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+    function sign(v, d) { return v == null ? '—' : (v >= 0 ? '+' : '') + fmt(v, d); }
+    function pnClass(v) { return v == null ? 'flat' : (v > 0 ? 'up' : v < 0 ? 'down' : 'flat'); }
+
+    onMounted(() => {
+      const at = loadCache();
+      renderCharts();
+      if (!at || Date.now() - at > STALE_MS) refreshAll();
+      window.addEventListener('pp-theme-change', renderCharts);
+    });
+
+    return { loading, statusText, fx, twii, tx, fi, basis, refreshAll, fmt, sign, pnClass };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
