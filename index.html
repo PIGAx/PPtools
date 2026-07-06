@@ -2,142 +2,105 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PPtools — 個人投資工具平台</title>
+<link rel="stylesheet" href="pp-ui.css">
+<script src="pp-theme.js"></script>
 <style>
   :root {
-    --sidebar-w: 232px;
-    --sidebar-bg: #141827;
-    --sidebar-hover: #1e2340;
-    --sidebar-active: #262d4a;
-    --sidebar-text: #9ba3c2;
-    --sidebar-text-active: #e4e7f1;
-    --sidebar-accent: #5b7fff;
-    --header-h: 52px;
-    --bg: #f3f4f8;
-    --surface: #ffffff;
-    --border: #e2e4ec;
-    --text: #1a1d2e;
-    --text-muted: #6b7194;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0e1019;
-      --surface: #171a28;
-      --border: #262a3c;
-      --text: #d8dae5;
-      --text-muted: #7b7f9a;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #0e1019;
-    --surface: #171a28;
-    --border: #262a3c;
-    --text: #d8dae5;
-    --text-muted: #7b7f9a;
-  }
-  :root[data-theme="light"] {
-    --bg: #f3f4f8;
-    --surface: #ffffff;
-    --border: #e2e4ec;
-    --text: #1a1d2e;
-    --text-muted: #6b7194;
+    --sidebar-w: 244px;
+    --header-h: 56px;
+    --shell-gap: 12px;
   }
 
-  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--text);
+  html, body { height: 100%; }
+  body { overflow: hidden; }
+
+  .shell {
+    display: flex;
+    gap: var(--shell-gap);
     height: 100vh;
-    overflow: hidden;
+    height: 100dvh; /* iOS Safari 網址列伸縮時 100vh 會溢出，dvh 修正 */
+    padding: var(--shell-gap);
+    padding-top: max(var(--shell-gap), env(safe-area-inset-top));
+    padding-bottom: max(var(--shell-gap), env(safe-area-inset-bottom));
   }
 
-  .shell { display: flex; height: 100vh; }
-
-  /* ── Sidebar ── */
+  /* ── 懸浮玻璃側欄 ── */
   .sidebar {
     width: var(--sidebar-w);
-    background: var(--sidebar-bg);
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    flex-shrink: 0;
+    border-radius: var(--radius-lg);
     z-index: 100;
-    transition: transform .25s cubic-bezier(.4,0,.2,1);
+    transition: transform .32s cubic-bezier(.32, .72, .28, 1);
   }
-  .sidebar-brand {
-    padding: 20px 18px 16px;
-    border-bottom: 1px solid rgba(255,255,255,.06);
-  }
+  .sidebar-brand { padding: 22px 20px 16px; }
   .sidebar-brand h1 {
-    font-size: 17px;
-    font-weight: 700;
-    color: #e8ebf4;
+    font-size: 19px;
+    font-weight: 800;
     letter-spacing: .3px;
+    background: linear-gradient(120deg, var(--accent), var(--purple));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
-  .sidebar-brand p {
-    font-size: 11px;
-    color: var(--sidebar-text);
-    margin-top: 3px;
-    letter-spacing: .2px;
-  }
-  .sidebar-nav {
-    flex: 1;
-    padding: 12px 10px;
-    overflow-y: auto;
-  }
+  .sidebar-brand p { font-size: 11px; color: var(--text-muted); margin-top: 3px; letter-spacing: .2px; }
+
+  .sidebar-nav { flex: 1; padding: 4px 12px 12px; overflow-y: auto; }
   .nav-section {
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1.2px;
-    color: rgba(155,163,194,.45);
-    padding: 16px 10px 6px;
+    letter-spacing: 1.4px;
+    color: var(--text-muted);
+    opacity: .65;
+    padding: 18px 12px 7px;
   }
-  .nav-section:first-child { padding-top: 4px; }
   .nav-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
-    border-radius: 7px;
-    color: var(--sidebar-text);
+    gap: 11px;
+    padding: 10px 13px;
+    border-radius: 13px;
+    color: var(--text-muted);
     font-size: 13.5px;
     font-weight: 500;
     cursor: pointer;
-    transition: background .15s, color .15s;
-    text-decoration: none;
     user-select: none;
+    border: 1px solid transparent;
+    transition: background .18s, color .18s, transform .18s, border-color .18s;
   }
-  .nav-item:hover { background: var(--sidebar-hover); color: var(--sidebar-text-active); }
+  .nav-item:hover { background: var(--surface-alt); color: var(--text); }
+  .nav-item:active { transform: scale(.98); }
   .nav-item.active {
-    background: var(--sidebar-active);
-    color: var(--sidebar-text-active);
-    font-weight: 600;
+    background: var(--accent-light);
+    border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+    color: var(--text);
+    font-weight: 650;
+    box-shadow: inset 0 1px 0 var(--glass-inner);
   }
-  .nav-item.active .nav-icon { color: var(--sidebar-accent); }
-  .nav-icon {
-    width: 20px;
-    text-align: center;
-    font-size: 15px;
-    flex-shrink: 0;
-  }
+  .nav-item.active .nav-icon { transform: scale(1.08); }
+  .nav-icon { width: 22px; text-align: center; font-size: 16px; flex-shrink: 0; transition: transform .18s; }
+
   .sidebar-footer {
-    padding: 14px 18px;
-    border-top: 1px solid rgba(255,255,255,.06);
+    padding: 14px 20px;
+    border-top: 1px solid var(--stroke);
     font-size: 11px;
-    color: rgba(155,163,194,.35);
+    color: var(--text-muted);
+    opacity: .6;
   }
 
-  /* ── Main ── */
-  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  /* ── 主區域 ── */
+  .main { flex: 1; display: flex; flex-direction: column; gap: var(--shell-gap); min-width: 0; }
+
   .header {
     height: var(--header-h);
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
+    border-radius: 999px;
     display: flex;
     align-items: center;
-    padding: 0 20px;
+    padding: 0 10px 0 20px;
     gap: 12px;
     flex-shrink: 0;
   }
@@ -146,116 +109,110 @@
     background: none;
     border: none;
     color: var(--text);
-    font-size: 20px;
+    font-size: 21px;
     cursor: pointer;
-    padding: 4px;
+    padding: 6px;
+    margin-left: -6px;
+    border-radius: 10px;
   }
-  .header-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-  }
-  .header-right {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .theme-btn {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 5px 10px;
-    font-size: 12px;
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: border-color .15s;
-  }
-  .theme-btn:hover { border-color: var(--sidebar-accent); color: var(--text); }
+  .menu-btn:active { background: var(--surface-alt); }
+  .header-title { font-size: 14.5px; font-weight: 650; }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 
-  .content-frame {
+  .content {
     flex: 1;
-    border: none;
-    background: var(--bg);
+    min-height: 0;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    position: relative;
+    background: transparent;
   }
+  .content-frame { width: 100%; height: 100%; border: none; display: block; background: transparent; }
 
-  /* ── Overlay for mobile ── */
+  /* ── 行動版遮罩（毛玻璃） ── */
   .sidebar-overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,.45);
+    background: rgba(10, 12, 25, .35);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
     z-index: 99;
+    opacity: 0;
+    transition: opacity .28s;
   }
 
-  /* ── Mobile ── */
+  /* ── 行動版 ── */
   @media (max-width: 768px) {
+    .shell { padding: 8px; padding-top: max(8px, env(safe-area-inset-top)); padding-bottom: max(8px, env(safe-area-inset-bottom)); }
     .sidebar {
       position: fixed;
-      top: 0; left: 0; bottom: 0;
-      transform: translateX(-100%);
+      top: max(8px, env(safe-area-inset-top));
+      left: 8px;
+      bottom: max(8px, env(safe-area-inset-bottom));
+      transform: translateX(calc(-100% - 16px));
+      box-shadow: var(--shadow);
     }
     .sidebar.open { transform: translateX(0); }
-    .sidebar-overlay.open { display: block; }
+    .sidebar-overlay.open { display: block; opacity: 1; }
     .menu-btn { display: block; }
+    .header { padding-left: 14px; }
   }
 
-  /* ── Welcome (default view) ── */
+  /* ── 歡迎頁 ── */
   .welcome {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     height: 100%;
-    background: var(--bg);
+    overflow-y: auto; /* 手機上卡片超出視窗高度時必須可捲動 */
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    justify-content: center;
   }
   .welcome-inner {
+    width: 100%;
+    max-width: 720px;
+    padding: clamp(28px, 6vh, 64px) 22px 40px;
     text-align: center;
-    max-width: 420px;
-    padding: 40px 24px;
   }
-  .welcome-inner h2 {
-    font-size: 22px;
-    font-weight: 700;
-    margin-bottom: 10px;
-    color: var(--text);
-  }
-  .welcome-inner p {
-    font-size: 14px;
-    color: var(--text-muted);
-    line-height: 1.7;
-  }
+  .welcome-inner h2 { font-size: clamp(22px, 4vw, 30px); font-weight: 800; margin-bottom: 10px; letter-spacing: .3px; }
+  .welcome-inner > p { font-size: 14px; color: var(--text-muted); line-height: 1.7; }
+
   .module-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 12px;
-    margin-top: 24px;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 14px;
+    margin-top: 30px;
   }
   .module-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 18px 14px;
+    padding: 22px 16px 18px;
     cursor: pointer;
-    transition: border-color .2s, box-shadow .2s;
     text-align: center;
+    transition: transform .22s cubic-bezier(.3, .7, .4, 1.2), box-shadow .22s;
   }
-  .module-card:hover {
-    border-color: var(--sidebar-accent);
-    box-shadow: 0 2px 12px rgba(91,127,255,.12);
+  .module-card:hover { transform: translateY(-3px); box-shadow: var(--shadow), inset 0 1px 0 var(--glass-inner); }
+  .module-card:active { transform: scale(.97); }
+  .module-card .card-icon {
+    font-size: 26px;
+    width: 56px; height: 56px;
+    margin: 0 auto 12px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 18px;
+    background: var(--accent-light);
+    box-shadow: inset 0 1px 0 var(--glass-inner);
   }
-  .module-card .card-icon { font-size: 24px; margin-bottom: 8px; }
-  .module-card .card-title { font-size: 13px; font-weight: 600; color: var(--text); }
-  .module-card .card-desc { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .module-card .card-title { font-size: 13.5px; font-weight: 650; }
+  .module-card .card-desc { font-size: 11px; color: var(--text-muted); margin-top: 5px; line-height: 1.5; }
 </style>
 </head>
 <body>
 
 <div class="shell">
-  <!-- Sidebar Overlay (mobile) -->
+  <!-- 行動版遮罩 -->
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
-  <!-- Sidebar -->
-  <aside class="sidebar" id="sidebar">
+  <!-- 側欄 -->
+  <aside class="sidebar glass" id="sidebar">
     <div class="sidebar-brand">
       <h1>PPtools</h1>
       <p>個人投資工具平台</p>
@@ -268,26 +225,27 @@
     </div>
   </aside>
 
-  <!-- Main -->
+  <!-- 主區域 -->
   <div class="main">
-    <header class="header">
-      <button class="menu-btn" onclick="toggleSidebar()">&#9776;</button>
+    <header class="header glass">
+      <button class="menu-btn" onclick="toggleSidebar()" aria-label="開啟選單">&#9776;</button>
       <span class="header-title" id="headerTitle">總覽</span>
       <div class="header-right">
-        <button class="theme-btn" onclick="openDataHub()" id="syncBtn" title="資料中心">☁ 同步</button>
-        <button class="theme-btn" onclick="cycleTheme()" id="themeBtn">☀ 淺色</button>
+        <button class="btn btn-sm" onclick="openDataHub()" id="syncBtn" title="資料中心">☁ 同步</button>
+        <button class="btn btn-sm" onclick="onThemeClick()" id="themeBtn">⚙ 系統</button>
       </div>
     </header>
 
-    <div id="welcomeView" class="welcome">
-      <div class="welcome-inner">
-        <h2>歡迎使用 PPtools</h2>
-        <p>從左側選單選擇模組，或點擊下方卡片快速開始。</p>
-        <div class="module-grid" id="moduleGrid"></div>
+    <div class="content">
+      <div id="welcomeView" class="welcome">
+        <div class="welcome-inner">
+          <h2>歡迎使用 PPtools</h2>
+          <p>從左側選單選擇模組，或點擊下方卡片快速開始。</p>
+          <div class="module-grid" id="moduleGrid"></div>
+        </div>
       </div>
+      <iframe id="contentFrame" class="content-frame" style="display:none" title="模組內容"></iframe>
     </div>
-
-    <iframe id="contentFrame" class="content-frame" style="display:none"></iframe>
   </div>
 </div>
 
@@ -303,6 +261,14 @@ const MODULES = [
     icon: '📋',
     desc: '台美股標的追蹤、走勢與財務資訊',
     src: 'watchlist.html',
+    section: '分析工具'
+  },
+  {
+    id: 'market',
+    title: '市場指標',
+    icon: '📊',
+    desc: '台幣匯率、台指期與外資期貨部位',
+    src: 'market.html',
     section: '分析工具'
   },
   {
@@ -378,7 +344,7 @@ function buildNav() {
     nav.appendChild(item);
 
     const card = document.createElement('div');
-    card.className = 'module-card';
+    card.className = 'module-card glass';
     card.onclick = () => loadModule(m);
     card.innerHTML = `<div class="card-icon">${m.icon}</div><div class="card-title">${m.title}</div><div class="card-desc">${m.desc}</div>`;
     grid.appendChild(card);
@@ -418,26 +384,14 @@ function toggleSidebar() {
   document.getElementById('sidebarOverlay').classList.toggle('open');
 }
 
-// Theme
-function getStoredTheme() { return localStorage.getItem('pptools-theme') || 'system'; }
-function applyTheme(t) {
-  const btn = document.getElementById('themeBtn');
-  if (t === 'dark') {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    btn.textContent = '☾ 深色';
-  } else if (t === 'light') {
-    document.documentElement.setAttribute('data-theme', 'light');
-    btn.textContent = '☀ 淺色';
-  } else {
-    document.documentElement.removeAttribute('data-theme');
-    btn.textContent = '⚙ 系統';
-  }
-  localStorage.setItem('pptools-theme', t);
+// ── 主題：引擎在 pp-theme.js，storage 事件會同步到 iframe 內的模組 ──
+const THEME_LABEL = { system: '⚙ 系統', light: '☀ 淺色', dark: '☾ 深色' };
+function refreshThemeBtn() {
+  document.getElementById('themeBtn').textContent = THEME_LABEL[PPTheme.get()];
 }
-function cycleTheme() {
-  const order = ['system', 'light', 'dark'];
-  const cur = getStoredTheme();
-  applyTheme(order[(order.indexOf(cur) + 1) % 3]);
+function onThemeClick() {
+  PPTheme.cycle();
+  refreshThemeBtn();
 }
 
 // Data hub shortcut
@@ -459,7 +413,7 @@ function refreshSyncHint() {
 
 // Init
 buildNav();
-applyTheme(getStoredTheme());
+refreshThemeBtn();
 
 // PPStore — 自動備份引擎（只在 portal shell 運作）
 if (window.PPStore) {

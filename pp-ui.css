@@ -1,0 +1,230 @@
+/* ════════════════════════════════════════════════════════════
+   PP-UI — PPtools 液態玻璃設計系統（iOS 26 Liquid Glass 風格）
+   全站共用：設計代幣（tokens）、環境光背景、玻璃面板、按鈕、
+   徽章與捲軸。所有頁面載入本檔後，各自的版面樣式引用這些
+   變數，即可維持一致的日夜模式與玻璃質感。
+   主題規則：
+     - 預設跟隨系統（prefers-color-scheme）
+     - html[data-theme="dark" / "light"] 由 pp-theme.js 強制覆寫
+   ════════════════════════════════════════════════════════════ */
+
+:root {
+  /* 色彩 — 淺色 */
+  --bg-base: #eef1f9;
+  --glass: rgba(255, 255, 255, .58);
+  --glass-strong: rgba(255, 255, 255, .8);
+  --glass-border: rgba(255, 255, 255, .75);
+  --glass-inner: rgba(255, 255, 255, .95);
+  --stroke: rgba(20, 25, 50, .08);
+  --surface-alt: rgba(110, 120, 165, .1);
+  --text: #1b1e2e;
+  --text-muted: #5f6684;
+  --shadow: 0 12px 40px rgba(30, 40, 90, .13);
+  --shadow-sm: 0 4px 16px rgba(30, 40, 90, .09);
+
+  /* 品牌與語意色（台股慣例：紅漲綠跌） */
+  --accent: #4a7dff;
+  --accent-deep: #3f5ef0;
+  --accent-light: rgba(74, 125, 255, .12);
+  --red: #e6483d;
+  --green: #1fa15c;
+  --amber: #d98a0b;
+  --purple: #8b5cf6;
+  --teal: #0ea5a5;
+  --orange: #ee7a2f;
+
+  /* 幾何 */
+  --radius-lg: 24px;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --blur: blur(28px) saturate(180%);
+  --ring: 0 0 0 3px rgba(74, 125, 255, .3);
+
+  color-scheme: light;
+}
+
+/* 深色（跟隨系統，且未被手動指定為淺色時） */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-base: #0a0c15;
+    --glass: rgba(26, 30, 50, .55);
+    --glass-strong: rgba(30, 34, 56, .8);
+    --glass-border: rgba(255, 255, 255, .1);
+    --glass-inner: rgba(255, 255, 255, .08);
+    --stroke: rgba(255, 255, 255, .08);
+    --surface-alt: rgba(255, 255, 255, .07);
+    --text: #e6e8f2;
+    --text-muted: #8e94b4;
+    --shadow: 0 12px 40px rgba(0, 0, 0, .5);
+    --shadow-sm: 0 4px 16px rgba(0, 0, 0, .35);
+    --accent: #6d96ff;
+    --accent-light: rgba(109, 150, 255, .16);
+    --red: #ff6259;
+    --green: #34c979;
+    --amber: #f5a623;
+    --ring: 0 0 0 3px rgba(109, 150, 255, .35);
+    color-scheme: dark;
+  }
+}
+
+/* 深色（使用者手動指定） */
+:root[data-theme="dark"] {
+  --bg-base: #0a0c15;
+  --glass: rgba(26, 30, 50, .55);
+  --glass-strong: rgba(30, 34, 56, .8);
+  --glass-border: rgba(255, 255, 255, .1);
+  --glass-inner: rgba(255, 255, 255, .08);
+  --stroke: rgba(255, 255, 255, .08);
+  --surface-alt: rgba(255, 255, 255, .07);
+  --text: #e6e8f2;
+  --text-muted: #8e94b4;
+  --shadow: 0 12px 40px rgba(0, 0, 0, .5);
+  --shadow-sm: 0 4px 16px rgba(0, 0, 0, .35);
+  --accent: #6d96ff;
+  --accent-light: rgba(109, 150, 255, .16);
+  --red: #ff6259;
+  --green: #34c979;
+  --amber: #f5a623;
+  --ring: 0 0 0 3px rgba(109, 150, 255, .35);
+  color-scheme: dark;
+}
+
+/* ── 基礎 ── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro TC', 'Segoe UI', system-ui, 'PingFang TC', 'Noto Sans TC', sans-serif;
+  background: var(--bg-base);
+  color: var(--text);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 環境光背景（iOS 上 background-attachment: fixed 失效，改用固定偽元素） */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 700px at 8% -10%, rgba(94, 130, 255, .18), transparent 62%),
+    radial-gradient(900px 620px at 102% -4%, rgba(56, 189, 248, .15), transparent 60%),
+    radial-gradient(1000px 800px at 50% 118%, rgba(214, 111, 255, .12), transparent 62%),
+    var(--bg-base);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body::before {
+    background:
+      radial-gradient(1100px 700px at 8% -10%, rgba(84, 112, 255, .2), transparent 62%),
+      radial-gradient(900px 620px at 102% -4%, rgba(0, 170, 255, .12), transparent 60%),
+      radial-gradient(1000px 800px at 50% 118%, rgba(170, 80, 255, .13), transparent 62%),
+      var(--bg-base);
+  }
+}
+:root[data-theme="dark"] body::before {
+  background:
+    radial-gradient(1100px 700px at 8% -10%, rgba(84, 112, 255, .2), transparent 62%),
+    radial-gradient(900px 620px at 102% -4%, rgba(0, 170, 255, .12), transparent 60%),
+    radial-gradient(1000px 800px at 50% 118%, rgba(170, 80, 255, .13), transparent 62%),
+    var(--bg-base);
+}
+
+/* ── 玻璃面板 ── */
+.glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-inner);
+}
+.glass-card { padding: 18px; }
+
+/* 不支援 backdrop-filter 的瀏覽器改用實色 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass { background: var(--glass-strong); }
+}
+
+/* ── 按鈕 ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-inner);
+  cursor: pointer;
+  user-select: none;
+  transition: transform .15s cubic-bezier(.3, .7, .4, 1.2), box-shadow .2s, background .2s, color .2s;
+}
+.btn:hover { transform: translateY(-1px); box-shadow: var(--shadow), inset 0 1px 0 var(--glass-inner); }
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.btn:focus-visible { outline: none; box-shadow: var(--ring); }
+
+.btn-primary {
+  background: linear-gradient(135deg, #6d96ff, var(--accent-deep));
+  border-color: rgba(255, 255, 255, .35);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(74, 125, 255, .35), inset 0 1px 0 rgba(255, 255, 255, .35);
+}
+.btn-primary:hover { box-shadow: 0 8px 26px rgba(74, 125, 255, .45), inset 0 1px 0 rgba(255, 255, 255, .35); }
+
+.btn-danger { color: var(--red); }
+.btn-danger:hover { border-color: var(--red); }
+
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+
+/* ── 表單元件（頁面加上 .pp-field 即套用玻璃輸入框） ── */
+.pp-field {
+  font-size: 13px;
+  font-family: inherit;
+  padding: 9px 13px;
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: var(--surface-alt);
+  color: var(--text);
+  outline: none;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.pp-field:focus { border-color: var(--accent); box-shadow: var(--ring); background: var(--glass-strong); }
+.pp-field::placeholder { color: var(--text-muted); opacity: .75; }
+select.pp-field { -webkit-appearance: none; appearance: none; }
+
+/* ── 徽章 ── */
+.pp-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+/* ── 捲軸 ── */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 35%, transparent);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ── 動效偏好 ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
