@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>產業族群筆記</title>
+<link rel="stylesheet" href="pp-ui.css">
+<script src="pp-theme.js"></script>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script>window.Vue || document.write('<script src="vue.global.prod.js"><\/script>')</script>
+<style>
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px 20px 40px; height: 100vh; display: flex; flex-direction: column; }
+
+  .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; flex-shrink: 0; }
+  .page-header h1 { font-size: 21px; font-weight: 800; letter-spacing: .2px; }
+
+  .layout { display: flex; gap: 14px; flex: 1; min-height: 0; }
+
+  /* ── 族群列表面板 ── */
+  .sector-panel {
+    width: 240px; flex-shrink: 0;
+    display: flex; flex-direction: column;
+    border-radius: var(--radius-lg); overflow: hidden;
+  }
+  .sector-panel-header { padding: 14px 16px 10px; border-bottom: 1px solid var(--stroke); }
+  .sector-panel-header h2 { font-size: 13px; font-weight: 700; color: var(--text-muted); letter-spacing: .5px; }
+  .sector-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .sector-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 14px; border-radius: 13px; cursor: pointer;
+    color: var(--text-muted); font-size: 13.5px; font-weight: 500;
+    border: 1px solid transparent;
+    transition: background .15s, color .15s, border-color .15s;
+    margin-bottom: 2px;
+  }
+  .sector-item:hover { background: var(--surface-alt); color: var(--text); }
+  .sector-item.active {
+    background: var(--accent-light); color: var(--text); font-weight: 650;
+    border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+    box-shadow: inset 0 1px 0 var(--glass-inner);
+  }
+  .sector-item .count {
+    margin-left: auto; font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 999px;
+    background: var(--surface-alt); color: var(--text-muted);
+  }
+  .sector-item.active .count { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+  .sector-add-row { padding: 8px; border-top: 1px solid var(--stroke); display: flex; gap: 6px; }
+  .sector-add-row input { flex: 1; min-width: 0; }
+
+  /* ── drag ── */
+  .sector-item.dragging { opacity: .4; }
+  .sector-item.drag-over { border-color: var(--accent); background: var(--accent-light); }
+
+  /* ── 主內容面板 ── */
+  .main-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; border-radius: var(--radius-lg); overflow: hidden; }
+  .main-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 14px; text-align: center; padding: 40px; }
+
+  /* 族群 header */
+  .sector-header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 16px 20px 12px; border-bottom: 1px solid var(--stroke);
+  }
+  .sector-title { font-size: 18px; font-weight: 800; }
+  .sector-title-input {
+    font-size: 18px; font-weight: 800; background: none; border: none; color: var(--text);
+    border-bottom: 2px solid var(--accent); outline: none; padding: 0 0 2px; min-width: 120px;
+  }
+  .sector-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .sector-body { flex: 1; overflow-y: auto; }
+
+  /* ── 股票報價區 ── */
+  .stocks-section { padding: 14px 20px 10px; }
+  .stocks-section-title { font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: .5px; margin-bottom: 10px; }
+
+  .add-stock-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .add-stock-bar input { flex: 1; min-width: 100px; }
+  .add-stock-bar select { min-width: 80px; }
+
+  .stock-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: var(--radius-sm);
+    border: 1px solid var(--stroke); margin-bottom: 6px;
+    transition: background .12s;
+  }
+  .stock-row:hover { background: var(--surface-alt); }
+  .stock-info { flex: 1; min-width: 0; }
+  .stock-name-line { display: flex; align-items: center; gap: 8px; }
+  .stock-ticker-tag { font-size: 14px; font-weight: 750; }
+  .stock-display-name { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .market-badge {
+    font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+    flex-shrink: 0; letter-spacing: .3px;
+  }
+  .market-badge.tw { background: rgba(231, 76, 60, .15); color: var(--red); }
+  .market-badge.us { background: rgba(74, 125, 255, .15); color: var(--accent); }
+  .market-badge.jp { background: rgba(245, 166, 35, .15); color: var(--amber); }
+
+  .stock-price-area { text-align: right; flex-shrink: 0; }
+  .stock-price-val { font-size: 16px; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .stock-change-val { font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .up { color: var(--red); }
+  .down { color: var(--green); }
+
+  .stock-del { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 15px; padding: 4px 6px; border-radius: 8px; opacity: .4; transition: opacity .12s; }
+  .stock-del:hover { opacity: 1; color: var(--red); }
+
+  .stock-loading { font-size: 12px; color: var(--text-muted); }
+
+  /* ── 筆記區 ── */
+  .notes-section { padding: 10px 20px 20px; }
+  .notes-section-title { font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: .5px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+
+  .note-card {
+    border: 1px solid var(--stroke); border-radius: var(--radius-sm);
+    padding: 14px 16px; margin-bottom: 10px; position: relative;
+    background: var(--surface-alt); transition: border-color .15s;
+  }
+  .note-card:focus-within { border-color: var(--accent); }
+  .note-content {
+    width: 100%; min-height: 60px; max-height: 300px;
+    background: none; border: none; color: var(--text); font-size: 13px;
+    line-height: 1.7; resize: vertical; outline: none; font-family: inherit;
+  }
+  .note-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .note-time { font-size: 10.5px; color: var(--text-muted); }
+  .note-del { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 2px 6px; border-radius: 6px; opacity: .4; margin-left: auto; }
+  .note-del:hover { opacity: 1; color: var(--red); }
+
+  .add-note-btn { width: 100%; padding: 10px; border: 2px dashed var(--stroke); border-radius: var(--radius-sm); background: none; color: var(--text-muted); font-size: 13px; font-family: inherit; cursor: pointer; transition: border-color .15s, color .15s; }
+  .add-note-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── 分隔線 ── */
+  .section-divider { border: none; border-top: 1px solid var(--stroke); margin: 6px 20px; }
+
+  /* ── 空狀態 ── */
+  .empty-hint { text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px; }
+  .empty-hint h3 { font-size: 15px; margin-bottom: 6px; color: var(--text); }
+
+  /* 匯入 Modal */
+  .modal-mask { position: fixed; inset: 0; background: rgba(10,12,25,.45); backdrop-filter: blur(8px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .modal-box { width: 100%; max-width: 480px; border-radius: var(--radius-lg); padding: 28px 24px 22px; max-height: 80vh; overflow-y: auto; }
+  .modal-title { font-size: 17px; font-weight: 750; margin-bottom: 14px; }
+  .modal-field { width: 100%; margin-bottom: 10px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .container { padding: 14px 10px 32px; }
+    .layout { flex-direction: column; }
+    .sector-panel { width: 100%; max-height: 200px; }
+    .sector-list { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding: 6px 8px; }
+    .sector-item { white-space: nowrap; margin-bottom: 0; flex-shrink: 0; padding: 8px 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="app" class="container">
+
+  <div class="page-header">
+    <h1>產業族群筆記</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span v-if="statusText" style="font-size:12px;color:var(--text-muted)">{{ statusText }}</span>
+      <button class="btn btn-sm" @click="refreshAllQuotes" :disabled="refreshing">
+        {{ refreshing ? '更新中…' : '全部更新報價' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <!-- 族群列表 -->
+    <div class="sector-panel glass">
+      <div class="sector-panel-header">
+        <h2>族群列表</h2>
+      </div>
+      <div class="sector-list">
+        <div
+          v-for="(sec, idx) in sectors" :key="sec.id"
+          class="sector-item"
+          :class="{ active: activeSectorId === sec.id, dragging: dragIdx === idx, 'drag-over': dragOverIdx === idx }"
+          @click="selectSector(sec.id)"
+          draggable="true"
+          @dragstart="onDragStart(idx, $event)"
+          @dragover.prevent="onDragOver(idx)"
+          @dragleave="onDragLeave"
+          @drop="onDrop(idx)"
+          @dragend="onDragEnd"
+        >
+          <span>{{ sec.name }}</span>
+          <span class="count">{{ sec.stocks.length }}</span>
+        </div>
+        <div v-if="!sectors.length" style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;">
+          尚無族群，在下方新增
+        </div>
+      </div>
+      <div class="sector-add-row">
+        <input class="pp-field" style="font-size:12px;padding:7px 10px" v-model="newSectorName" placeholder="族群名稱" @keydown.enter="addSector" />
+        <button class="btn btn-sm btn-primary" @click="addSector" :disabled="!newSectorName.trim()">+</button>
+      </div>
+    </div>
+
+    <!-- 主內容 -->
+    <div class="main-panel glass">
+      <template v-if="activeSector">
+        <!-- Sector Header -->
+        <div class="sector-header">
+          <template v-if="!editingTitle">
+            <span class="sector-title" @dblclick="startEditTitle">{{ activeSector.name }}</span>
+          </template>
+          <template v-else>
+            <input class="sector-title-input" v-model="editTitleValue" @keydown.enter="finishEditTitle" @blur="finishEditTitle" ref="titleInput" />
+          </template>
+          <div class="sector-actions">
+            <button class="btn btn-sm" @click="refreshSectorQuotes(activeSector)" :disabled="refreshing">更新報價</button>
+            <button class="btn btn-sm" @click="showImportModal = true">批次匯入</button>
+            <button class="btn btn-sm btn-danger" @click="deleteSector(activeSector.id)">刪除族群</button>
+          </div>
+        </div>
+
+        <div class="sector-body">
+          <!-- 股票清單 -->
+          <div class="stocks-section">
+            <div class="stocks-section-title">成分股（{{ activeSector.stocks.length }}）</div>
+
+            <div class="add-stock-bar">
+              <select class="pp-field" style="font-size:12px;padding:7px 10px" v-model="newStock.market">
+                <option value="TW">台股</option>
+                <option value="US">美股</option>
+                <option value="JP">日股</option>
+              </select>
+              <input class="pp-field" style="font-size:12px;padding:7px 10px" v-model="newStock.ticker" :placeholder="tickerPlaceholder" @keydown.enter="addStock" />
+              <input class="pp-field" style="font-size:12px;padding:7px 10px" v-model="newStock.name" placeholder="名稱（選填）" @keydown.enter="addStock" />
+              <button class="btn btn-sm btn-primary" @click="addStock" :disabled="!newStock.ticker.trim()">加入</button>
+            </div>
+
+            <div v-if="!activeSector.stocks.length" class="empty-hint">
+              <h3>尚無成分股</h3>
+              <p>從上方加入台股、美股或日股代號</p>
+            </div>
+
+            <div v-for="s in activeSector.stocks" :key="s.id" class="stock-row">
+              <span class="market-badge" :class="s.market.toLowerCase()">{{ marketLabel(s.market) }}</span>
+              <div class="stock-info">
+                <div class="stock-name-line">
+                  <span class="stock-ticker-tag">{{ s.ticker }}</span>
+                  <span class="stock-display-name">{{ s.name }}</span>
+                </div>
+              </div>
+              <div class="stock-price-area" v-if="s.price != null">
+                <div class="stock-price-val">{{ fmtPrice(s.price, s.market) }}</div>
+                <div class="stock-change-val" :class="changeClass(s.change)">
+                  {{ s.change != null ? ((s.change >= 0 ? '▲' : '▼') + ' ' + Math.abs(s.change).toFixed(2)) : '' }}
+                  <span v-if="s.changePct != null">({{ (s.changePct >= 0 ? '+' : '') + s.changePct.toFixed(2) }}%)</span>
+                </div>
+              </div>
+              <div class="stock-price-area" v-else>
+                <span class="stock-loading">{{ s.loading ? '載入中…' : '—' }}</span>
+              </div>
+              <button class="stock-del" @click="removeStock(activeSector, s.id)" title="移除">×</button>
+            </div>
+          </div>
+
+          <hr class="section-divider" />
+
+          <!-- 筆記區 -->
+          <div class="notes-section">
+            <div class="notes-section-title">
+              <span>研究筆記（{{ activeSector.notes.length }}）</span>
+            </div>
+
+            <div v-for="note in sortedNotes" :key="note.id" class="note-card">
+              <textarea
+                class="note-content"
+                v-model="note.content"
+                @input="onNoteInput(note)"
+                placeholder="寫下你的觀察和研究…"
+              ></textarea>
+              <div class="note-meta">
+                <span class="note-time">{{ fmtTime(note.updatedAt || note.createdAt) }}</span>
+                <button class="note-del" @click="removeNote(activeSector, note.id)" title="刪除筆記">刪除</button>
+              </div>
+            </div>
+
+            <button class="add-note-btn" @click="addNote(activeSector)">＋ 新增筆記</button>
+          </div>
+        </div>
+      </template>
+
+      <div v-else class="main-empty">
+        <div>
+          <div style="font-size:36px;margin-bottom:12px;opacity:.5">📂</div>
+          <h3 style="font-size:16px;margin-bottom:6px">選擇或新增一個產業族群</h3>
+          <p style="font-size:13px">建立族群，加入標的與研究筆記</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批次匯入 Modal -->
+  <div class="modal-mask" v-if="showImportModal" @click.self="showImportModal = false">
+    <div class="modal-box glass">
+      <div class="modal-title">批次匯入成分股</div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.6">
+        每行一檔，格式：<code>市場 代號 名稱</code>（名稱選填）<br>
+        市場可輸入 TW / US / JP<br>
+        範例：
+      </p>
+      <pre style="font-size:11px;background:var(--surface-alt);padding:10px 14px;border-radius:8px;margin-bottom:12px;line-height:1.8;overflow-x:auto">TW 6515 穎崴
+TW 6510 精測
+US FORM 福達
+JP 6857 愛德萬測試</pre>
+      <textarea class="pp-field modal-field" v-model="importText" rows="8" placeholder="在此貼上..."></textarea>
+      <div class="modal-actions">
+        <button class="btn btn-sm" @click="showImportModal = false">取消</button>
+        <button class="btn btn-sm btn-primary" @click="doBatchImport">匯入</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, nextTick, watch } = Vue;
+
+const STORAGE_KEY = 'pptools-sector-notes';
+
+const FETCHERS = [
+  { wrap: u => u, timeout: 10000 },
+  { wrap: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 20000 },
+  { wrap: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), timeout: 25000 },
+  { wrap: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u), timeout: 20000 }
+];
+
+async function fetchVia(url) {
+  const errs = [];
+  for (const f of FETCHERS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), f.timeout);
+    try {
+      const res = await fetch(f.wrap(url), { signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (e) {
+      errs.push(e.message || String(e));
+    } finally { clearTimeout(timer); }
+  }
+  throw new Error(errs.join(', '));
+}
+
+function yahooSymbol(ticker, market) {
+  if (market === 'US') return ticker;
+  if (market === 'JP') return ticker + '.T';
+  return ticker + '.TW';
+}
+function yahooFallback(ticker, market) {
+  if (market === 'TW') return ticker + '.TWO';
+  return null;
+}
+
+createApp({
+  setup() {
+    const sectors = ref([]);
+    const activeSectorId = ref(null);
+    const newSectorName = ref('');
+    const newStock = ref({ ticker: '', name: '', market: 'TW' });
+    const refreshing = ref(false);
+    const statusText = ref('');
+    const editingTitle = ref(false);
+    const editTitleValue = ref('');
+    const showImportModal = ref(false);
+    const importText = ref('');
+    const titleInput = ref(null);
+
+    const dragIdx = ref(null);
+    const dragOverIdx = ref(null);
+
+    let saveTimer = null;
+
+    const activeSector = computed(() => sectors.value.find(s => s.id === activeSectorId.value) || null);
+    const sortedNotes = computed(() => {
+      if (!activeSector.value) return [];
+      return [...activeSector.value.notes].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    });
+    const tickerPlaceholder = computed(() => {
+      const m = newStock.value.market;
+      if (m === 'TW') return '代號（如 2330）';
+      if (m === 'US') return '代號（如 AAPL）';
+      return '代號（如 6857）';
+    });
+
+    function load() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          sectors.value = (parsed.sectors || []).map(s => ({
+            ...s,
+            stocks: (s.stocks || []).map(st => ({ ...st, loading: false })),
+            notes: s.notes || []
+          }));
+          if (parsed.activeSectorId && sectors.value.some(s => s.id === parsed.activeSectorId)) {
+            activeSectorId.value = parsed.activeSectorId;
+          }
+        }
+      } catch (e) { console.warn('load error', e); }
+    }
+
+    function save() {
+      const data = {
+        sectors: sectors.value.map(s => ({
+          id: s.id, name: s.name, createdAt: s.createdAt,
+          stocks: s.stocks.map(st => ({
+            id: st.id, ticker: st.ticker, name: st.name, market: st.market,
+            price: st.price, change: st.change, changePct: st.changePct,
+            lastUpdate: st.lastUpdate
+          })),
+          notes: s.notes.map(n => ({
+            id: n.id, content: n.content, createdAt: n.createdAt, updatedAt: n.updatedAt
+          }))
+        })),
+        activeSectorId: activeSectorId.value
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function debounceSave() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(save, 400);
+    }
+
+    function selectSector(id) {
+      activeSectorId.value = id;
+      save();
+    }
+
+    function addSector() {
+      const name = newSectorName.value.trim();
+      if (!name) return;
+      const sec = {
+        id: 's' + Date.now(),
+        name,
+        stocks: [],
+        notes: [],
+        createdAt: new Date().toISOString()
+      };
+      sectors.value.push(sec);
+      activeSectorId.value = sec.id;
+      newSectorName.value = '';
+      save();
+    }
+
+    function deleteSector(id) {
+      if (!confirm('確定刪除此族群？所有成分股與筆記將一併刪除。')) return;
+      sectors.value = sectors.value.filter(s => s.id !== id);
+      if (activeSectorId.value === id) {
+        activeSectorId.value = sectors.value.length ? sectors.value[0].id : null;
+      }
+      save();
+    }
+
+    function startEditTitle() {
+      if (!activeSector.value) return;
+      editingTitle.value = true;
+      editTitleValue.value = activeSector.value.name;
+      nextTick(() => { if (titleInput.value) titleInput.value.focus(); });
+    }
+    function finishEditTitle() {
+      if (!activeSector.value || !editingTitle.value) return;
+      const v = editTitleValue.value.trim();
+      if (v) activeSector.value.name = v;
+      editingTitle.value = false;
+      save();
+    }
+
+    function addStock() {
+      if (!activeSector.value) return;
+      const t = newStock.value.ticker.trim().toUpperCase();
+      if (!t) return;
+      if (activeSector.value.stocks.some(s => s.ticker === t && s.market === newStock.value.market)) {
+        alert('此標的已在族群中'); return;
+      }
+      const st = {
+        id: 'st' + Date.now() + Math.random().toString(36).slice(2, 5),
+        ticker: t,
+        name: newStock.value.name.trim(),
+        market: newStock.value.market,
+        price: null, change: null, changePct: null,
+        lastUpdate: null, loading: false
+      };
+      activeSector.value.stocks.push(st);
+      newStock.value.ticker = '';
+      newStock.value.name = '';
+      save();
+      fetchQuote(st);
+    }
+
+    function removeStock(sector, id) {
+      sector.stocks = sector.stocks.filter(s => s.id !== id);
+      save();
+    }
+
+    async function fetchQuote(stock) {
+      stock.loading = true;
+      try {
+        let sym = yahooSymbol(stock.ticker, stock.market);
+        let result;
+        try {
+          result = await fetchYahooChart(sym);
+        } catch (e) {
+          const fb = yahooFallback(stock.ticker, stock.market);
+          if (fb) result = await fetchYahooChart(fb);
+          else throw e;
+        }
+        const meta = result.meta;
+        const quote = result.indicators?.quote?.[0] || {};
+        const closes = quote.close || [];
+        const lastIdx = closes.length - 1;
+        if (lastIdx >= 0 && closes[lastIdx] != null) {
+          stock.price = closes[lastIdx];
+          const prev = meta.chartPreviousClose ?? meta.previousClose;
+          if (prev) {
+            stock.change = stock.price - prev;
+            stock.changePct = (stock.change / prev) * 100;
+          }
+        }
+        if (!stock.name && meta.shortName) stock.name = meta.shortName;
+        stock.lastUpdate = new Date().toISOString();
+        save();
+      } catch (e) {
+        console.warn('fetchQuote failed for', stock.ticker, e);
+      } finally {
+        stock.loading = false;
+      }
+    }
+
+    async function fetchYahooChart(symbol) {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d&includePrePost=false`;
+      const data = await fetchVia(url);
+      const result = data?.chart?.result?.[0];
+      if (!result) throw new Error('No data');
+      return result;
+    }
+
+    async function refreshSectorQuotes(sector) {
+      refreshing.value = true;
+      statusText.value = '更新中…';
+      let ok = 0, fail = 0;
+      for (const st of sector.stocks) {
+        try { await fetchQuote(st); ok++; } catch { fail++; }
+      }
+      refreshing.value = false;
+      statusText.value = `${ok} 成功` + (fail ? `, ${fail} 失敗` : '');
+      setTimeout(() => { statusText.value = ''; }, 4000);
+    }
+
+    async function refreshAllQuotes() {
+      refreshing.value = true;
+      statusText.value = '更新中…';
+      let ok = 0, fail = 0;
+      for (const sec of sectors.value) {
+        for (const st of sec.stocks) {
+          try { await fetchQuote(st); ok++; } catch { fail++; }
+        }
+      }
+      refreshing.value = false;
+      statusText.value = `${ok} 成功` + (fail ? `, ${fail} 失敗` : '');
+      setTimeout(() => { statusText.value = ''; }, 4000);
+    }
+
+    function addNote(sector) {
+      sector.notes.push({
+        id: 'n' + Date.now(),
+        content: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: null
+      });
+      save();
+    }
+
+    function removeNote(sector, id) {
+      sector.notes = sector.notes.filter(n => n.id !== id);
+      save();
+    }
+
+    function onNoteInput(note) {
+      note.updatedAt = new Date().toISOString();
+      debounceSave();
+    }
+
+    function doBatchImport() {
+      if (!activeSector.value) return;
+      const lines = importText.value.split('\n').filter(l => l.trim());
+      let added = 0;
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 2) continue;
+        let market = parts[0].toUpperCase();
+        if (!['TW', 'US', 'JP'].includes(market)) {
+          market = 'TW';
+          parts.unshift('TW');
+        }
+        const ticker = parts[1].toUpperCase();
+        const name = parts.slice(2).join(' ');
+        if (activeSector.value.stocks.some(s => s.ticker === ticker && s.market === market)) continue;
+        activeSector.value.stocks.push({
+          id: 'st' + Date.now() + Math.random().toString(36).slice(2, 5),
+          ticker, name, market,
+          price: null, change: null, changePct: null,
+          lastUpdate: null, loading: false
+        });
+        added++;
+      }
+      save();
+      showImportModal.value = false;
+      importText.value = '';
+      if (added > 0) {
+        statusText.value = `匯入 ${added} 檔`;
+        setTimeout(() => { statusText.value = ''; }, 3000);
+        refreshSectorQuotes(activeSector.value);
+      }
+    }
+
+    // Drag & drop reorder
+    function onDragStart(idx, e) {
+      dragIdx.value = idx;
+      e.dataTransfer.effectAllowed = 'move';
+    }
+    function onDragOver(idx) { dragOverIdx.value = idx; }
+    function onDragLeave() { dragOverIdx.value = null; }
+    function onDrop(idx) {
+      if (dragIdx.value != null && dragIdx.value !== idx) {
+        const arr = sectors.value;
+        const [moved] = arr.splice(dragIdx.value, 1);
+        arr.splice(idx, 0, moved);
+        save();
+      }
+      dragIdx.value = null;
+      dragOverIdx.value = null;
+    }
+    function onDragEnd() { dragIdx.value = null; dragOverIdx.value = null; }
+
+    // Helpers
+    function marketLabel(m) {
+      if (m === 'TW') return '台';
+      if (m === 'US') return 'US';
+      if (m === 'JP') return 'JP';
+      return m;
+    }
+    function fmtPrice(price, market) {
+      if (price == null) return '—';
+      if (market === 'US') return '$' + price.toFixed(2);
+      return price.toFixed(market === 'JP' ? 0 : 2);
+    }
+    function changeClass(change) {
+      if (change == null) return '';
+      return change >= 0 ? 'up' : 'down';
+    }
+    function fmtTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return d.toLocaleString('zh-TW', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    onMounted(load);
+
+    return {
+      sectors, activeSectorId, activeSector, newSectorName, newStock,
+      refreshing, statusText, editingTitle, editTitleValue, titleInput,
+      showImportModal, importText, sortedNotes, tickerPlaceholder,
+      dragIdx, dragOverIdx,
+      selectSector, addSector, deleteSector,
+      startEditTitle, finishEditTitle,
+      addStock, removeStock,
+      refreshSectorQuotes, refreshAllQuotes,
+      addNote, removeNote, onNoteInput,
+      doBatchImport,
+      onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
+      marketLabel, fmtPrice, changeClass, fmtTime,
+      save
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
