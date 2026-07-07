@@ -52,7 +52,7 @@
   }
   .tab {
     flex: 1; text-align: center;
-    padding: 6px 10px; font-size: 12px; font-weight: 550; cursor: pointer;
+    padding: 6px 8px; font-size: 11.5px; font-weight: 550; cursor: pointer;
     color: var(--text-muted); border-radius: 999px; white-space: nowrap;
     transition: all .18s;
   }
@@ -104,6 +104,33 @@
   .kline-legend span { display: flex; align-items: center; gap: 3px; }
   .kline-legend .dot { width: 8px; height: 8px; border-radius: 2px; }
 
+  /* 卡片放大縮小 */
+  .del-btn:disabled { opacity: .15; cursor: default; color: var(--text-muted); }
+  .stock-card.size-s .tabs, .stock-card.size-s .tab-content { display: none; }
+  @media (min-width: 720px) {
+    .stock-card.size-l { grid-column: span 2; }
+    .stock-card.size-l .chart-box { height: 300px; }
+    .stock-card.size-l .tab-content .chart-box[style] { height: 360px !important; }
+  }
+
+  /* 籌碼分頁 */
+  .up { color: var(--red); }
+  .down { color: var(--green); }
+  .info-table td.num-cell { text-align: right; font-weight: 600; }
+  .info-table th.num-th { text-align: right; }
+  .chips-title { font-size: 12px; font-weight: 700; margin: 2px 0 6px; }
+  .chips-hint { font-size: 11px; color: var(--text-muted); line-height: 1.6; margin-bottom: 6px; }
+  .branch-card { border: 1px solid var(--stroke); border-radius: var(--radius-sm); padding: 10px 12px; margin-top: 10px; background: var(--surface-alt); }
+  .branch-head { display: flex; justify-content: space-between; align-items: center; }
+  .branch-name { font-size: 12.5px; font-weight: 700; }
+  .branch-stats { font-size: 11px; color: var(--text-muted); margin: 4px 0 6px; line-height: 1.7; }
+  .rec-form { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .rec-form .pp-field { padding: 5px 8px; font-size: 12px; flex: 1; min-width: 72px; }
+
+  /* 新聞連結 */
+  .news-title a { color: inherit; text-decoration: none; }
+  .news-title a:hover { color: var(--accent); text-decoration: underline; }
+
   @media (max-width: 640px) {
     .container { padding: 16px 12px 32px; }
     .stock-grid { grid-template-columns: 1fr; }
@@ -138,7 +165,7 @@
   </div>
 
   <div class="stock-grid">
-    <div v-for="stock in stocks" :key="stock.id" class="stock-card glass">
+    <div v-for="stock in stocks" :key="stock.id" class="stock-card glass" :class="'size-' + (stock.size || 'm')">
       <div class="stock-card-header">
         <div>
           <span class="stock-ticker">{{ stock.ticker }}</span>
@@ -146,6 +173,8 @@
         </div>
         <div style="display:flex;align-items:center;gap:6px">
           <span class="stock-market">{{ stock.market === 'TW' ? '台股' : '美股' }}</span>
+          <button class="del-btn" @click="resizeStock(stock, -1)" :disabled="stock.size === 's'" title="縮小卡片">−</button>
+          <button class="del-btn" @click="resizeStock(stock, 1)" :disabled="stock.size === 'l'" title="放大卡片">＋</button>
           <button class="del-btn" @click="removeStock(stock.id)" title="移除">×</button>
         </div>
       </div>
@@ -173,7 +202,8 @@
         <div class="tab" :class="{ active: stock.activeTab === 'chart' }" @click="stock.activeTab = 'chart'; saveStocks()">走勢圖</div>
         <div class="tab" :class="{ active: stock.activeTab === 'kline' }" @click="stock.activeTab = 'kline'; renderKline(stock)">K線</div>
         <div class="tab" :class="{ active: stock.activeTab === 'info' }" @click="stock.activeTab = 'info'; fetchFinancialInfo(stock)">財務資訊</div>
-        <div class="tab" :class="{ active: stock.activeTab === 'news' }" @click="stock.activeTab = 'news'; fetchNews(stock)">重大消息</div>
+        <div class="tab" :class="{ active: stock.activeTab === 'news' }" @click="stock.activeTab = 'news'; fetchNews(stock)">消息</div>
+        <div class="tab" :class="{ active: stock.activeTab === 'chips' }" @click="openChips(stock)">籌碼</div>
       </div>
 
       <div class="tab-content">
@@ -220,14 +250,82 @@
           <div v-if="stock.newsLoading" class="loading">載入消息中…</div>
           <div v-else-if="stock.news && stock.news.length">
             <div v-for="(item, idx) in stock.news" :key="idx" class="news-item">
-              <div class="news-title">{{ item.title }}</div>
+              <div class="news-title">
+                <a v-if="item.link" :href="item.link" target="_blank" rel="noopener">{{ item.title }}</a>
+                <template v-else>{{ item.title }}</template>
+              </div>
               <div class="news-date">{{ item.date }} <span class="news-source" v-if="item.source">· {{ item.source }}</span></div>
             </div>
             <div style="margin-top:10px" v-if="stock.market === 'TW'">
               <a class="mops-link" :href="mopsNewsUrl(stock.ticker)" target="_blank" rel="noopener">📰 更多重大訊息（公開資訊觀測站）</a>
             </div>
           </div>
-          <div v-else class="loading">{{ stock.news ? '暫無重大消息' : '點擊此分頁載入消息' }}</div>
+          <div v-else class="loading">{{ stock.news ? '暫無相關消息' : '點擊此分頁載入消息' }}</div>
+        </div>
+
+        <!-- 籌碼 -->
+        <div v-show="stock.activeTab === 'chips'">
+          <div v-if="stock.market !== 'TW'" class="loading">籌碼資料目前僅支援台股</div>
+          <template v-else>
+            <div class="chips-title">三大法人買賣超（近 10 個交易日 · 單位：張）</div>
+            <div v-if="stock.chipsLoading" class="loading">載入籌碼資料中…</div>
+            <div v-else-if="stock.instiError" class="loading">⚠ {{ stock.instiError }}</div>
+            <table class="info-table" v-else-if="stock.insti && stock.insti.length">
+              <tr><th>日期</th><th class="num-th">外資</th><th class="num-th">投信</th><th class="num-th">自營</th><th class="num-th">合計</th></tr>
+              <tr v-for="r in stock.insti" :key="r.date">
+                <td>{{ r.date.slice(5) }}</td>
+                <td class="num-cell" :class="pn(r.foreign)">{{ signN(r.foreign) }}</td>
+                <td class="num-cell" :class="pn(r.trust)">{{ signN(r.trust) }}</td>
+                <td class="num-cell" :class="pn(r.dealer)">{{ signN(r.dealer) }}</td>
+                <td class="num-cell" :class="pn(r.total)">{{ signN(r.total) }}</td>
+              </tr>
+            </table>
+            <div v-else class="loading">暫無三大法人資料</div>
+
+            <div class="chips-title" style="margin-top:16px">分點觀察（手動紀錄）</div>
+            <div class="chips-hint">
+              券商分點買賣明細沒有免費開放 API（證交所買賣日報表有驗證碼），
+              從下方連結查到值得追蹤的分點後，把每日進出記在這裡，
+              系統會自動計算累計買賣超、推估成本與參考損益。
+            </div>
+            <div class="branch-card" v-for="b in stock.branches" :key="b.id">
+              <div class="branch-head">
+                <span class="branch-name">{{ b.name }}</span>
+                <button class="del-btn" @click="removeBranch(stock, b.id)" title="移除分點">×</button>
+              </div>
+              <div class="branch-stats">
+                累計買 {{ fmtN(branchStat(stock, b).buy) }} 張 · 賣 {{ fmtN(branchStat(stock, b).sell) }} 張 · 買賣超
+                <b :class="pn(branchStat(stock, b).net)">{{ signN(branchStat(stock, b).net) }}</b> 張
+                <template v-if="branchStat(stock, b).avg != null"> · 推估均買價 {{ branchStat(stock, b).avg.toFixed(2) }}</template>
+                <template v-if="branchStat(stock, b).pnl != null"> · 參考損益 <b :class="pn(branchStat(stock, b).pnl)">{{ signN(Math.round(branchStat(stock, b).pnl)) }}</b> 元</template>
+              </div>
+              <table class="info-table" v-if="b.records.length">
+                <tr><th>日期</th><th class="num-th">買(張)</th><th class="num-th">賣(張)</th><th class="num-th">均價</th><th></th></tr>
+                <tr v-for="r in sortedRecords(b)" :key="r.id">
+                  <td>{{ r.date }}</td>
+                  <td class="num-cell">{{ fmtN(r.buy) }}</td>
+                  <td class="num-cell">{{ fmtN(r.sell) }}</td>
+                  <td class="num-cell">{{ r.price != null ? r.price : '—' }}</td>
+                  <td style="text-align:right"><button class="del-btn" @click="removeRecord(stock, b, r.id)" title="刪除">×</button></td>
+                </tr>
+              </table>
+              <div class="rec-form">
+                <input type="date" class="pp-field" v-model="b.draft.date">
+                <input type="number" class="pp-field" v-model.number="b.draft.buy" placeholder="買(張)" min="0">
+                <input type="number" class="pp-field" v-model.number="b.draft.sell" placeholder="賣(張)" min="0">
+                <input type="number" class="pp-field" v-model.number="b.draft.price" placeholder="均價" step="0.01">
+                <button class="btn btn-sm" @click="addRecord(stock, b)">記一筆</button>
+              </div>
+            </div>
+            <div class="rec-form">
+              <input class="pp-field" v-model="stock.newBranch" placeholder="分點名稱（如 富邦-新店）" @keydown.enter="addBranch(stock)">
+              <button class="btn btn-sm" @click="addBranch(stock)">＋ 加入分點</button>
+            </div>
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+              <a class="mops-link" :href="'https://histock.tw/stock/branch.aspx?no=' + stock.ticker" target="_blank" rel="noopener">🔍 HiStock 分點進出</a>
+              <a class="mops-link" :href="'https://www.wantgoo.com/stock/' + stock.ticker + '/major-investors/branch-buysell'" target="_blank" rel="noopener">🔍 玩股網 主力分點</a>
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -238,29 +336,75 @@
 const { createApp, ref, onMounted, nextTick, watch } = Vue;
 
 const STORAGE_KEY = 'pptools-watchlist';
-const CORS_PROXIES = [
-  u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
-  u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
+
+/* 先直連（有開 CORS 的來源最快），失敗再依序走公開代理；
+   每個來源各自的逾時時間放寬，避免大檔轉送中途被砍。 */
+const FETCHERS = [
+  { wrap: u => u, timeout: 10000 },
+  { wrap: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 20000 },
+  { wrap: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), timeout: 25000 },
+  { wrap: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u), timeout: 20000 }
 ];
 
-async function fetchViaProxy(url) {
-  let lastErr = new Error('no proxy available');
-  for (const wrap of CORS_PROXIES) {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 12000);
-      const res = await fetch(wrap(url), { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return res;
-    } catch (e) { lastErr = e; }
-  }
-  throw lastErr;
+function errText(e) {
+  if (!e) return '未知錯誤';
+  if (e.name === 'AbortError' || e.name === 'TimeoutError') return '連線逾時';
+  if (e instanceof SyntaxError) return '回應格式錯誤';
+  if (e.message && /^HTTP \d+/.test(e.message)) return e.message;
+  if (e.name === 'TypeError') return '網路不通或來源拒絕';
+  return e.message || String(e);
 }
 
-async function fetchJsonViaProxy(url) {
-  const res = await fetchViaProxy(url);
-  return res.json();
+async function fetchVia(url, as) {
+  const errs = [];
+  for (const f of FETCHERS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), f.timeout);
+    try {
+      const res = await fetch(f.wrap(url), { signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text(); // 逾時計時涵蓋整段下載
+      return as === 'text' ? text : JSON.parse(text);
+    } catch (e) {
+      errs.push(errText(e));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw new Error([...new Set(errs)].join('、'));
+}
+
+const fetchJsonViaProxy = u => fetchVia(u);
+const fetchTextViaProxy = u => fetchVia(u, 'text');
+
+/* 整份清單型的開放資料（證交所/櫃買）同一頁面週期內只抓一次 */
+const listCache = {};
+function cachedJson(url) {
+  if (!listCache[url]) {
+    listCache[url] = fetchVia(url).catch(e => { delete listCache[url]; throw e; });
+  }
+  return listCache[url];
+}
+
+/* 寬容欄位取值：政府開放資料欄位名稱偶爾調整，用樣式比對 */
+function pick(row, patterns) {
+  for (const key of Object.keys(row)) {
+    for (const p of patterns) {
+      if (p.test(key)) return row[key];
+    }
+  }
+  return null;
+}
+function numVal(v) {
+  if (v == null) return null;
+  const n = parseFloat(String(v).replace(/[,，\s%]/g, ''));
+  return isNaN(n) ? null : n;
+}
+/* 民國日期(1150707) → 115/07/07 */
+function rocDate(v) {
+  const s = String(v || '').trim();
+  if (/^\d{7}$/.test(s)) return s.slice(0, 3) + '/' + s.slice(3, 5) + '/' + s.slice(5);
+  return s;
 }
 
 function yahooSymbol(ticker, market) {
@@ -288,13 +432,20 @@ createApp({
           stocks.value = parsed.map(s => ({
             ...s,
             activeTab: s.activeTab || 'chart',
+            size: s.size || 'm',
             loading: false,
             infoLoading: false,
             newsLoading: false,
+            chipsLoading: false,
+            instiError: null,
             financialInfo: null,
             news: null,
             chartData: s.chartData || null,
-            klineData: s.klineData || null
+            klineData: s.klineData || null,
+            insti: s.insti || null,
+            instiAt: s.instiAt || null,
+            branches: (s.branches || []).map(b => ({ ...b, records: b.records || [], draft: newDraft() })),
+            newBranch: ''
           }));
         }
       } catch (e) { console.warn('loadStocks error', e); }
@@ -305,8 +456,10 @@ createApp({
         id: s.id, ticker: s.ticker, name: s.name, market: s.market,
         price: s.price, change: s.change, changePct: s.changePct,
         prevClose: s.prevClose, open: s.open, high: s.high, low: s.low, volume: s.volume,
-        lastUpdate: s.lastUpdate, activeTab: s.activeTab,
-        chartData: s.chartData, klineData: s.klineData
+        lastUpdate: s.lastUpdate, activeTab: s.activeTab, size: s.size || 'm',
+        chartData: s.chartData, klineData: s.klineData,
+        insti: s.insti, instiAt: s.instiAt,
+        branches: (s.branches || []).map(b => ({ id: b.id, name: b.name, records: b.records }))
       }));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     }
@@ -326,10 +479,11 @@ createApp({
         price: null, change: null, changePct: null,
         prevClose: null, open: null, high: null, low: null, volume: null,
         lastUpdate: null,
-        activeTab: 'chart',
-        loading: false, infoLoading: false, newsLoading: false,
-        financialInfo: null, news: null,
-        chartData: null, klineData: null
+        activeTab: 'chart', size: 'm',
+        loading: false, infoLoading: false, newsLoading: false, chipsLoading: false,
+        financialInfo: null, news: null, instiError: null,
+        chartData: null, klineData: null,
+        insti: null, instiAt: null, branches: [], newBranch: ''
       };
       stocks.value.push(stock);
       newStock.value.ticker = '';
@@ -492,15 +646,27 @@ createApp({
 
         const barData = kd.closes.map((c, i) => {
           const o = kd.opens[i];
-          if (c == null || o == null) return [0, 0];
+          if (c == null || o == null) return null;
           return c >= o ? [o, c] : [c, o];
         });
 
         const wickData = kd.highs.map((h, i) => {
           const l = kd.lows[i];
-          if (h == null || l == null) return [0, 0];
+          if (h == null || l == null) return null;
           return [l, h];
         });
+
+        /* Y 軸貼齊實際價格區間（bar 圖預設從 0 起算，會把 K 棒壓扁） */
+        const lows = kd.lows.filter(v => v != null);
+        const highs = kd.highs.filter(v => v != null);
+        let yMin, yMax;
+        if (lows.length && highs.length) {
+          const lo = Math.min(...lows), hi = Math.max(...highs);
+          const pad = (hi - lo) * 0.08 || lo * 0.02 || 1;
+          yMin = Math.max(0, lo - pad);
+          yMax = hi + pad;
+        }
+        const vMax = Math.max(1, ...kd.volumes.filter(v => v != null));
 
         chartInstances[key] = new Chart(ctx, {
           type: 'bar',
@@ -548,8 +714,8 @@ createApp({
             }},
             scales: {
               x: { ticks: { font: { size: 10 }, maxTicksLimit: 8, color: tc.tick }, grid: { display: false }, stacked: false },
-              y: { position: 'left', ticks: { font: { size: 10 }, color: tc.tick }, grid: { color: tc.grid }, stacked: false },
-              y1: { position: 'right', ticks: { display: false }, grid: { display: false }, beginAtZero: true, max: Math.max(...(kd.volumes.filter(v => v != null))) * 4 }
+              y: { position: 'left', min: yMin, max: yMax, ticks: { font: { size: 10 }, color: tc.tick }, grid: { color: tc.grid }, stacked: false },
+              y1: { position: 'right', ticks: { display: false }, grid: { display: false }, beginAtZero: true, max: vMax * 4 }
             }
           }
         });
@@ -563,28 +729,104 @@ createApp({
       stock.infoLoading = true;
 
       try {
-        const sym = stock.market === 'US' ? stock.ticker : (stock.ticker + '.TW');
-        const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=defaultKeyStatistics,financialData,summaryDetail,earningsQuarterlyGrowth`;
-        const data = await fetchJsonViaProxy(url);
-        const qs = data?.quoteSummary?.result?.[0];
-
-        if (!qs) {
-          if (stock.market === 'TW') {
-            const url2 = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(stock.ticker + '.TWO')}?modules=defaultKeyStatistics,financialData,summaryDetail`;
-            const data2 = await fetchJsonViaProxy(url2);
-            const qs2 = data2?.quoteSummary?.result?.[0];
-            if (qs2) { parseFinancialInfo(stock, qs2); return; }
+        if (stock.market === 'US') {
+          try { await fetchYahooFin(stock, stock.ticker); }
+          catch (e) { await fetchUSFinFallback(stock); }
+        } else {
+          /* Yahoo quoteSummary 已加上 crumb 驗證、經常抓不到，
+             失敗時改用證交所/櫃買開放資料 */
+          try { await fetchYahooFin(stock, stock.ticker + '.TW'); }
+          catch (e1) {
+            try { await fetchYahooFin(stock, stock.ticker + '.TWO'); }
+            catch (e2) { await fetchTWFinFallback(stock); }
           }
-          stock.financialInfo = [{ label: '狀態', value: '無法取得財務資訊' }];
-          return;
         }
-        parseFinancialInfo(stock, qs);
       } catch (e) {
         console.warn('fetchFinancialInfo error', e);
-        stock.financialInfo = [{ label: '狀態', value: '載入失敗：' + e.message }];
+        stock.financialInfo = [{ label: '狀態', value: '載入失敗（' + errText(e) + '）' }];
       } finally {
         stock.infoLoading = false;
       }
+    }
+
+    async function fetchYahooFin(stock, sym) {
+      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=defaultKeyStatistics,financialData,summaryDetail`;
+      const data = await fetchJsonViaProxy(url);
+      const qs = data?.quoteSummary?.result?.[0];
+      if (!qs) throw new Error('查無資料');
+      parseFinancialInfo(stock, qs);
+    }
+
+    /* 台股備援：證交所 BWIBBU_ALL（本益比/殖利率/淨值比）+ 每月營收；
+       上市查不到再查櫃買 */
+    async function fetchTWFinFallback(stock) {
+      const t = stock.ticker;
+      const info = [];
+
+      const [peR, revR] = await Promise.allSettled([
+        cachedJson('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL'),
+        cachedJson('https://openapi.twse.com.tw/v1/opendata/t187ap05_L')
+      ]);
+      if (peR.status === 'fulfilled' && Array.isArray(peR.value)) {
+        const r = peR.value.find(x => String(pick(x, [/^code$/i, /公司代號|證券代號/]) || '').trim() === t);
+        if (r) {
+          info.push({ label: '本益比 (P/E)', value: pick(r, [/PEratio/i, /本益比/]) || '-' });
+          info.push({ label: '殖利率', value: (pick(r, [/DividendYield/i, /殖利率/]) || '-') + '%' });
+          info.push({ label: '股價淨值比 (P/B)', value: pick(r, [/PBratio/i, /淨值比/]) || '-' });
+        }
+      }
+      if (revR.status === 'fulfilled' && Array.isArray(revR.value)) {
+        const r = revR.value.find(x => String(pick(x, [/公司代號/]) || '').trim() === t);
+        if (r) pushRevenue(info, r);
+      }
+
+      if (!info.length) {
+        /* 上櫃：櫃買中心開放資料 */
+        const [peO, revO] = await Promise.allSettled([
+          cachedJson('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis'),
+          cachedJson('https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O')
+        ]);
+        if (peO.status === 'fulfilled' && Array.isArray(peO.value)) {
+          const r = peO.value.find(x => String(pick(x, [/code/i, /公司代號|證券代號/]) || '').trim() === t);
+          if (r) {
+            info.push({ label: '本益比 (P/E)', value: pick(r, [/PriceEarningRatio/i, /本益比/]) || '-' });
+            info.push({ label: '殖利率', value: (pick(r, [/YieldRatio/i, /殖利率/]) || '-') + '%' });
+            info.push({ label: '股價淨值比 (P/B)', value: pick(r, [/PriceBookRatio/i, /淨值比/]) || '-' });
+          }
+        }
+        if (revO.status === 'fulfilled' && Array.isArray(revO.value)) {
+          const r = revO.value.find(x => String(pick(x, [/公司代號/]) || '').trim() === t);
+          if (r) pushRevenue(info, r);
+        }
+      }
+
+      if (!info.length) throw new Error('證交所/櫃買開放資料查無此代號');
+      info.push({ label: '資料來源', value: '證交所/櫃買開放資料（Yahoo 財務 API 暫時無法使用）' });
+      stock.financialInfo = info.filter(i => i.value !== '-' && i.value !== '-%');
+    }
+
+    function pushRevenue(info, r) {
+      const cur = numVal(pick(r, [/當月營收/]));
+      const yoy = pick(r, [/去年同月增減/]);
+      const mom = pick(r, [/上月比較增減/]);
+      const ym = pick(r, [/資料年月/]);
+      if (cur != null) info.push({ label: `當月營收（${rocDate(ym) || '-'}）`, value: (cur / 100000).toFixed(2) + ' 億元' });
+      if (mom != null) info.push({ label: '營收月增率', value: mom + '%' });
+      if (yoy != null) info.push({ label: '營收年增率 (YoY)', value: yoy + '%' });
+    }
+
+    /* 美股備援：改從 v8 chart meta 撈基本區間資訊 */
+    async function fetchUSFinFallback(stock) {
+      const result = await fetchYahooChart(stock.ticker, '1y', '1mo');
+      const m = result.meta || {};
+      const info = [];
+      if (m.regularMarketPrice != null) info.push({ label: '現價', value: m.regularMarketPrice });
+      if (m.fiftyTwoWeekHigh != null) info.push({ label: '52週最高', value: m.fiftyTwoWeekHigh });
+      if (m.fiftyTwoWeekLow != null) info.push({ label: '52週最低', value: m.fiftyTwoWeekLow });
+      if (m.longName || m.shortName) info.push({ label: '名稱', value: m.longName || m.shortName });
+      if (!info.length) throw new Error('查無資料');
+      info.push({ label: '資料來源', value: 'Yahoo 行情 API（財務摘要 API 暫時無法使用）' });
+      stock.financialInfo = info;
     }
 
     function parseFinancialInfo(stock, qs) {
@@ -640,66 +882,183 @@ createApp({
       }
     }
 
-    async function fetchTWNews(stock) {
-      try {
-        const mopsUrl = `https://mops.twse.com.tw/mops/web/ajax_t05st01?encodeURIComponent=1&step=1&firstin=1&off=1&keyword4=${stock.ticker}&code1=&TYPEK2=&checkbtn=1&queryName=co_id&TYPEK=all&co_id=${stock.ticker}`;
-        const res = await fetchViaProxy(mopsUrl);
-        const html = await res.text();
-        const news = parseMopsNews(html, stock.ticker);
-        if (news.length > 0) {
-          stock.news = news;
-          return;
-        }
-      } catch (e) {
-        console.warn('MOPS fetch failed, falling back to Yahoo', e);
-      }
-
-      const sym = stock.ticker + '.TW';
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`;
-      try {
-        await fetchJsonViaProxy(url);
-        stock.news = [
-          { title: `${stock.ticker} ${stock.name || ''} — 請點擊下方連結查看公開資訊觀測站最新重大訊息`, date: '即時', source: '公開資訊觀測站' }
-        ];
-      } catch (e) {
-        stock.news = [
-          { title: '請至公開資訊觀測站查詢最新重大訊息', date: '', source: 'MOPS' }
-        ];
-      }
+    /* Yahoo 新聞 RSS：逐檔股票的相關新聞（可點連結） */
+    async function fetchYahooRss(sym, region, lang) {
+      const url = `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(sym)}&region=${region}&lang=${lang}`;
+      const xml = await fetchTextViaProxy(url);
+      const doc = new DOMParser().parseFromString(xml, 'text/xml');
+      if (doc.querySelector('parsererror')) throw new Error('RSS 解析失敗');
+      return [...doc.querySelectorAll('item')].map(it => {
+        const pub = it.querySelector('pubDate')?.textContent;
+        const d = pub ? new Date(pub) : null;
+        return {
+          title: it.querySelector('title')?.textContent?.trim() || '',
+          link: it.querySelector('link')?.textContent?.trim() || null,
+          date: d && !isNaN(d) ? d.toLocaleString('zh-TW', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+          source: 'Yahoo 新聞'
+        };
+      }).filter(n => n.title);
     }
 
-    function parseMopsNews(html, ticker) {
-      const news = [];
+    async function fetchTWNews(stock) {
+      const items = [];
+
+      /* 當日重大訊息（證交所/櫃買開放資料，只有公告當天的） */
       try {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const rows = doc.querySelectorAll('table.hasBorder tr');
-        rows.forEach((row, idx) => {
-          if (idx === 0) return;
-          const cells = row.querySelectorAll('td');
-          if (cells.length >= 4) {
-            const date = cells[0]?.textContent?.trim() || '';
-            const title = cells[3]?.textContent?.trim() || cells[2]?.textContent?.trim() || '';
-            if (title && date) {
-              news.push({ title, date, source: '公開資訊觀測站' });
-            }
+        const [lst, otc] = await Promise.allSettled([
+          cachedJson('https://openapi.twse.com.tw/v1/opendata/t187ap04_L'),
+          cachedJson('https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap04_O')
+        ]);
+        for (const r of [lst, otc]) {
+          if (r.status !== 'fulfilled' || !Array.isArray(r.value)) continue;
+          for (const row of r.value) {
+            if (String(pick(row, [/公司代號/]) || '').trim() !== stock.ticker) continue;
+            items.push({
+              title: String(pick(row, [/主旨/]) || '').trim(),
+              date: rocDate(pick(row, [/發言日期/])) + ' ' + String(pick(row, [/發言時間/]) || '').trim(),
+              source: '當日重大訊息',
+              link: mopsNewsUrl(stock.ticker)
+            });
           }
-        });
-      } catch (e) { console.warn('parseMopsNews error', e); }
-      return news.slice(0, 15);
+        }
+      } catch (e) { console.warn('重大訊息 fetch failed', e); }
+
+      /* Yahoo 個股新聞 RSS */
+      try {
+        items.push(...await fetchYahooRss(stock.ticker + '.TW', 'TW', 'zh-Hant-TW'));
+      } catch (e1) {
+        try { items.push(...await fetchYahooRss(stock.ticker + '.TWO', 'TW', 'zh-Hant-TW')); }
+        catch (e2) { console.warn('Yahoo RSS failed', e2); }
+      }
+
+      stock.news = items.slice(0, 20);
+      if (!items.length) {
+        stock.news = [{ title: '暫時抓不到新聞來源，可點下方連結到公開資訊觀測站查詢', date: '', source: 'MOPS', link: mopsNewsUrl(stock.ticker) }];
+      }
     }
 
     async function fetchUSNews(stock) {
       try {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(stock.ticker)}?interval=1d&range=5d`;
-        await fetchJsonViaProxy(url);
-        stock.news = [
-          { title: `${stock.ticker} ${stock.name || ''} — 可透過 Yahoo Finance 查看最新消息`, date: '即時', source: 'Yahoo Finance' }
-        ];
+        stock.news = (await fetchYahooRss(stock.ticker, 'US', 'en-US')).slice(0, 20);
       } catch (e) {
         stock.news = [];
       }
     }
+
+    /* ── 籌碼：三大法人買賣超（FinMind 開放資料，上市上櫃皆可） ── */
+    function openChips(stock) {
+      stock.activeTab = 'chips';
+      saveStocks();
+      if (stock.market !== 'TW') return;
+      const fresh = stock.insti && stock.instiAt && (Date.now() - stock.instiAt < 3 * 60 * 60 * 1000);
+      if (fresh || stock.chipsLoading) return;
+      fetchInsti(stock);
+    }
+
+    async function fetchInsti(stock) {
+      stock.chipsLoading = true;
+      stock.instiError = null;
+      try {
+        const iso = d => d.toISOString().slice(0, 10);
+        const end = new Date();
+        const start = new Date(Date.now() - 25 * 86400 * 1000);
+        const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id=${encodeURIComponent(stock.ticker)}&start_date=${iso(start)}&end_date=${iso(end)}`;
+        const j = await fetchJsonViaProxy(url);
+        const rows = j?.data || [];
+        if (!rows.length) throw new Error('查無資料');
+        const byDate = {};
+        for (const r of rows) {
+          const d = byDate[r.date] || (byDate[r.date] = { date: r.date, foreign: 0, trust: 0, dealer: 0 });
+          const net = (Number(r.buy) - Number(r.sell)) / 1000; // 股 → 張
+          if (/^Foreign/.test(r.name)) d.foreign += net;
+          else if (r.name === 'Investment_Trust') d.trust += net;
+          else d.dealer += net;
+        }
+        stock.insti = Object.values(byDate)
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .slice(0, 10)
+          .map(d => {
+            const f = Math.round(d.foreign), tr = Math.round(d.trust), de = Math.round(d.dealer);
+            return { date: d.date, foreign: f, trust: tr, dealer: de, total: f + tr + de };
+          });
+        stock.instiAt = Date.now();
+        saveStocks();
+      } catch (e) {
+        stock.instiError = '三大法人資料取得失敗（' + errText(e) + '）';
+      } finally {
+        stock.chipsLoading = false;
+      }
+    }
+
+    /* ── 分點觀察：手動紀錄 + 自動統計 ── */
+    function newDraft() {
+      return { date: new Date().toISOString().slice(0, 10), buy: null, sell: null, price: null };
+    }
+    function addBranch(stock) {
+      const n = (stock.newBranch || '').trim();
+      if (!n) return;
+      if (!stock.branches) stock.branches = [];
+      stock.branches.push({ id: 'b' + Date.now(), name: n, records: [], draft: newDraft() });
+      stock.newBranch = '';
+      saveStocks();
+    }
+    function removeBranch(stock, id) {
+      if (!confirm('確定移除此分點與其所有紀錄？')) return;
+      stock.branches = stock.branches.filter(b => b.id !== id);
+      saveStocks();
+    }
+    function addRecord(stock, b) {
+      const d = b.draft || newDraft();
+      if (!d.date || (!d.buy && !d.sell)) return;
+      b.records.push({
+        id: 'r' + Date.now(),
+        date: d.date,
+        buy: Number(d.buy) || 0,
+        sell: Number(d.sell) || 0,
+        price: (d.price !== null && d.price !== '' && !isNaN(d.price)) ? Number(d.price) : null
+      });
+      b.draft = newDraft();
+      saveStocks();
+    }
+    function removeRecord(stock, b, id) {
+      b.records = b.records.filter(r => r.id !== id);
+      saveStocks();
+    }
+    function sortedRecords(b) {
+      return [...b.records].sort((a, c) => c.date.localeCompare(a.date));
+    }
+    function branchStat(stock, b) {
+      let buy = 0, sell = 0, cost = 0, costQty = 0;
+      for (const r of b.records) {
+        buy += r.buy || 0;
+        sell += r.sell || 0;
+        if (r.price != null && r.buy) { cost += r.price * r.buy; costQty += r.buy; }
+      }
+      const net = buy - sell;
+      const avg = costQty ? cost / costQty : null;
+      let pnl = null;
+      if (avg != null && stock.price != null && net > 0) pnl = (stock.price - avg) * net * 1000;
+      return { buy, sell, net, avg, pnl };
+    }
+
+    /* ── 卡片放大縮小 ── */
+    const SIZES = ['s', 'm', 'l'];
+    function resizeStock(stock, dir) {
+      const i = SIZES.indexOf(stock.size || 'm') + dir;
+      if (i < 0 || i >= SIZES.length) return;
+      stock.size = SIZES[i];
+      saveStocks();
+      // 尺寸改變後重繪，讓 Chart.js 依新容器尺寸重新佈局
+      nextTick(() => {
+        if (stock.chartData) renderChart(stock);
+        if (stock.activeTab === 'kline' && stock.klineData) renderKline(stock);
+      });
+    }
+
+    /* ── 顯示輔助（籌碼用） ── */
+    function fmtN(v) { return Number(v || 0).toLocaleString('zh-TW'); }
+    function signN(v) { return v == null ? '—' : (v > 0 ? '+' : '') + fmtN(v); }
+    function pn(v) { return v > 0 ? 'up' : v < 0 ? 'down' : ''; }
 
     async function refreshAll() {
       if (loading.value) return;
@@ -760,6 +1119,8 @@ createApp({
       addStock, removeStock, refreshAll,
       fetchQuote, renderChart, renderKline,
       fetchFinancialInfo, fetchNews,
+      openChips, addBranch, removeBranch, addRecord, removeRecord, sortedRecords, branchStat,
+      resizeStock, fmtN, signN, pn,
       formatPrice, mopsUrl, mopsFinanceUrl, mopsDividendUrl, mopsNewsUrl,
       saveStocks
     };
