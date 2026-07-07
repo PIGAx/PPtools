@@ -28,12 +28,26 @@
   .flat { color: var(--text-muted); }
 
   /* 圖表卡 */
-  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 18px; }
   @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } .container { padding: 16px 12px 32px; } }
   .chart-card { padding: 16px 18px; border-radius: var(--radius-lg); }
-  .chart-card h3 { font-size: 13.5px; font-weight: 700; margin-bottom: 10px; }
+  .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .chart-head h3 { font-size: 13.5px; font-weight: 700; }
   .chart-box { position: relative; width: 100%; height: 190px; }
   .chart-box canvas { width: 100% !important; height: 100% !important; }
+
+  /* 玻璃分段控制器（日內／近一月） */
+  .seg { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--surface-alt); }
+  .seg-btn {
+    padding: 3px 11px; font-size: 11px; font-weight: 550; cursor: pointer;
+    color: var(--text-muted); border-radius: 999px; white-space: nowrap; transition: all .18s;
+  }
+  .seg-btn:hover { color: var(--text); }
+  .seg-btn.active {
+    color: var(--text); font-weight: 650;
+    background: var(--glass-strong);
+    box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-inner);
+  }
 
   /* 詳細表格卡 */
   .detail-card { padding: 18px; border-radius: var(--radius-lg); margin-bottom: 14px; }
@@ -50,6 +64,32 @@
   .src-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .src-link { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--accent); text-decoration: none; padding: 4px 10px; border-radius: 999px; background: var(--accent-light); transition: opacity .15s; }
   .src-link:hover { opacity: .8; }
+
+  /* 自選股票 */
+  .sec-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+  .add-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+  .add-bar input { flex: 1; min-width: 130px; }
+  .mini-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 12px; }
+  .mini-card { padding: 12px 14px; border-radius: var(--radius); background: var(--surface-alt); border: 1px solid var(--stroke); }
+  .mini-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+  .mini-ticker { font-size: 13.5px; font-weight: 750; }
+  .mini-name { font-size: 11px; color: var(--text-muted); margin-left: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini-price-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
+  .mini-price { font-size: 19px; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
+  .mini-change { font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .mini-spark { position: relative; width: 100%; height: 44px; margin-top: 6px; }
+  .mini-spark canvas { width: 100% !important; height: 100% !important; }
+  .mini-note { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+  .del-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 15px; padding: 0 4px; opacity: .5; border-radius: 8px; transition: opacity .15s; flex-shrink: 0; }
+  .del-btn:hover { opacity: 1; color: var(--red); }
+  .empty-note { font-size: 12.5px; color: var(--text-muted); padding: 10px 0; }
+
+  /* 非凡新聞直播 */
+  .news-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+  .video-box { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 9; border-radius: var(--radius); overflow: hidden; background: #000; border: 1px solid var(--stroke); }
+  .video-box iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .custom-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .custom-bar input { flex: 1; min-width: 200px; }
 </style>
 </head>
 <body>
@@ -68,32 +108,32 @@
   <div class="stat-grid">
     <div class="stat-tile glass">
       <div class="stat-label">💵 美元／台幣</div>
-      <div class="stat-value">{{ fx.price != null ? fx.price.toFixed(3) : '—' }}</div>
-      <div class="stat-sub" :class="pnClass(fx.changePct)" v-if="fx.changePct != null">
-        {{ sign(fx.change, 3) }} ({{ sign(fx.changePct, 2) }}%)
+      <div class="stat-value">{{ q.fx.price != null ? q.fx.price.toFixed(3) : '—' }}</div>
+      <div class="stat-sub" :class="pnClass(q.fx.changePct)" v-if="q.fx.changePct != null">
+        {{ sign(q.fx.change, 3) }} ({{ sign(q.fx.changePct, 2) }}%)
       </div>
       <div class="stat-note">Yahoo Finance · USD/TWD</div>
     </div>
 
     <div class="stat-tile glass">
       <div class="stat-label">🇹🇼 加權指數</div>
-      <div class="stat-value">{{ twii.price != null ? fmt(twii.price, 0) : '—' }}</div>
-      <div class="stat-sub" :class="pnClass(twii.changePct)" v-if="twii.changePct != null">
-        {{ sign(twii.change, 0) }} ({{ sign(twii.changePct, 2) }}%)
+      <div class="stat-value">{{ q.twii.price != null ? fmt(q.twii.price, 0) : '—' }}</div>
+      <div class="stat-sub" :class="pnClass(q.twii.changePct)" v-if="q.twii.changePct != null">
+        {{ sign(q.twii.change, 0) }} ({{ sign(q.twii.changePct, 2) }}%)
       </div>
       <div class="stat-note">Yahoo Finance · ^TWII</div>
     </div>
 
     <div class="stat-tile glass">
       <div class="stat-label">📈 台指期（近月）</div>
-      <div class="stat-value">{{ tx.last != null ? fmt(tx.last, 0) : '—' }}</div>
-      <div class="stat-sub" :class="pnClass(tx.changePct)" v-if="tx.changePct != null">
-        {{ sign(tx.change, 0) }} ({{ sign(tx.changePct, 2) }}%)
+      <div class="stat-value">{{ txPrice != null ? fmt(txPrice, 0) : '—' }}</div>
+      <div class="stat-sub" :class="pnClass(txChangePct)" v-if="txChangePct != null">
+        {{ sign(txChange, 0) }} ({{ sign(txChangePct, 2) }}%)
       </div>
       <div class="stat-sub flat" v-if="basis != null">
         期現價差 <b :class="pnClass(basis)">{{ sign(basis, 0) }}</b>
       </div>
-      <div class="stat-note">期交所 OpenAPI{{ tx.month ? ' · ' + tx.month : '' }}{{ tx.date ? ' · ' + tx.date : '' }}</div>
+      <div class="stat-note">{{ q.txf.price != null ? 'Yahoo Finance · 台指期近一（WTX&）' : '期交所 OpenAPI' + (tx.month ? ' · ' + tx.month : '') + (tx.date ? ' · ' + tx.date : '') }}</div>
     </div>
 
     <div class="stat-tile glass">
@@ -104,15 +144,88 @@
     </div>
   </div>
 
-  <!-- 走勢圖 -->
+  <!-- 走勢圖：日內／近一月 -->
   <div class="chart-grid">
-    <div class="chart-card glass">
-      <h3>美元／台幣 — 近一個月</h3>
-      <div class="chart-box"><canvas id="fxChart"></canvas></div>
+    <div class="chart-card glass" v-for="c in chartCards" :key="c.key">
+      <div class="chart-head">
+        <h3>{{ c.title }}</h3>
+        <div class="seg">
+          <div class="seg-btn" :class="{ active: tabs[c.key] === 'intra' }" @click="setTab(c.key, 'intra')">日內</div>
+          <div class="seg-btn" :class="{ active: tabs[c.key] === 'month' }" @click="setTab(c.key, 'month')">近一月</div>
+        </div>
+      </div>
+      <div class="chart-box"><canvas :id="'chart-' + c.key"></canvas></div>
+      <div class="err-note" v-if="q[c.key].error">⚠ {{ q[c.key].error }}</div>
     </div>
-    <div class="chart-card glass">
-      <h3>加權指數 — 近一個月</h3>
-      <div class="chart-box"><canvas id="twiiChart"></canvas></div>
+  </div>
+
+  <!-- 自選股票行情 -->
+  <div class="detail-card glass">
+    <div class="sec-head">
+      <h3>⭐ 自選股票</h3>
+      <button class="btn btn-sm" @click="importWatchlist">📋 匯入觀察清單</button>
+    </div>
+    <div class="detail-sub">加入台股／美股代號即可追蹤即時報價與日內走勢（與觀察清單模組共用 Yahoo 資料源）</div>
+    <div class="add-bar">
+      <select class="pp-field" v-model="newStock.market">
+        <option value="TW">🇹🇼 台股</option>
+        <option value="US">🇺🇸 美股</option>
+      </select>
+      <input class="pp-field" v-model="newStock.ticker" :placeholder="newStock.market === 'TW' ? '股票代號（如 2330）' : '股票代號（如 AAPL）'" @keydown.enter="addStock" />
+      <button class="btn btn-primary btn-sm" @click="addStock" :disabled="!newStock.ticker.trim()">＋ 加入</button>
+    </div>
+    <div v-if="!stocks.length" class="empty-note">尚無自選股票 — 輸入代號加入，或一鍵匯入觀察清單。</div>
+    <div class="mini-grid">
+      <div class="mini-card" v-for="s in stocks" :key="s.id">
+        <div class="mini-head">
+          <div style="min-width:0;display:flex;align-items:baseline">
+            <span class="mini-ticker">{{ s.ticker }}</span>
+            <span class="mini-name">{{ s.name }}</span>
+          </div>
+          <button class="del-btn" @click="removeStock(s.id)" title="移除">×</button>
+        </div>
+        <div class="mini-price-row">
+          <span class="mini-price">{{ s.price != null ? fmt(s.price, 2) : (s.loading ? '…' : '—') }}</span>
+          <span class="mini-change" :class="pnClass(s.change)" v-if="s.change != null">
+            {{ s.change >= 0 ? '▲' : '▼' }} {{ fmt(Math.abs(s.change), 2) }} ({{ sign(s.changePct, 2) }}%)
+          </span>
+        </div>
+        <div class="mini-spark"><canvas :id="'spark-' + s.id"></canvas></div>
+        <div class="mini-note">{{ s.error ? '⚠ ' + s.error : '日內走勢 · ' + (s.market === 'TW' ? '台股' : '美股') }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 非凡新聞直播 -->
+  <div class="detail-card glass">
+    <div class="news-head">
+      <div>
+        <h3>📺 非凡新聞直播</h3>
+        <div class="detail-sub" style="margin-bottom:0">YouTube 財經直播頻道 · 直播網址若失效，切到「自訂」貼上新的直播網址即可</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="seg">
+          <div class="seg-btn" v-for="p in newsPresets" :key="p.id" :class="{ active: news.preset === p.id }" @click="setNewsPreset(p.id)">{{ p.label }}</div>
+          <div class="seg-btn" :class="{ active: news.preset === 'custom' }" @click="setNewsPreset('custom')">自訂</div>
+        </div>
+        <button class="btn btn-sm" @click="news.show = !news.show; saveNews()">{{ news.show ? '收合' : '展開' }}</button>
+      </div>
+    </div>
+    <div class="custom-bar" v-if="news.preset === 'custom'">
+      <input class="pp-field" v-model="news.customUrl" placeholder="貼上 YouTube 直播網址或影片 ID（如 https://www.youtube.com/watch?v=…）" @change="saveNews" @keydown.enter="saveNews" />
+    </div>
+    <template v-if="news.show">
+      <div class="video-box" v-if="newsVideoId">
+        <iframe :src="'https://www.youtube.com/embed/' + newsVideoId + '?rel=0'"
+                title="非凡新聞直播" loading="lazy"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+      </div>
+      <div class="empty-note" v-else>請貼上有效的 YouTube 網址或影片 ID。</div>
+    </template>
+    <div class="src-links">
+      <a class="src-link" href="https://www.youtube.com/@ustvbiz/streams" target="_blank" rel="noopener">📡 投資看非凡 直播列表</a>
+      <a class="src-link" href="https://www.youtube.com/@ustv/streams" target="_blank" rel="noopener">📡 USTV 非凡電視 直播列表</a>
     </div>
   </div>
 
@@ -121,7 +234,7 @@
     <h3>台指期近月合約</h3>
     <div class="detail-sub">臺灣期貨交易所每日行情（日盤）{{ tx.date ? ' · 資料日期 ' + tx.date : '' }}</div>
     <div v-if="tx.error" class="err-note">⚠ {{ tx.error }}</div>
-    <table class="detail-table" v-else>
+    <table class="detail-table" v-if="tx.last != null">
       <tr><th>合約月份</th><th class="num">開盤</th><th class="num">最高</th><th class="num">最低</th><th class="num">收盤</th><th class="num">漲跌</th><th class="num">成交量</th><th class="num">未平倉</th></tr>
       <tr>
         <td>{{ tx.month || '—' }}</td>
@@ -141,7 +254,7 @@
     <h3>外資及陸資 — 台指期未平倉部位</h3>
     <div class="detail-sub">三大法人期貨契約買賣（口數）{{ fi.date ? ' · 資料日期 ' + fi.date : '' }}</div>
     <div v-if="fi.error" class="err-note">⚠ {{ fi.error }}</div>
-    <table class="detail-table" v-else>
+    <table class="detail-table" v-if="fi.netOI != null">
       <tr><th></th><th class="num">多方口數</th><th class="num">空方口數</th><th class="num">多空淨額</th></tr>
       <tr>
         <td>未平倉餘額</td>
@@ -164,9 +277,12 @@
 </div>
 
 <script>
-const { createApp, ref, computed, onMounted, nextTick } = Vue;
+const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
 
 const CACHE_KEY = 'pptools-market-cache';
+const STOCKS_KEY = 'pptools-market-stocks';
+const NEWS_KEY = 'pptools-market-news';
+const WATCHLIST_KEY = 'pptools-watchlist'; // 觀察清單模組的儲存鍵，匯入用
 const STALE_MS = 10 * 60 * 1000; // 快取超過 10 分鐘自動重抓
 
 /* 期交所 OpenAPI 端點（回傳最近一個交易日資料）。
@@ -174,26 +290,42 @@ const STALE_MS = 10 * 60 * 1000; // 快取超過 10 分鐘自動重抓
 const TAIFEX_FUT_URL = 'https://openapi.taifex.com.tw/v1/DailyMarketReportFut';
 const TAIFEX_INST_URL = 'https://openapi.taifex.com.tw/v1/MarketDataOfMajorInstitutionalTradersDetailsOfFuturesContractsBytheDate';
 
-/* 部分來源沒開 CORS，先直連、失敗再走公開代理（與其他模組相同模式） */
+/* 部分來源沒開 CORS，先直連、失敗再依序走公開代理。
+   期交所回傳的 JSON 很大（整日全部契約），代理轉送常超過 12 秒，
+   因此每個來源各自給足逾時時間，並多備援一組代理。 */
 const FETCHERS = [
-  u => u,
-  u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
-  u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
+  { wrap: u => u, timeout: 10000 },
+  { wrap: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 20000 },
+  { wrap: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), timeout: 25000 },
+  { wrap: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u), timeout: 20000 }
 ];
 
+function errText(e) {
+  if (!e) return '未知錯誤';
+  if (e.name === 'AbortError' || e.name === 'TimeoutError') return '連線逾時';
+  if (e instanceof SyntaxError) return '回應格式錯誤';
+  if (e.message && /^HTTP \d+/.test(e.message)) return e.message;
+  if (e.name === 'TypeError') return '網路不通或來源拒絕';
+  return e.message || String(e);
+}
+
 async function fetchJson(url) {
-  let lastErr = new Error('無可用來源');
-  for (const wrap of FETCHERS) {
+  const errs = [];
+  for (const f of FETCHERS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), f.timeout);
     try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 12000);
-      const res = await fetch(wrap(url), { signal: ctrl.signal });
-      clearTimeout(timer);
+      const res = await fetch(f.wrap(url), { signal: ctrl.signal });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      return await res.json();
-    } catch (e) { lastErr = e; }
+      const text = await res.text(); // 逾時計時涵蓋整段下載，避免大檔下載中途卡死
+      return JSON.parse(text);
+    } catch (e) {
+      errs.push(errText(e));
+    } finally {
+      clearTimeout(timer);
+    }
   }
-  throw lastErr;
+  throw new Error([...new Set(errs)].join('、'));
 }
 
 /* ── 寬容欄位取值：期交所 OpenAPI 欄位名稱可能是英文或中文 ── */
@@ -211,42 +343,119 @@ function num(v) {
   return isNaN(n) ? null : n;
 }
 
+/* 從 YouTube 網址或純 ID 取出影片 ID */
+function parseYouTubeId(input) {
+  const s = String(input || '').trim();
+  if (!s) return null;
+  const m = s.match(/(?:youtu\.be\/|[?&]v=|\/live\/|\/embed\/|\/shorts\/)([A-Za-z0-9_-]{6,})/);
+  if (m) return m[1];
+  if (/^[A-Za-z0-9_-]{6,}$/.test(s)) return s;
+  return null;
+}
+
 createApp({
   setup() {
     const loading = ref(false);
     const statusText = ref('');
-    const fx = ref({});
-    const twii = ref({});
-    const tx = ref({});
-    const fi = ref({});
+
+    /* 上排三大指數即時報價 + 日內/近一月序列 */
+    const q = reactive({
+      fx: {},   // 美元/台幣  TWD=X
+      twii: {}, // 加權指數  ^TWII
+      txf: {}   // 台指期近一 WTX&
+    });
+    const chartCards = [
+      { key: 'fx', title: '美元／台幣', symbol: 'TWD=X', color: 'rgb(91,140,255)' },
+      { key: 'twii', title: '加權指數', symbol: '^TWII', color: 'rgb(139,92,246)' },
+      { key: 'txf', title: '台指期近月', symbol: 'WTX&', color: 'rgb(238,122,47)' }
+    ];
+    const tabs = reactive({ fx: 'intra', twii: 'intra', txf: 'intra' });
+
+    const tx = ref({}); // 期交所日盤詳細
+    const fi = ref({}); // 外資未平倉
     const charts = {};
 
-    const basis = computed(() => {
-      if (tx.value.last == null || twii.value.price == null) return null;
-      return tx.value.last - twii.value.price;
+    /* 自選股票 */
+    const stocks = ref([]);
+    const newStock = ref({ ticker: '', market: 'TW' });
+
+    /* 非凡新聞直播 */
+    const newsPresets = [
+      { id: 'ustvbiz', label: '投資看非凡 24H', video: 'eA6Aczd3FZM' },
+      { id: 'ustv', label: '非凡電視', video: 'TKf1nKiUXVI' }
+    ];
+    const news = ref({ preset: 'ustvbiz', customUrl: '', show: true });
+    const newsVideoId = computed(() => {
+      if (news.value.preset === 'custom') return parseYouTubeId(news.value.customUrl);
+      const p = newsPresets.find(p => p.id === news.value.preset) || newsPresets[0];
+      return p.video;
     });
 
-    /* ── Yahoo 指數/匯率（與觀察清單相同來源） ── */
-    async function fetchYahoo(symbol) {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1mo&interval=1d&includePrePost=false`;
+    /* 台指期磚：優先用 Yahoo 即時價，抓不到再退回期交所日盤收盤 */
+    const txPrice = computed(() => q.txf.price ?? tx.value.last ?? null);
+    const txChange = computed(() => q.txf.price != null ? q.txf.change : tx.value.change ?? null);
+    const txChangePct = computed(() => q.txf.price != null ? q.txf.changePct : tx.value.changePct ?? null);
+    const basis = computed(() => {
+      if (txPrice.value == null || q.twii.price == null) return null;
+      return txPrice.value - q.twii.price;
+    });
+
+    /* ── Yahoo 指數/匯率/期貨（v8 chart API） ── */
+    async function fetchYahoo(symbol, range, interval) {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
       const data = await fetchJson(url);
       const result = data?.chart?.result?.[0];
       if (!result) throw new Error('no data for ' + symbol);
       const meta = result.meta || {};
       const closes = (result.indicators?.quote?.[0]?.close || []);
       const timestamps = result.timestamp || [];
+      const intraday = /m$/.test(interval);
+      const labels = timestamps.map(t => {
+        const d = new Date(t * 1000);
+        return intraday
+          ? `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+          : `${d.getMonth() + 1}/${d.getDate()}`;
+      });
       const validIdx = closes.map((v, i) => v != null ? i : -1).filter(i => i >= 0);
-      const lastIdx = validIdx[validIdx.length - 1];
-      const price = lastIdx != null ? closes[lastIdx] : (meta.regularMarketPrice ?? null);
-      const prev = meta.chartPreviousClose ?? meta.previousClose ?? (validIdx.length > 1 ? closes[validIdx[validIdx.length - 2]] : null);
-      const out = {
+      const lastClose = validIdx.length ? closes[validIdx[validIdx.length - 1]] : null;
+      const price = meta.regularMarketPrice ?? lastClose;
+      const prev = meta.chartPreviousClose ?? meta.previousClose ?? null;
+      return {
         price,
+        prevClose: prev,
         change: (price != null && prev != null) ? price - prev : null,
         changePct: (price != null && prev) ? (price - prev) / prev * 100 : null,
-        labels: timestamps.map(t => { const d = new Date(t * 1000); return `${d.getMonth() + 1}/${d.getDate()}`; }),
-        closes
+        labels, closes
       };
-      return out;
+    }
+
+    /* 三大指數：日內 + 近一月一次抓齊 */
+    async function fetchIndex(key, symbol) {
+      const [ir, mr] = await Promise.allSettled([
+        fetchYahoo(symbol, '1d', '5m'),
+        fetchYahoo(symbol, '1mo', '1d')
+      ]);
+      const out = { ...q[key], error: null };
+      if (ir.status === 'fulfilled') {
+        out.price = ir.value.price;
+        out.change = ir.value.change;
+        out.changePct = ir.value.changePct;
+        out.intra = { labels: ir.value.labels, closes: ir.value.closes, prevClose: ir.value.prevClose };
+      }
+      if (mr.status === 'fulfilled') {
+        out.month = { labels: mr.value.labels, closes: mr.value.closes };
+        if (ir.status !== 'fulfilled') {
+          out.price = mr.value.price;
+          out.change = mr.value.change;
+          out.changePct = mr.value.changePct;
+        }
+      }
+      if (ir.status !== 'fulfilled' && mr.status !== 'fulfilled') {
+        out.error = '資料暫時無法取得（' + errText(ir.reason) + '）';
+        Object.assign(q[key], out);
+        throw ir.reason;
+      }
+      Object.assign(q[key], out);
     }
 
     /* ── 期交所：台指期近月每日行情 ── */
@@ -307,31 +516,149 @@ createApp({
       };
     }
 
-    function renderLine(canvasId, series, color) {
+    /* ── 自選股票報價 ── */
+    function yahooStockSymbol(s, fallback) {
+      if (s.market === 'US') return s.ticker;
+      return s.ticker + (fallback ? '.TWO' : '.TW');
+    }
+
+    async function fetchStockQuote(s) {
+      s.loading = true;
+      s.error = null;
+      try {
+        let r;
+        try {
+          r = await fetchYahoo(yahooStockSymbol(s), '1d', '5m');
+        } catch (e) {
+          if (s.market === 'TW') r = await fetchYahoo(yahooStockSymbol(s, true), '1d', '5m'); // 上櫃改抓 .TWO
+          else throw e;
+        }
+        s.price = r.price;
+        s.change = r.change;
+        s.changePct = r.changePct;
+        s.spark = { labels: r.labels, closes: r.closes, prevClose: r.prevClose };
+        nextTick(() => renderSpark(s));
+      } catch (e) {
+        s.error = '報價取得失敗（' + errText(e) + '）';
+      } finally {
+        s.loading = false;
+        saveStocks();
+      }
+    }
+
+    function addStock() {
+      const t = newStock.value.ticker.trim().toUpperCase();
+      if (!t) return;
+      if (stocks.value.some(s => s.ticker === t && s.market === newStock.value.market)) {
+        statusText.value = '此標的已在自選清單中';
+        setTimeout(() => { statusText.value = ''; }, 4000);
+        return;
+      }
+      const s = reactive({ id: 'm' + Date.now(), ticker: t, market: newStock.value.market, name: '', price: null, change: null, changePct: null, spark: null, loading: false, error: null });
+      stocks.value.push(s);
+      newStock.value.ticker = '';
+      saveStocks();
+      fetchStockQuote(s);
+    }
+
+    function removeStock(id) {
+      stocks.value = stocks.value.filter(s => s.id !== id);
+      if (charts['spark-' + id]) { charts['spark-' + id].destroy(); delete charts['spark-' + id]; }
+      saveStocks();
+    }
+
+    /* 把觀察清單模組（watchlist.html）的標的一鍵帶進來 */
+    function importWatchlist() {
+      let list = [];
+      try { list = JSON.parse(localStorage.getItem(WATCHLIST_KEY) || '[]'); } catch (e) {}
+      if (!Array.isArray(list) || !list.length) {
+        statusText.value = '觀察清單目前沒有標的';
+        setTimeout(() => { statusText.value = ''; }, 4000);
+        return;
+      }
+      let added = 0;
+      for (const w of list) {
+        if (!w.ticker) continue;
+        if (stocks.value.some(s => s.ticker === w.ticker && s.market === w.market)) continue;
+        const s = reactive({ id: 'm' + Date.now() + '-' + added, ticker: w.ticker, market: w.market || 'TW', name: w.name || '', price: null, change: null, changePct: null, spark: null, loading: false, error: null });
+        stocks.value.push(s);
+        fetchStockQuote(s);
+        added++;
+      }
+      saveStocks();
+      statusText.value = added ? `已匯入 ${added} 檔標的` : '觀察清單標的皆已在自選清單中';
+      setTimeout(() => { statusText.value = ''; }, 4000);
+    }
+
+    function saveStocks() {
+      try {
+        localStorage.setItem(STOCKS_KEY, JSON.stringify(stocks.value.map(s => ({
+          id: s.id, ticker: s.ticker, market: s.market, name: s.name,
+          price: s.price, change: s.change, changePct: s.changePct, spark: s.spark
+        }))));
+      } catch (e) {}
+    }
+    function loadStocks() {
+      try {
+        const raw = localStorage.getItem(STOCKS_KEY);
+        if (!raw) return;
+        stocks.value = JSON.parse(raw).map(s => reactive({ ...s, loading: false, error: null }));
+      } catch (e) {}
+    }
+
+    function saveNews() {
+      try { localStorage.setItem(NEWS_KEY, JSON.stringify(news.value)); } catch (e) {}
+    }
+    function loadNews() {
+      try {
+        const raw = localStorage.getItem(NEWS_KEY);
+        if (raw) news.value = { preset: 'ustvbiz', customUrl: '', show: true, ...JSON.parse(raw) };
+      } catch (e) {}
+    }
+    function setNewsPreset(id) {
+      news.value.preset = id;
+      saveNews();
+    }
+
+    /* ── 圖表 ── */
+    function renderLine(canvasId, series, color, prevClose) {
       const canvas = document.getElementById(canvasId);
       if (!canvas || !series || !series.closes) return;
       if (charts[canvasId]) charts[canvasId].destroy();
       const tc = PPTheme.chartColors();
+      const datasets = [{
+        data: series.closes,
+        borderColor: color,
+        backgroundColor: color.replace('rgb', 'rgba').replace(')', ',.1)'),
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        fill: true,
+        tension: .3,
+        spanGaps: true
+      }];
+      if (prevClose != null) {
+        // 日內圖加一條前收參考虛線，方便看當日多空
+        datasets.push({
+          data: series.labels.map(() => prevClose),
+          borderColor: tc.border,
+          borderDash: [4, 4],
+          borderWidth: 1,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          fill: false
+        });
+      }
       charts[canvasId] = new Chart(canvas.getContext('2d'), {
         type: 'line',
-        data: {
-          labels: series.labels,
-          datasets: [{
-            data: series.closes,
-            borderColor: color,
-            backgroundColor: color.replace('rgb', 'rgba').replace(')', ',.1)'),
-            borderWidth: 1.5,
-            pointRadius: 0,
-            pointHoverRadius: 4,
-            fill: true,
-            tension: .3,
-            spanGaps: true
-          }]
-        },
+        data: { labels: series.labels, datasets },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
+          plugins: {
+            legend: { display: false },
+            tooltip: { filter: item => item.datasetIndex === 0 }
+          },
           scales: {
             x: { ticks: { font: { size: 10 }, maxTicksLimit: 7, color: tc.tick }, grid: { display: false } },
             y: { ticks: { font: { size: 10 }, color: tc.tick }, grid: { color: tc.grid } }
@@ -341,18 +668,67 @@ createApp({
       });
     }
 
-    function renderCharts() {
-      nextTick(() => {
-        renderLine('fxChart', fx.value.series, 'rgb(91,140,255)');
-        renderLine('twiiChart', twii.value.series, 'rgb(139,92,246)');
+    function renderIndexChart(key) {
+      const card = chartCards.find(c => c.key === key);
+      const mode = tabs[key];
+      const series = mode === 'intra' ? q[key].intra : q[key].month;
+      renderLine('chart-' + key, series, card.color, mode === 'intra' ? (q[key].intra?.prevClose ?? null) : null);
+    }
+
+    function renderSpark(s) {
+      const canvas = document.getElementById('spark-' + s.id);
+      if (!canvas || !s.spark || !s.spark.closes) return;
+      const key = 'spark-' + s.id;
+      if (charts[key]) charts[key].destroy();
+      const upDown = (s.change ?? 0) >= 0;
+      const css = getComputedStyle(document.documentElement);
+      const color = (upDown ? css.getPropertyValue('--red') : css.getPropertyValue('--green')).trim() || '#5b8cff';
+      charts[key] = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: s.spark.labels,
+          datasets: [{
+            data: s.spark.closes,
+            borderColor: color,
+            borderWidth: 1.5,
+            pointRadius: 0,
+            fill: false,
+            tension: .3,
+            spanGaps: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          scales: { x: { display: false }, y: { display: false } },
+          animation: false,
+          events: []
+        }
       });
     }
 
+    function renderCharts() {
+      nextTick(() => {
+        chartCards.forEach(c => renderIndexChart(c.key));
+        stocks.value.forEach(s => renderSpark(s));
+      });
+    }
+
+    function setTab(key, mode) {
+      tabs[key] = mode;
+      saveCache();
+      nextTick(() => renderIndexChart(key));
+    }
+
+    /* ── 快取 ── */
     function saveCache() {
       try {
         localStorage.setItem(CACHE_KEY, JSON.stringify({
           fetchedAt: Date.now(),
-          fx: fx.value, twii: twii.value, tx: tx.value, fi: fi.value
+          q: { fx: q.fx, twii: q.twii, txf: q.txf },
+          tabs: { ...tabs },
+          tx: tx.value, fi: fi.value
         }));
       } catch (e) {}
     }
@@ -361,8 +737,12 @@ createApp({
         const raw = localStorage.getItem(CACHE_KEY);
         if (!raw) return null;
         const c = JSON.parse(raw);
-        fx.value = c.fx || {};
-        twii.value = c.twii || {};
+        if (c.q) {
+          Object.assign(q.fx, c.q.fx || {});
+          Object.assign(q.twii, c.q.twii || {});
+          Object.assign(q.txf, c.q.txf || {});
+        }
+        if (c.tabs) Object.assign(tabs, c.tabs);
         tx.value = c.tx || {};
         fi.value = c.fi || {};
         return c.fetchedAt || null;
@@ -375,22 +755,42 @@ createApp({
       statusText.value = '更新中…';
       const errs = [];
 
-      const [fxr, twr, txr, fir] = await Promise.allSettled([
-        fetchYahoo('TWD=X'), fetchYahoo('^TWII'), fetchTaifexTX(), fetchTaifexForeign()
+      const [fxr, twr, txfr, txr, fir] = await Promise.allSettled([
+        fetchIndex('fx', 'TWD=X'),
+        fetchIndex('twii', '^TWII'),
+        fetchIndex('txf', 'WTX&'),
+        fetchTaifexTX(),
+        fetchTaifexForeign()
       ]);
+      // 自選股與指數並行更新
+      await Promise.allSettled(stocks.value.map(s => fetchStockQuote(s)));
 
-      if (fxr.status === 'fulfilled') {
-        const v = fxr.value;
-        fx.value = { price: v.price, change: v.change, changePct: v.changePct, series: { labels: v.labels, closes: v.closes } };
-      } else errs.push('匯率');
-      if (twr.status === 'fulfilled') {
-        const v = twr.value;
-        twii.value = { price: v.price, change: v.change, changePct: v.changePct, series: { labels: v.labels, closes: v.closes } };
-      } else errs.push('加權指數');
+      if (fxr.status === 'rejected') errs.push('匯率');
+      if (twr.status === 'rejected') errs.push('加權指數');
+      if (txfr.status === 'rejected') errs.push('台指期即時');
+
       if (txr.status === 'fulfilled') tx.value = txr.value;
-      else { tx.value = { ...tx.value, error: '期交所資料暫時無法取得（' + txr.reason.message + '）' }; errs.push('台指期'); }
+      else {
+        const msg = errText(txr.reason);
+        tx.value = {
+          ...tx.value,
+          error: tx.value.last != null
+            ? `更新失敗（${msg}），以下為${tx.value.date ? ' ' + tx.value.date : '先前'}快取資料`
+            : `期交所資料暫時無法取得（${msg}）`
+        };
+        errs.push('台指期日盤');
+      }
       if (fir.status === 'fulfilled') fi.value = fir.value;
-      else { fi.value = { ...fi.value, error: '期交所資料暫時無法取得（' + fir.reason.message + '）' }; errs.push('外資部位'); }
+      else {
+        const msg = errText(fir.reason);
+        fi.value = {
+          ...fi.value,
+          error: fi.value.netOI != null
+            ? `更新失敗（${msg}），以下為${fi.value.date ? ' ' + fi.value.date : '先前'}快取資料`
+            : `期交所資料暫時無法取得（${msg}）`
+        };
+        errs.push('外資部位');
+      }
 
       renderCharts();
       saveCache();
@@ -408,12 +808,21 @@ createApp({
 
     onMounted(() => {
       const at = loadCache();
+      loadStocks();
+      loadNews();
       renderCharts();
       if (!at || Date.now() - at > STALE_MS) refreshAll();
       window.addEventListener('pp-theme-change', renderCharts);
     });
 
-    return { loading, statusText, fx, twii, tx, fi, basis, refreshAll, fmt, sign, pnClass };
+    return {
+      loading, statusText,
+      q, chartCards, tabs, setTab,
+      tx, fi, txPrice, txChange, txChangePct, basis,
+      stocks, newStock, addStock, removeStock, importWatchlist,
+      news, newsPresets, newsVideoId, setNewsPreset, saveNews,
+      refreshAll, fmt, sign, pnClass
+    };
   }
 }).mount('#app');
 </script>
