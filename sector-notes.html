@@ -8,6 +8,7 @@
 <script src="pp-theme.js"></script>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script>window.Vue || document.write('<script src="vue.global.prod.js"><\/script>')</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
   .container { max-width: 1400px; margin: 0 auto; padding: 20px 20px 40px; height: 100vh; display: flex; flex-direction: column; }
 
@@ -26,7 +27,7 @@
   .sector-panel-header h2 { font-size: 13px; font-weight: 700; color: var(--text-muted); letter-spacing: .5px; }
   .sector-list { flex: 1; overflow-y: auto; padding: 8px; }
   .sector-item {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 8px;
     padding: 11px 14px; border-radius: 13px; cursor: pointer;
     color: var(--text-muted); font-size: 13.5px; font-weight: 500;
     border: 1px solid transparent;
@@ -39,16 +40,29 @@
     border-color: color-mix(in srgb, var(--accent) 25%, transparent);
     box-shadow: inset 0 1px 0 var(--glass-inner);
   }
+  .sector-item .s-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sector-item .s-name-input {
+    flex: 1; min-width: 0; font-size: 13.5px; font-weight: 650; font-family: inherit;
+    background: var(--glass-strong); border: 1px solid var(--accent); border-radius: 8px;
+    color: var(--text); padding: 2px 8px; outline: none;
+  }
   .sector-item .count {
-    margin-left: auto; font-size: 11px; font-weight: 600;
+    font-size: 11px; font-weight: 600;
     padding: 2px 8px; border-radius: 999px;
-    background: var(--surface-alt); color: var(--text-muted);
+    background: var(--surface-alt); color: var(--text-muted); flex-shrink: 0;
   }
   .sector-item.active .count { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+  .sector-item .edit-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 12px; padding: 2px 4px; border-radius: 6px; opacity: 0; flex-shrink: 0;
+    transition: opacity .15s;
+  }
+  .sector-item:hover .edit-btn, .sector-item.active .edit-btn { opacity: .6; }
+  .sector-item .edit-btn:hover { opacity: 1; color: var(--accent); }
   .sector-add-row { padding: 8px; border-top: 1px solid var(--stroke); display: flex; gap: 6px; }
   .sector-add-row input { flex: 1; min-width: 0; }
 
-  /* ── drag ── */
+  /* drag */
   .sector-item.dragging { opacity: .4; }
   .sector-item.drag-over { border-color: var(--accent); background: var(--accent-light); }
 
@@ -66,11 +80,16 @@
     font-size: 18px; font-weight: 800; background: none; border: none; color: var(--text);
     border-bottom: 2px solid var(--accent); outline: none; padding: 0 0 2px; min-width: 120px;
   }
+  .header-edit-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 14px; padding: 4px 6px; border-radius: 8px; transition: color .15s;
+  }
+  .header-edit-btn:hover { color: var(--accent); }
   .sector-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
 
   .sector-body { flex: 1; overflow-y: auto; }
 
-  /* ── 股票報價區 ── */
+  /* ── 成分股卡片 ── */
   .stocks-section { padding: 14px 20px 10px; }
   .stocks-section-title { font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: .5px; margin-bottom: 10px; }
 
@@ -78,43 +97,51 @@
   .add-stock-bar input { flex: 1; min-width: 100px; }
   .add-stock-bar select { min-width: 80px; }
 
-  .stock-row {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 14px; border-radius: var(--radius-sm);
-    border: 1px solid var(--stroke); margin-bottom: 6px;
-    transition: background .12s;
+  .mini-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .mini-card {
+    padding: 12px 14px; border-radius: var(--radius);
+    background: var(--surface-alt); border: 1px solid var(--stroke);
+    transition: border-color .15s;
   }
-  .stock-row:hover { background: var(--surface-alt); }
-  .stock-info { flex: 1; min-width: 0; }
-  .stock-name-line { display: flex; align-items: center; gap: 8px; }
-  .stock-ticker-tag { font-size: 14px; font-weight: 750; }
-  .stock-display-name { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini-card:hover { border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .mini-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+  .mini-head-left { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .mini-ticker { font-size: 13.5px; font-weight: 750; }
+  .mini-name { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini-price-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
+  .mini-price { font-size: 19px; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
+  .mini-change { font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .mini-spark { position: relative; width: 100%; height: 44px; margin-top: 6px; }
+  .mini-spark canvas { width: 100% !important; height: 100% !important; }
+  .mini-note { font-size: 10px; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; justify-content: space-between; }
   .market-badge {
-    font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+    font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 999px;
     flex-shrink: 0; letter-spacing: .3px;
   }
   .market-badge.tw { background: rgba(231, 76, 60, .15); color: var(--red); }
   .market-badge.us { background: rgba(74, 125, 255, .15); color: var(--accent); }
   .market-badge.jp { background: rgba(245, 166, 35, .15); color: var(--amber); }
 
-  .stock-price-area { text-align: right; flex-shrink: 0; }
-  .stock-price-val { font-size: 16px; font-weight: 750; font-variant-numeric: tabular-nums; }
-  .stock-change-val { font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .up { color: var(--red); }
   .down { color: var(--green); }
 
-  .stock-del { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 15px; padding: 4px 6px; border-radius: 8px; opacity: .4; transition: opacity .12s; }
-  .stock-del:hover { opacity: 1; color: var(--red); }
+  .del-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 15px; padding: 0 4px; opacity: .5; border-radius: 8px; flex-shrink: 0;
+    transition: opacity .15s;
+  }
+  .del-btn:hover { opacity: 1; color: var(--red); }
 
-  .stock-loading { font-size: 12px; color: var(--text-muted); }
+  .empty-hint { text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px; }
+  .empty-hint h3 { font-size: 15px; margin-bottom: 6px; color: var(--text); }
 
   /* ── 筆記區 ── */
   .notes-section { padding: 10px 20px 20px; }
-  .notes-section-title { font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: .5px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .notes-section-title { font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: .5px; margin-bottom: 10px; }
 
   .note-card {
     border: 1px solid var(--stroke); border-radius: var(--radius-sm);
-    padding: 14px 16px; margin-bottom: 10px; position: relative;
+    padding: 14px 16px; margin-bottom: 10px;
     background: var(--surface-alt); transition: border-color .15s;
   }
   .note-card:focus-within { border-color: var(--accent); }
@@ -131,12 +158,7 @@
   .add-note-btn { width: 100%; padding: 10px; border: 2px dashed var(--stroke); border-radius: var(--radius-sm); background: none; color: var(--text-muted); font-size: 13px; font-family: inherit; cursor: pointer; transition: border-color .15s, color .15s; }
   .add-note-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-  /* ── 分隔線 ── */
   .section-divider { border: none; border-top: 1px solid var(--stroke); margin: 6px 20px; }
-
-  /* ── 空狀態 ── */
-  .empty-hint { text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px; }
-  .empty-hint h3 { font-size: 15px; margin-bottom: 6px; color: var(--text); }
 
   /* 匯入 Modal */
   .modal-mask { position: fixed; inset: 0; background: rgba(10,12,25,.45); backdrop-filter: blur(8px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
@@ -145,13 +167,13 @@
   .modal-field { width: 100%; margin-bottom: 10px; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 
-  /* Responsive */
   @media (max-width: 768px) {
     .container { padding: 14px 10px 32px; }
     .layout { flex-direction: column; }
     .sector-panel { width: 100%; max-height: 200px; }
     .sector-list { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding: 6px 8px; }
     .sector-item { white-space: nowrap; margin-bottom: 0; flex-shrink: 0; padding: 8px 12px; }
+    .mini-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
   }
 </style>
 </head>
@@ -187,7 +209,15 @@
           @drop="onDrop(idx)"
           @dragend="onDragEnd"
         >
-          <span>{{ sec.name }}</span>
+          <template v-if="renamingId !== sec.id">
+            <span class="s-name">{{ sec.name }}</span>
+            <button class="edit-btn" @click.stop="startRename(sec)" title="重新命名">✎</button>
+          </template>
+          <template v-else>
+            <input class="s-name-input" v-model="renameValue"
+              @keydown.enter="finishRename(sec)" @blur="finishRename(sec)"
+              @click.stop ref="renameInput" />
+          </template>
           <span class="count">{{ sec.stocks.length }}</span>
         </div>
         <div v-if="!sectors.length" style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;">
@@ -206,7 +236,8 @@
         <!-- Sector Header -->
         <div class="sector-header">
           <template v-if="!editingTitle">
-            <span class="sector-title" @dblclick="startEditTitle">{{ activeSector.name }}</span>
+            <span class="sector-title">{{ activeSector.name }}</span>
+            <button class="header-edit-btn" @click="startEditTitle" title="重新命名">✎</button>
           </template>
           <template v-else>
             <input class="sector-title-input" v-model="editTitleValue" @keydown.enter="finishEditTitle" @blur="finishEditTitle" ref="titleInput" />
@@ -219,7 +250,7 @@
         </div>
 
         <div class="sector-body">
-          <!-- 股票清單 -->
+          <!-- 成分股卡片 -->
           <div class="stocks-section">
             <div class="stocks-section-title">成分股（{{ activeSector.stocks.length }}）</div>
 
@@ -239,25 +270,27 @@
               <p>從上方加入台股、美股或日股代號</p>
             </div>
 
-            <div v-for="s in activeSector.stocks" :key="s.id" class="stock-row">
-              <span class="market-badge" :class="s.market.toLowerCase()">{{ marketLabel(s.market) }}</span>
-              <div class="stock-info">
-                <div class="stock-name-line">
-                  <span class="stock-ticker-tag">{{ s.ticker }}</span>
-                  <span class="stock-display-name">{{ s.name }}</span>
+            <div class="mini-grid">
+              <div v-for="s in activeSector.stocks" :key="s.id" class="mini-card">
+                <div class="mini-head">
+                  <div class="mini-head-left">
+                    <span class="market-badge" :class="s.market.toLowerCase()">{{ marketLabel(s.market) }}</span>
+                    <span class="mini-ticker">{{ s.ticker }}</span>
+                    <span class="mini-name">{{ s.name }}</span>
+                  </div>
+                  <button class="del-btn" @click="removeStock(activeSector, s.id)" title="移除">×</button>
+                </div>
+                <div class="mini-price-row">
+                  <span class="mini-price">{{ s.price != null ? fmtPrice(s.price, s.market) : (s.loading ? '…' : '—') }}</span>
+                  <span class="mini-change" :class="changeClass(s.change)" v-if="s.change != null">
+                    {{ s.change >= 0 ? '▲' : '▼' }} {{ Math.abs(s.change).toFixed(2) }} ({{ (s.changePct >= 0 ? '+' : '') + s.changePct.toFixed(2) }}%)
+                  </span>
+                </div>
+                <div class="mini-spark"><canvas :id="'spark-' + s.id"></canvas></div>
+                <div class="mini-note">
+                  <span>{{ s.loading ? '載入中…' : '日內走勢 · ' + marketFullLabel(s.market) }}</span>
                 </div>
               </div>
-              <div class="stock-price-area" v-if="s.price != null">
-                <div class="stock-price-val">{{ fmtPrice(s.price, s.market) }}</div>
-                <div class="stock-change-val" :class="changeClass(s.change)">
-                  {{ s.change != null ? ((s.change >= 0 ? '▲' : '▼') + ' ' + Math.abs(s.change).toFixed(2)) : '' }}
-                  <span v-if="s.changePct != null">({{ (s.changePct >= 0 ? '+' : '') + s.changePct.toFixed(2) }}%)</span>
-                </div>
-              </div>
-              <div class="stock-price-area" v-else>
-                <span class="stock-loading">{{ s.loading ? '載入中…' : '—' }}</span>
-              </div>
-              <button class="stock-del" @click="removeStock(activeSector, s.id)" title="移除">×</button>
             </div>
           </div>
 
@@ -265,9 +298,7 @@
 
           <!-- 筆記區 -->
           <div class="notes-section">
-            <div class="notes-section-title">
-              <span>研究筆記（{{ activeSector.notes.length }}）</span>
-            </div>
+            <div class="notes-section-title">研究筆記（{{ activeSector.notes.length }}）</div>
 
             <div v-for="note in sortedNotes" :key="note.id" class="note-card">
               <textarea
@@ -357,6 +388,8 @@ function yahooFallback(ticker, market) {
   return null;
 }
 
+const sparkCharts = {};
+
 createApp({
   setup() {
     const sectors = ref([]);
@@ -370,6 +403,9 @@ createApp({
     const showImportModal = ref(false);
     const importText = ref('');
     const titleInput = ref(null);
+    const renameInput = ref(null);
+    const renamingId = ref(null);
+    const renameValue = ref('');
 
     const dragIdx = ref(null);
     const dragOverIdx = ref(null);
@@ -412,7 +448,8 @@ createApp({
           stocks: s.stocks.map(st => ({
             id: st.id, ticker: st.ticker, name: st.name, market: st.market,
             price: st.price, change: st.change, changePct: st.changePct,
-            lastUpdate: st.lastUpdate
+            lastUpdate: st.lastUpdate,
+            spark: st.spark || null
           })),
           notes: s.notes.map(n => ({
             id: n.id, content: n.content, createdAt: n.createdAt, updatedAt: n.updatedAt
@@ -431,18 +468,13 @@ createApp({
     function selectSector(id) {
       activeSectorId.value = id;
       save();
+      nextTick(renderAllSparks);
     }
 
     function addSector() {
       const name = newSectorName.value.trim();
       if (!name) return;
-      const sec = {
-        id: 's' + Date.now(),
-        name,
-        stocks: [],
-        notes: [],
-        createdAt: new Date().toISOString()
-      };
+      const sec = { id: 's' + Date.now(), name, stocks: [], notes: [], createdAt: new Date().toISOString() };
       sectors.value.push(sec);
       activeSectorId.value = sec.id;
       newSectorName.value = '';
@@ -451,6 +483,8 @@ createApp({
 
     function deleteSector(id) {
       if (!confirm('確定刪除此族群？所有成分股與筆記將一併刪除。')) return;
+      const sec = sectors.value.find(s => s.id === id);
+      if (sec) sec.stocks.forEach(st => destroySpark(st.id));
       sectors.value = sectors.value.filter(s => s.id !== id);
       if (activeSectorId.value === id) {
         activeSectorId.value = sectors.value.length ? sectors.value[0].id : null;
@@ -458,6 +492,21 @@ createApp({
       save();
     }
 
+    // Rename in sidebar
+    function startRename(sec) {
+      renamingId.value = sec.id;
+      renameValue.value = sec.name;
+      nextTick(() => { if (renameInput.value) renameInput.value.focus(); });
+    }
+    function finishRename(sec) {
+      if (renamingId.value !== sec.id) return;
+      const v = renameValue.value.trim();
+      if (v) sec.name = v;
+      renamingId.value = null;
+      save();
+    }
+
+    // Rename in header
     function startEditTitle() {
       if (!activeSector.value) return;
       editingTitle.value = true;
@@ -481,10 +530,8 @@ createApp({
       }
       const st = {
         id: 'st' + Date.now() + Math.random().toString(36).slice(2, 5),
-        ticker: t,
-        name: newStock.value.name.trim(),
-        market: newStock.value.market,
-        price: null, change: null, changePct: null,
+        ticker: t, name: newStock.value.name.trim(), market: newStock.value.market,
+        price: null, change: null, changePct: null, spark: null,
         lastUpdate: null, loading: false
       };
       activeSector.value.stocks.push(st);
@@ -495,6 +542,7 @@ createApp({
     }
 
     function removeStock(sector, id) {
+      destroySpark(id);
       sector.stocks = sector.stocks.filter(s => s.id !== id);
       save();
     }
@@ -505,27 +553,44 @@ createApp({
         let sym = yahooSymbol(stock.ticker, stock.market);
         let result;
         try {
-          result = await fetchYahooChart(sym);
+          result = await fetchYahooChart(sym, '1d', '5m');
         } catch (e) {
           const fb = yahooFallback(stock.ticker, stock.market);
-          if (fb) result = await fetchYahooChart(fb);
+          if (fb) result = await fetchYahooChart(fb, '1d', '5m');
           else throw e;
         }
         const meta = result.meta;
         const quote = result.indicators?.quote?.[0] || {};
         const closes = quote.close || [];
-        const lastIdx = closes.length - 1;
-        if (lastIdx >= 0 && closes[lastIdx] != null) {
-          stock.price = closes[lastIdx];
-          const prev = meta.chartPreviousClose ?? meta.previousClose;
+        const timestamps = result.timestamp || [];
+
+        const validIdx = closes.map((v, i) => v != null ? i : -1).filter(i => i >= 0);
+        const lastClose = validIdx.length ? closes[validIdx[validIdx.length - 1]] : null;
+        const price = meta.regularMarketPrice ?? lastClose;
+        const prev = meta.chartPreviousClose ?? meta.previousClose;
+
+        if (price != null) {
+          stock.price = price;
           if (prev) {
-            stock.change = stock.price - prev;
+            stock.change = price - prev;
             stock.changePct = (stock.change / prev) * 100;
           }
         }
+
         if (!stock.name && meta.shortName) stock.name = meta.shortName;
+
+        stock.spark = {
+          labels: timestamps.map(t => {
+            const d = new Date(t * 1000);
+            return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+          }),
+          closes,
+          prevClose: prev
+        };
+
         stock.lastUpdate = new Date().toISOString();
         save();
+        nextTick(() => renderSpark(stock));
       } catch (e) {
         console.warn('fetchQuote failed for', stock.ticker, e);
       } finally {
@@ -533,12 +598,57 @@ createApp({
       }
     }
 
-    async function fetchYahooChart(symbol) {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d&includePrePost=false`;
+    async function fetchYahooChart(symbol, range, interval) {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
       const data = await fetchVia(url);
       const result = data?.chart?.result?.[0];
       if (!result) throw new Error('No data');
       return result;
+    }
+
+    // Sparkline rendering
+    function renderSpark(stock) {
+      if (!stock.spark || !stock.spark.closes) return;
+      const canvas = document.getElementById('spark-' + stock.id);
+      if (!canvas) return;
+      destroySpark(stock.id);
+
+      const upDown = (stock.change ?? 0) >= 0;
+      const css = getComputedStyle(document.documentElement);
+      const color = (upDown ? css.getPropertyValue('--red') : css.getPropertyValue('--green')).trim() || '#5b8cff';
+
+      sparkCharts[stock.id] = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: stock.spark.labels,
+          datasets: [{
+            data: stock.spark.closes,
+            borderColor: color,
+            borderWidth: 1.5,
+            pointRadius: 0,
+            fill: false,
+            tension: .3,
+            spanGaps: true
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          scales: { x: { display: false }, y: { display: false } },
+          animation: false, events: []
+        }
+      });
+    }
+
+    function destroySpark(id) {
+      if (sparkCharts[id]) { sparkCharts[id].destroy(); delete sparkCharts[id]; }
+    }
+
+    function renderAllSparks() {
+      if (!activeSector.value) return;
+      activeSector.value.stocks.forEach(s => {
+        if (s.spark) renderSpark(s);
+      });
     }
 
     async function refreshSectorQuotes(sector) {
@@ -568,24 +678,11 @@ createApp({
     }
 
     function addNote(sector) {
-      sector.notes.push({
-        id: 'n' + Date.now(),
-        content: '',
-        createdAt: new Date().toISOString(),
-        updatedAt: null
-      });
+      sector.notes.push({ id: 'n' + Date.now(), content: '', createdAt: new Date().toISOString(), updatedAt: null });
       save();
     }
-
-    function removeNote(sector, id) {
-      sector.notes = sector.notes.filter(n => n.id !== id);
-      save();
-    }
-
-    function onNoteInput(note) {
-      note.updatedAt = new Date().toISOString();
-      debounceSave();
-    }
+    function removeNote(sector, id) { sector.notes = sector.notes.filter(n => n.id !== id); save(); }
+    function onNoteInput(note) { note.updatedAt = new Date().toISOString(); debounceSave(); }
 
     function doBatchImport() {
       if (!activeSector.value) return;
@@ -595,17 +692,13 @@ createApp({
         const parts = line.trim().split(/\s+/);
         if (parts.length < 2) continue;
         let market = parts[0].toUpperCase();
-        if (!['TW', 'US', 'JP'].includes(market)) {
-          market = 'TW';
-          parts.unshift('TW');
-        }
+        if (!['TW', 'US', 'JP'].includes(market)) { market = 'TW'; parts.unshift('TW'); }
         const ticker = parts[1].toUpperCase();
         const name = parts.slice(2).join(' ');
         if (activeSector.value.stocks.some(s => s.ticker === ticker && s.market === market)) continue;
         activeSector.value.stocks.push({
           id: 'st' + Date.now() + Math.random().toString(36).slice(2, 5),
-          ticker, name, market,
-          price: null, change: null, changePct: null,
+          ticker, name, market, price: null, change: null, changePct: null, spark: null,
           lastUpdate: null, loading: false
         });
         added++;
@@ -620,62 +713,55 @@ createApp({
       }
     }
 
-    // Drag & drop reorder
-    function onDragStart(idx, e) {
-      dragIdx.value = idx;
-      e.dataTransfer.effectAllowed = 'move';
-    }
+    // Drag & drop
+    function onDragStart(idx, e) { dragIdx.value = idx; e.dataTransfer.effectAllowed = 'move'; }
     function onDragOver(idx) { dragOverIdx.value = idx; }
     function onDragLeave() { dragOverIdx.value = null; }
     function onDrop(idx) {
       if (dragIdx.value != null && dragIdx.value !== idx) {
-        const arr = sectors.value;
-        const [moved] = arr.splice(dragIdx.value, 1);
-        arr.splice(idx, 0, moved);
+        const [moved] = sectors.value.splice(dragIdx.value, 1);
+        sectors.value.splice(idx, 0, moved);
         save();
       }
-      dragIdx.value = null;
-      dragOverIdx.value = null;
+      dragIdx.value = null; dragOverIdx.value = null;
     }
     function onDragEnd() { dragIdx.value = null; dragOverIdx.value = null; }
 
     // Helpers
-    function marketLabel(m) {
-      if (m === 'TW') return '台';
-      if (m === 'US') return 'US';
-      if (m === 'JP') return 'JP';
-      return m;
-    }
+    function marketLabel(m) { return m === 'TW' ? '台' : m; }
+    function marketFullLabel(m) { return m === 'TW' ? '台股' : m === 'US' ? '美股' : '日股'; }
     function fmtPrice(price, market) {
       if (price == null) return '—';
       if (market === 'US') return '$' + price.toFixed(2);
       return price.toFixed(market === 'JP' ? 0 : 2);
     }
-    function changeClass(change) {
-      if (change == null) return '';
-      return change >= 0 ? 'up' : 'down';
-    }
+    function changeClass(change) { return change == null ? '' : change >= 0 ? 'up' : 'down'; }
     function fmtTime(iso) {
       if (!iso) return '';
       const d = new Date(iso);
       return d.toLocaleString('zh-TW', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
 
-    onMounted(load);
+    onMounted(() => {
+      load();
+      nextTick(renderAllSparks);
+      window.addEventListener('pp-theme-change', () => nextTick(renderAllSparks));
+    });
 
     return {
       sectors, activeSectorId, activeSector, newSectorName, newStock,
       refreshing, statusText, editingTitle, editTitleValue, titleInput,
       showImportModal, importText, sortedNotes, tickerPlaceholder,
+      renamingId, renameValue, renameInput,
       dragIdx, dragOverIdx,
       selectSector, addSector, deleteSector,
-      startEditTitle, finishEditTitle,
+      startRename, finishRename, startEditTitle, finishEditTitle,
       addStock, removeStock,
       refreshSectorQuotes, refreshAllQuotes,
       addNote, removeNote, onNoteInput,
       doBatchImport,
       onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
-      marketLabel, fmtPrice, changeClass, fmtTime,
+      marketLabel, marketFullLabel, fmtPrice, changeClass, fmtTime,
       save
     };
   }
