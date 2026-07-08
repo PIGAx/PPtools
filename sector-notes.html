@@ -171,13 +171,28 @@
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 
   /* ── 個股詳情 Modal ── */
-  .detail-mask { position: fixed; inset: 0; background: rgba(0,0,0,.65); backdrop-filter: blur(12px); z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .detail-mask { position: fixed; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(16px); z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 16px; }
   .detail-panel {
-    width: 100%; max-width: 640px; max-height: 90vh;
+    width: 100%; max-width: 800px; max-height: 92vh;
     border-radius: var(--radius-lg); display: flex; flex-direction: column; overflow: hidden;
-    background: var(--surface);
-    border: 1px solid var(--stroke);
-    box-shadow: 0 32px 80px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.06);
+    background: #ffffff;
+    border: 1px solid rgba(200,200,210,.4);
+    box-shadow: 0 32px 80px rgba(0,0,0,.25), 0 0 0 1px rgba(255,255,255,.5);
+    color: #1a1a2e;
+  }
+  [data-theme="dark"] .detail-panel {
+    background: #1e2030;
+    border-color: rgba(255,255,255,.1);
+    box-shadow: 0 32px 80px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.06);
+    color: #e8e8f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .detail-panel {
+      background: #1e2030;
+      border-color: rgba(255,255,255,.1);
+      box-shadow: 0 32px 80px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.06);
+      color: #e8e8f0;
+    }
   }
   .detail-top { padding: 20px 22px 14px; border-bottom: 1px solid var(--stroke); }
   .detail-top-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -209,7 +224,7 @@
 
   .detail-body { flex: 1; overflow-y: auto; padding: 16px 22px 22px; }
 
-  .detail-chart { position: relative; width: 100%; height: 180px; margin-bottom: 12px; }
+  .detail-chart { position: relative; width: 100%; height: 240px; margin-bottom: 12px; }
   .detail-chart canvas { width: 100% !important; height: 100% !important; }
 
   /* 籌碼 tab */
@@ -265,7 +280,7 @@
     .sector-list { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding: 6px 8px; }
     .sector-item { white-space: nowrap; margin-bottom: 0; flex-shrink: 0; padding: 8px 12px; }
     .mini-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
-    .detail-panel { max-width: 100%; max-height: 95vh; }
+    .detail-panel { max-width: 100%; max-height: 95vh; min-height: 60vh; }
     .chip-grid { grid-template-columns: 1fr; }
   }
 </style>
@@ -982,6 +997,10 @@ createApp({
         if (!result || (!result.buyers.length && !result.sellers.length)) {
           result = await tryFubonBroker(ticker, prevTradingDateStr());
         }
+        // Fallback: GoodInfo
+        if (!result || (!result.buyers.length && !result.sellers.length)) {
+          result = await tryGoodInfoBroker(ticker, todayStr());
+        }
         if (!result || (!result.buyers.length && !result.sellers.length)) {
           brokerError.value = '查無分點進出資料（此股或本日尚無資料）';
           return;
@@ -994,23 +1013,37 @@ createApp({
       }
     }
 
+    const BROKER_ENDPOINTS = [
+      (ticker, dateStr) => `https://www.twse.com.tw/rwd/zh/fund/TWT43U?stockNo=${ticker}&date=${dateStr}&response=json`,
+      (ticker, dateStr) => `https://www.twse.com.tw/fund/TWT43U?stockNo=${ticker}&date=${dateStr}&response=json`,
+      (ticker, dateStr) => `https://www.twse.com.tw/rwd/zh/brokerTransaction/BFIAMU?stockNo=${ticker}&date=${dateStr}&response=json`,
+    ];
+
     async function tryTWSEBroker(ticker, dateStr) {
-      try {
-        const url = `https://www.twse.com.tw/rwd/zh/brokerTransaction/BFIAMU?stockNo=${ticker}&date=${dateStr}&response=json`;
-        const data = await fetchVia(url);
-        if (data.stat !== 'OK' || !data.data || !data.data.length) return null;
-        const fields = data.fields || [];
-        const brokers = data.data.map(row => {
-          const name = (row[1] || row[0] || '').replace(/\s+/g, '');
-          const buy = parseTWSENum(row[2]);
-          const sell = parseTWSENum(row[3]);
-          const net = row[4] != null ? parseTWSENum(row[4]) : buy - sell;
-          return { name, buy, sell, net };
-        }).filter(b => b.name && (b.buy || b.sell));
-        const buyers = brokers.filter(b => b.net > 0).sort((a, b) => b.net - a.net).slice(0, 20);
-        const sellers = brokers.filter(b => b.net < 0).sort((a, b) => a.net - b.net).slice(0, 20);
-        return { buyers, sellers, date: dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3'), source: 'TWSE' };
-      } catch { return null; }
+      for (const mkUrl of BROKER_ENDPOINTS) {
+        try {
+          const url = mkUrl(ticker, dateStr);
+          const data = await fetchVia(url);
+          if (!data || (data.stat && data.stat !== 'OK')) continue;
+          const rows = data.data || data.tables?.[0]?.data;
+          if (!rows || !rows.length) continue;
+          const brokers = rows.map(row => {
+            const nameIdx = row.findIndex(c => /[一-鿿]/.test(String(c)));
+            const name = nameIdx >= 0 ? String(row[nameIdx]).replace(/\s+/g, '') : '';
+            const nums = row.filter(c => /^[\d,\-]+$/.test(String(c).replace(/,/g, '')));
+            if (nums.length < 2) return null;
+            const buy = parseTWSENum(nums[0]);
+            const sell = parseTWSENum(nums[1]);
+            const net = nums.length >= 3 ? parseTWSENum(nums[2]) : buy - sell;
+            return { name, buy, sell, net };
+          }).filter(b => b && b.name && (b.buy || b.sell));
+          if (!brokers.length) continue;
+          const buyers = brokers.filter(b => b.net > 0).sort((a, b) => b.net - a.net).slice(0, 20);
+          const sellers = brokers.filter(b => b.net < 0).sort((a, b) => a.net - b.net).slice(0, 20);
+          return { buyers, sellers, date: dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3'), source: 'TWSE' };
+        } catch { continue; }
+      }
+      return null;
     }
 
     async function tryFubonBroker(ticker, dateStr) {
@@ -1022,7 +1055,20 @@ createApp({
       } catch { return null; }
     }
 
+    async function tryGoodInfoBroker(ticker, dateStr) {
+      try {
+        const url = `https://goodinfo.tw/tw/ShowBuySaleChart.asp?STOCK_ID=${ticker}&CHT_CAT=DATE`;
+        const html = await fetchViaText(url);
+        return parseBrokerTableHtml(html, dateStr);
+      } catch { return null; }
+    }
+
     function parseBSRHtml(html, dateStr) {
+      if (!html || html.length < 100) return null;
+      return parseBrokerTableHtml(html, dateStr);
+    }
+
+    function parseBrokerTableHtml(html, dateStr) {
       if (!html || html.length < 100) return null;
       const brokers = [];
       const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
@@ -1034,19 +1080,21 @@ createApp({
         while ((m = cellRe.exec(trMatch[1])) !== null) {
           cells.push(m[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').trim());
         }
-        if (cells.length < 4) continue;
-        const name = cells[0];
-        if (!name || name === '券商' || /合計|統計|名稱/.test(name)) continue;
-        const buy = parseTWSENum(cells[1]);
-        const sell = parseTWSENum(cells[2]);
-        const net = parseTWSENum(cells[3]) || (buy - sell);
+        if (cells.length < 3) continue;
+        const name = cells.find(c => /[一-鿿]/.test(c) && !/合計|統計|名稱|券商|日期/.test(c));
+        if (!name) continue;
+        const numCells = cells.filter(c => /^[\d,.\-]+$/.test(c.replace(/,/g, '')));
+        if (numCells.length < 2) continue;
+        const buy = parseTWSENum(numCells[0]);
+        const sell = parseTWSENum(numCells[1]);
+        const net = numCells.length >= 3 ? parseTWSENum(numCells[2]) : buy - sell;
         if (buy === 0 && sell === 0) continue;
         brokers.push({ name, buy, sell, net });
       }
       if (!brokers.length) return null;
       const buyers = brokers.filter(b => b.net > 0).sort((a, b) => b.net - a.net).slice(0, 20);
       const sellers = brokers.filter(b => b.net < 0).sort((a, b) => a.net - b.net).slice(0, 20);
-      return { buyers, sellers, date: dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3'), source: 'eDJ' };
+      return { buyers, sellers, date: dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3'), source: 'Web' };
     }
 
     // ── Detail Modal ──
