@@ -98,13 +98,14 @@
   .add-stock-bar input { flex: 1; min-width: 100px; }
   .add-stock-bar select { min-width: 80px; }
 
-  .mini-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .mini-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
   .mini-card {
     padding: 12px 14px; border-radius: var(--radius);
     background: var(--surface-alt); border: 1px solid var(--stroke);
     transition: border-color .15s;
   }
   .mini-card:hover { border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .mini-card.fetch-error { opacity: .6; }
   .mini-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
   .mini-head-left { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
   .mini-ticker { font-size: 13.5px; font-weight: 750; }
@@ -112,7 +113,8 @@
   .mini-price-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
   .mini-price { font-size: 19px; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
   .mini-change { font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
-  .mini-spark { position: relative; width: 100%; height: 44px; margin-top: 6px; }
+  .mini-error { font-size: 11px; color: var(--amber); margin-top: 2px; }
+  .mini-spark { position: relative; width: 100%; height: 90px; margin-top: 6px; }
   .mini-spark canvas { width: 100% !important; height: 100% !important; }
   .mini-note { font-size: 10px; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; justify-content: space-between; }
   .market-badge {
@@ -174,7 +176,7 @@
     .sector-panel { width: 100%; max-height: 200px; }
     .sector-list { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding: 6px 8px; }
     .sector-item { white-space: nowrap; margin-bottom: 0; flex-shrink: 0; padding: 8px 12px; }
-    .mini-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+    .mini-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
   }
 </style>
 </head>
@@ -272,7 +274,7 @@
             </div>
 
             <div class="mini-grid">
-              <div v-for="s in activeSector.stocks" :key="s.id" class="mini-card">
+              <div v-for="s in activeSector.stocks" :key="s.id" class="mini-card" :class="{ 'fetch-error': s.error }">
                 <div class="mini-head">
                   <div class="mini-head-left">
                     <span class="market-badge" :class="s.market.toLowerCase()">{{ marketLabel(s.market) }}</span>
@@ -287,9 +289,12 @@
                     {{ s.change >= 0 ? '▲' : '▼' }} {{ Math.abs(s.change).toFixed(2) }} ({{ (s.changePct >= 0 ? '+' : '') + s.changePct.toFixed(2) }}%)
                   </span>
                 </div>
-                <div class="mini-spark"><canvas :id="'spark-' + s.id"></canvas></div>
+                <div v-if="s.error" class="mini-error">⚠ {{ s.error }}</div>
+                <div v-if="s.spark" class="mini-spark"><canvas :id="'spark-' + s.id"></canvas></div>
                 <div class="mini-note">
-                  <span>{{ s.loading ? '載入中…' : '日內走勢 · ' + marketFullLabel(s.market) }}</span>
+                  <span v-if="s.loading">載入中…</span>
+                  <span v-else-if="s.error">點擊「更新報價」重試</span>
+                  <span v-else>日內走勢 · {{ marketFullLabel(s.market) }}</span>
                 </div>
               </div>
             </div>
@@ -432,7 +437,7 @@ createApp({
           const parsed = JSON.parse(raw);
           sectors.value = (parsed.sectors || []).map(s => ({
             ...s,
-            stocks: (s.stocks || []).map(st => ({ ...st, loading: false })),
+            stocks: (s.stocks || []).map(st => ({ ...st, loading: false, error: null })),
             notes: s.notes || []
           }));
           if (parsed.activeSectorId && sectors.value.some(s => s.id === parsed.activeSectorId)) {
@@ -550,6 +555,7 @@ createApp({
 
     async function fetchQuote(stock) {
       stock.loading = true;
+      stock.error = null;
       try {
         let sym = yahooSymbol(stock.ticker, stock.market);
         let result;
@@ -557,8 +563,10 @@ createApp({
           result = await fetchYahooChart(sym, '1d', '5m');
         } catch (e) {
           const fb = yahooFallback(stock.ticker, stock.market);
-          if (fb) result = await fetchYahooChart(fb, '1d', '5m');
-          else throw e;
+          if (fb) {
+            try { result = await fetchYahooChart(fb, '1d', '5m'); }
+            catch (e2) { throw new Error('查無此代號（已嘗試上市/上櫃）'); }
+          } else throw e;
         }
         const meta = result.meta;
         const quote = result.indicators?.quote?.[0] || {};
@@ -576,23 +584,28 @@ createApp({
             stock.change = price - prev;
             stock.changePct = (stock.change / prev) * 100;
           }
+        } else {
+          stock.error = '無法取得報價';
         }
 
         if (!stock.name && meta.shortName) stock.name = meta.shortName;
 
-        stock.spark = {
-          labels: timestamps.map(t => {
-            const d = new Date(t * 1000);
-            return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
-          }),
-          closes,
-          prevClose: prev
-        };
+        if (validIdx.length > 1) {
+          stock.spark = {
+            labels: timestamps.map(t => {
+              const d = new Date(t * 1000);
+              return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+            }),
+            closes,
+            prevClose: prev
+          };
+        }
 
         stock.lastUpdate = new Date().toISOString();
         save();
-        nextTick(() => setTimeout(() => renderSpark(stock), 50));
+        nextTick(() => setTimeout(() => renderSpark(stock), 80));
       } catch (e) {
+        stock.error = e.message || '抓取失敗';
         console.warn('fetchQuote failed for', stock.ticker, e);
       } finally {
         stock.loading = false;
@@ -602,8 +615,9 @@ createApp({
     async function fetchYahooChart(symbol, range, interval) {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
       const data = await fetchVia(url);
+      if (data?.chart?.error) throw new Error(data.chart.error.description || 'API error');
       const result = data?.chart?.result?.[0];
-      if (!result) throw new Error('No data');
+      if (!result) throw new Error('查無資料');
       return result;
     }
 
@@ -618,25 +632,62 @@ createApp({
       const upDown = (stock.change ?? 0) >= 0;
       const css = getComputedStyle(document.documentElement);
       const color = (upDown ? css.getPropertyValue('--red') : css.getPropertyValue('--green')).trim() || '#5b8cff';
+      const tickColor = css.getPropertyValue('--text-muted').trim() || '#888';
+      const gridColor = PPTheme.isDark() ? 'rgba(255,255,255,.06)' : 'rgba(20,25,50,.06)';
+
+      const labels = stock.spark.labels;
+      const prevClose = stock.spark.prevClose;
 
       sparkCharts[stock.id] = new Chart(canvas.getContext('2d'), {
         type: 'line',
         data: {
-          labels: stock.spark.labels,
-          datasets: [{
-            data: stock.spark.closes,
-            borderColor: color,
-            borderWidth: 1.5,
-            pointRadius: 0,
-            fill: false,
-            tension: .3,
-            spanGaps: true
-          }]
+          labels,
+          datasets: [
+            {
+              data: stock.spark.closes,
+              borderColor: color,
+              borderWidth: 1.5,
+              pointRadius: 0,
+              fill: false,
+              tension: .3,
+              spanGaps: true
+            },
+            prevClose != null ? {
+              data: labels.map(() => prevClose),
+              borderColor: tickColor,
+              borderWidth: 1,
+              borderDash: [4, 3],
+              pointRadius: 0,
+              fill: false,
+              spanGaps: true
+            } : null
+          ].filter(Boolean)
         },
         options: {
           responsive: true, maintainAspectRatio: false,
+          layout: { padding: { right: 2 } },
           plugins: { legend: { display: false }, tooltip: { enabled: false } },
-          scales: { x: { display: false }, y: { display: false } },
+          scales: {
+            x: {
+              display: true,
+              grid: { display: false },
+              ticks: {
+                color: tickColor, font: { size: 9 },
+                maxTicksLimit: 4, maxRotation: 0
+              },
+              border: { display: false }
+            },
+            y: {
+              display: true, position: 'right',
+              grid: { color: gridColor, drawTicks: false },
+              ticks: {
+                color: tickColor, font: { size: 9 },
+                maxTicksLimit: 3,
+                callback: v => stock.market === 'US' ? '$' + v.toFixed(1) : v.toFixed(stock.market === 'JP' ? 0 : 1)
+              },
+              border: { display: false }
+            }
+          },
           animation: false, events: []
         }
       });
