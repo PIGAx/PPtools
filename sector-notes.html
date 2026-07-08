@@ -63,7 +63,6 @@
   .sector-add-row { padding: 8px; border-top: 1px solid var(--stroke); display: flex; gap: 6px; }
   .sector-add-row input { flex: 1; min-width: 0; }
 
-  /* drag */
   .sector-item.dragging { opacity: .4; }
   .sector-item.drag-over { border-color: var(--accent); background: var(--accent-light); }
 
@@ -71,7 +70,6 @@
   .main-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; border-radius: var(--radius-lg); overflow: hidden; }
   .main-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 14px; text-align: center; padding: 40px; }
 
-  /* 族群 header */
   .sector-header {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     padding: 16px 20px 12px; border-bottom: 1px solid var(--stroke);
@@ -102,9 +100,10 @@
   .mini-card {
     padding: 12px 14px; border-radius: var(--radius);
     background: var(--surface-alt); border: 1px solid var(--stroke);
-    transition: border-color .15s;
+    cursor: pointer; transition: border-color .15s, transform .15s;
   }
-  .mini-card:hover { border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .mini-card:hover { border-color: color-mix(in srgb, var(--accent) 30%, transparent); transform: translateY(-1px); }
+  .mini-card:active { transform: scale(.99); }
   .mini-card.fetch-error { opacity: .6; }
   .mini-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
   .mini-head-left { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
@@ -113,6 +112,7 @@
   .mini-price-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
   .mini-price { font-size: 19px; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
   .mini-change { font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .mini-ohlcv { display: flex; gap: 8px; margin-top: 4px; font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
   .mini-error { font-size: 11px; color: var(--amber); margin-top: 2px; }
   .mini-spark { position: relative; width: 100%; height: 90px; margin-top: 6px; }
   .mini-spark canvas { width: 100% !important; height: 100% !important; }
@@ -163,12 +163,97 @@
 
   .section-divider { border: none; border-top: 1px solid var(--stroke); margin: 6px 20px; }
 
-  /* 匯入 Modal */
+  /* ── 匯入 Modal ── */
   .modal-mask { position: fixed; inset: 0; background: rgba(10,12,25,.45); backdrop-filter: blur(8px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
   .modal-box { width: 100%; max-width: 480px; border-radius: var(--radius-lg); padding: 28px 24px 22px; max-height: 80vh; overflow-y: auto; }
   .modal-title { font-size: 17px; font-weight: 750; margin-bottom: 14px; }
   .modal-field { width: 100%; margin-bottom: 10px; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+  /* ── 個股詳情 Modal ── */
+  .detail-mask { position: fixed; inset: 0; background: rgba(10,12,25,.5); backdrop-filter: blur(10px); z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .detail-panel {
+    width: 100%; max-width: 640px; max-height: 90vh;
+    border-radius: var(--radius-lg); display: flex; flex-direction: column; overflow: hidden;
+  }
+  .detail-top { padding: 20px 22px 14px; border-bottom: 1px solid var(--stroke); }
+  .detail-top-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .detail-top-row .mini-ticker { font-size: 18px; }
+  .detail-top-row .mini-name { font-size: 13px; }
+  .detail-close {
+    margin-left: auto; background: none; border: none; color: var(--text-muted);
+    font-size: 22px; cursor: pointer; padding: 4px 8px; border-radius: 10px;
+  }
+  .detail-close:hover { color: var(--text); background: var(--surface-alt); }
+  .detail-price-big { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+  .detail-change-big { font-size: 14px; font-weight: 650; margin-left: 10px; font-variant-numeric: tabular-nums; }
+  .detail-ohlcv {
+    display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px;
+    font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+  }
+  .detail-ohlcv span b { color: var(--text); font-weight: 650; }
+
+  .detail-tabs {
+    display: flex; border-bottom: 1px solid var(--stroke); padding: 0 22px; flex-shrink: 0;
+  }
+  .detail-tab {
+    padding: 10px 16px; font-size: 13px; font-weight: 600; color: var(--text-muted);
+    background: none; border: none; border-bottom: 2px solid transparent;
+    cursor: pointer; font-family: inherit; transition: color .15s;
+  }
+  .detail-tab:hover { color: var(--text); }
+  .detail-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .detail-body { flex: 1; overflow-y: auto; padding: 16px 22px 22px; }
+
+  .detail-chart { position: relative; width: 100%; height: 180px; margin-bottom: 12px; }
+  .detail-chart canvas { width: 100% !important; height: 100% !important; }
+
+  /* 籌碼 tab */
+  .chip-grid {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 16px;
+  }
+  .chip-card {
+    padding: 14px; border-radius: var(--radius-sm); text-align: center;
+    background: var(--surface-alt); border: 1px solid var(--stroke);
+  }
+  .chip-label { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
+  .chip-value { font-size: 16px; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .chip-sub { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+  .chip-stat-row {
+    display: flex; justify-content: space-between; padding: 10px 0;
+    border-bottom: 1px solid var(--stroke); font-size: 13px;
+  }
+  .chip-stat-row:last-child { border-bottom: none; }
+  .chip-stat-row .label { color: var(--text-muted); }
+  .chip-stat-row .val { font-weight: 650; font-variant-numeric: tabular-nums; }
+
+  /* 分點 tab */
+  .broker-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .broker-tab {
+    flex: 1; padding: 8px; font-size: 12px; font-weight: 650; text-align: center;
+    border-radius: var(--radius-sm); cursor: pointer; font-family: inherit;
+    background: var(--surface-alt); border: 1px solid var(--stroke); color: var(--text-muted);
+    transition: background .15s, color .15s;
+  }
+  .broker-tab.active { background: var(--accent-light); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
+  .broker-search { margin-bottom: 12px; }
+  .broker-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .broker-table th {
+    text-align: left; padding: 8px 6px; font-weight: 700; color: var(--text-muted);
+    border-bottom: 2px solid var(--stroke); font-size: 11px; letter-spacing: .3px;
+  }
+  .broker-table th.num { text-align: right; }
+  .broker-table td { padding: 9px 6px; border-bottom: 1px solid var(--stroke); }
+  .broker-table td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .broker-table tr:hover td { background: var(--surface-alt); }
+  .broker-tag {
+    font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 999px;
+    background: rgba(231, 76, 60, .12); color: var(--red); margin-left: 6px;
+  }
+
+  .detail-loading { text-align: center; padding: 30px; color: var(--text-muted); font-size: 13px; }
+  .detail-empty { text-align: center; padding: 30px; color: var(--text-muted); font-size: 13px; }
 
   @media (max-width: 768px) {
     .container { padding: 14px 10px 32px; }
@@ -177,6 +262,8 @@
     .sector-list { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding: 6px 8px; }
     .sector-item { white-space: nowrap; margin-bottom: 0; flex-shrink: 0; padding: 8px 12px; }
     .mini-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+    .detail-panel { max-width: 100%; max-height: 95vh; }
+    .chip-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -236,7 +323,6 @@
     <!-- 主內容 -->
     <div class="main-panel glass">
       <template v-if="activeSector">
-        <!-- Sector Header -->
         <div class="sector-header">
           <template v-if="!editingTitle">
             <span class="sector-title">{{ activeSector.name }}</span>
@@ -253,7 +339,6 @@
         </div>
 
         <div class="sector-body">
-          <!-- 成分股卡片 -->
           <div class="stocks-section">
             <div class="stocks-section-title">成分股（{{ activeSector.stocks.length }}）</div>
 
@@ -274,27 +359,34 @@
             </div>
 
             <div class="mini-grid">
-              <div v-for="s in activeSector.stocks" :key="s.id" class="mini-card" :class="{ 'fetch-error': s.error }">
+              <div v-for="s in activeSector.stocks" :key="s.id" class="mini-card" :class="{ 'fetch-error': s.error }"
+                   @click="openDetail(s)">
                 <div class="mini-head">
                   <div class="mini-head-left">
                     <span class="market-badge" :class="s.market.toLowerCase()">{{ marketLabel(s.market) }}</span>
                     <span class="mini-ticker">{{ s.ticker }}</span>
                     <span class="mini-name">{{ s.name }}</span>
                   </div>
-                  <button class="del-btn" @click="removeStock(activeSector, s.id)" title="移除">×</button>
+                  <button class="del-btn" @click.stop="removeStock(activeSector, s.id)" title="移除">×</button>
                 </div>
                 <div class="mini-price-row">
-                  <span class="mini-price">{{ s.price != null ? fmtPrice(s.price, s.market) : (s.loading ? '…' : '—') }}</span>
+                  <span class="mini-price" :class="changeClass(s.change)">{{ s.price != null ? fmtPrice(s.price, s.market) : (s.loading ? '…' : '—') }}</span>
                   <span class="mini-change" :class="changeClass(s.change)" v-if="s.change != null">
                     {{ s.change >= 0 ? '▲' : '▼' }} {{ Math.abs(s.change).toFixed(2) }} ({{ (s.changePct >= 0 ? '+' : '') + s.changePct.toFixed(2) }}%)
                   </span>
+                </div>
+                <div v-if="s.volume" class="mini-ohlcv">
+                  <span>開 <b>{{ fmtNum(s.open) }}</b></span>
+                  <span>高 <b>{{ fmtNum(s.high) }}</b></span>
+                  <span>低 <b>{{ fmtNum(s.low) }}</b></span>
+                  <span>量 <b>{{ fmtVol(s.volume) }}</b></span>
                 </div>
                 <div v-if="s.error" class="mini-error">⚠ {{ s.error }}</div>
                 <div v-if="s.spark" class="mini-spark"><canvas :id="'spark-' + s.id"></canvas></div>
                 <div class="mini-note">
                   <span v-if="s.loading">載入中…</span>
                   <span v-else-if="s.error">點擊「更新報價」重試</span>
-                  <span v-else>日內走勢 · {{ marketFullLabel(s.market) }}</span>
+                  <span v-else>{{ s.lastUpdate ? '更新 ' + fmtTime(s.lastUpdate) : '日內走勢' }} · {{ marketFullLabel(s.market) }}</span>
                 </div>
               </div>
             </div>
@@ -302,23 +394,15 @@
 
           <hr class="section-divider" />
 
-          <!-- 筆記區 -->
           <div class="notes-section">
             <div class="notes-section-title">研究筆記（{{ activeSector.notes.length }}）</div>
-
             <div v-for="note in sortedNotes" :key="note.id" class="note-card">
-              <textarea
-                class="note-content"
-                v-model="note.content"
-                @input="onNoteInput(note)"
-                placeholder="寫下你的觀察和研究…"
-              ></textarea>
+              <textarea class="note-content" v-model="note.content" @input="onNoteInput(note)" placeholder="寫下你的觀察和研究…"></textarea>
               <div class="note-meta">
                 <span class="note-time">{{ fmtTime(note.updatedAt || note.createdAt) }}</span>
                 <button class="note-del" @click="removeNote(activeSector, note.id)" title="刪除筆記">刪除</button>
               </div>
             </div>
-
             <button class="add-note-btn" @click="addNote(activeSector)">＋ 新增筆記</button>
           </div>
         </div>
@@ -354,6 +438,139 @@ JP 6857 愛德萬測試</pre>
       </div>
     </div>
   </div>
+
+  <!-- ── 個股詳情 Modal ── -->
+  <div class="detail-mask" v-if="detailStock" @click.self="closeDetail">
+    <div class="detail-panel glass">
+      <div class="detail-top">
+        <div class="detail-top-row">
+          <span class="market-badge" :class="detailStock.market.toLowerCase()">{{ marketLabel(detailStock.market) }}</span>
+          <span class="mini-ticker">{{ detailStock.ticker }}</span>
+          <span class="mini-name">{{ detailStock.name }}</span>
+          <button class="detail-close" @click="closeDetail">×</button>
+        </div>
+        <div>
+          <span class="detail-price-big" :class="changeClass(detailStock.change)">{{ detailStock.price != null ? fmtPrice(detailStock.price, detailStock.market) : '—' }}</span>
+          <span class="detail-change-big" :class="changeClass(detailStock.change)" v-if="detailStock.change != null">
+            {{ detailStock.change >= 0 ? '▲' : '▼' }} {{ Math.abs(detailStock.change).toFixed(2) }} ({{ (detailStock.changePct >= 0 ? '+' : '') + detailStock.changePct.toFixed(2) }}%)
+          </span>
+        </div>
+        <div class="detail-ohlcv" v-if="detailStock.volume">
+          <span>開 <b>{{ fmtNum(detailStock.open) }}</b></span>
+          <span>高 <b>{{ fmtNum(detailStock.high) }}</b></span>
+          <span>低 <b>{{ fmtNum(detailStock.low) }}</b></span>
+          <span>量 <b>{{ fmtVol(detailStock.volume) }}</b></span>
+        </div>
+      </div>
+
+      <div class="detail-tabs">
+        <button class="detail-tab" :class="{active: detailTab==='chart'}" @click="detailTab='chart'">走勢圖</button>
+        <button class="detail-tab" :class="{active: detailTab==='chip'}" @click="switchDetailTab('chip')" v-if="detailStock.market==='TW'">籌碼</button>
+        <button class="detail-tab" :class="{active: detailTab==='broker'}" @click="switchDetailTab('broker')" v-if="detailStock.market==='TW'">分點進出</button>
+      </div>
+
+      <div class="detail-body">
+        <!-- 走勢圖 Tab -->
+        <template v-if="detailTab==='chart'">
+          <div class="detail-chart"><canvas id="detail-chart-canvas"></canvas></div>
+        </template>
+
+        <!-- 籌碼 Tab -->
+        <template v-if="detailTab==='chip'">
+          <div v-if="chipLoading" class="detail-loading">載入籌碼資料中…</div>
+          <div v-else-if="chipError" class="detail-empty">{{ chipError }}</div>
+          <template v-else-if="chipData">
+            <div class="chip-grid">
+              <div class="chip-card">
+                <div class="chip-label">外資</div>
+                <div class="chip-value" :class="chipData.foreignNet >= 0 ? 'up' : 'down'">
+                  {{ chipData.foreignNet >= 0 ? '+' : '' }}{{ fmtChipVol(chipData.foreignNet) }}
+                </div>
+                <div class="chip-sub">張</div>
+              </div>
+              <div class="chip-card">
+                <div class="chip-label">投信</div>
+                <div class="chip-value" :class="chipData.trustNet >= 0 ? 'up' : 'down'">
+                  {{ chipData.trustNet >= 0 ? '+' : '' }}{{ fmtChipVol(chipData.trustNet) }}
+                </div>
+                <div class="chip-sub">張</div>
+              </div>
+              <div class="chip-card">
+                <div class="chip-label">自營商</div>
+                <div class="chip-value" :class="chipData.dealerNet >= 0 ? 'up' : 'down'">
+                  {{ chipData.dealerNet >= 0 ? '+' : '' }}{{ fmtChipVol(chipData.dealerNet) }}
+                </div>
+                <div class="chip-sub">張</div>
+              </div>
+            </div>
+            <div style="margin-bottom:8px">
+              <div class="chip-stat-row">
+                <span class="label">三大法人合計</span>
+                <span class="val" :class="chipData.totalNet >= 0 ? 'up' : 'down'">{{ chipData.totalNet >= 0 ? '+' : '' }}{{ fmtChipVol(chipData.totalNet) }} 張</span>
+              </div>
+              <div class="chip-stat-row">
+                <span class="label">外資買進</span>
+                <span class="val">{{ fmtChipVol(chipData.foreignBuy) }} 張</span>
+              </div>
+              <div class="chip-stat-row">
+                <span class="label">外資賣出</span>
+                <span class="val">{{ fmtChipVol(chipData.foreignSell) }} 張</span>
+              </div>
+              <div class="chip-stat-row">
+                <span class="label">投信買進</span>
+                <span class="val">{{ fmtChipVol(chipData.trustBuy) }} 張</span>
+              </div>
+              <div class="chip-stat-row">
+                <span class="label">投信賣出</span>
+                <span class="val">{{ fmtChipVol(chipData.trustSell) }} 張</span>
+              </div>
+              <div class="chip-stat-row">
+                <span class="label">資料日期</span>
+                <span class="val">{{ chipData.date || '—' }}</span>
+              </div>
+            </div>
+          </template>
+        </template>
+
+        <!-- 分點進出 Tab -->
+        <template v-if="detailTab==='broker'">
+          <div v-if="brokerLoading" class="detail-loading">載入分點資料中…</div>
+          <div v-else-if="brokerError" class="detail-empty">{{ brokerError }}</div>
+          <template v-else-if="brokerData">
+            <input class="pp-field broker-search" v-model="brokerSearch" placeholder="搜尋券商名稱…" style="font-size:12px;padding:8px 12px;width:100%" />
+            <div class="broker-tabs">
+              <button class="broker-tab" :class="{active: brokerSide==='buy'}" @click="brokerSide='buy'">買超 Top</button>
+              <button class="broker-tab" :class="{active: brokerSide==='sell'}" @click="brokerSide='sell'">賣超 Top</button>
+            </div>
+            <table class="broker-table">
+              <thead>
+                <tr>
+                  <th>券商</th>
+                  <th class="num">買進(張)</th>
+                  <th class="num">賣出(張)</th>
+                  <th class="num">買賣超</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="b in filteredBrokers" :key="b.name">
+                  <td>{{ b.name }}</td>
+                  <td class="num">{{ fmtChipVol(b.buy) }}</td>
+                  <td class="num">{{ fmtChipVol(b.sell) }}</td>
+                  <td class="num" :class="b.net >= 0 ? 'up' : 'down'">{{ b.net >= 0 ? '+' : '' }}{{ fmtChipVol(b.net) }}</td>
+                </tr>
+                <tr v-if="!filteredBrokers.length">
+                  <td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px">無符合的券商</td>
+                </tr>
+              </tbody>
+            </table>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:10px;text-align:right">
+              資料日期：{{ brokerData.date || '—' }} · 來源：TWSE
+            </div>
+          </template>
+        </template>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -384,6 +601,22 @@ async function fetchVia(url) {
   throw new Error(errs.join(', '));
 }
 
+async function fetchViaText(url) {
+  const errs = [];
+  for (const f of FETCHERS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), f.timeout);
+    try {
+      const res = await fetch(f.wrap(url), { signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.text();
+    } catch (e) {
+      errs.push(e.message || String(e));
+    } finally { clearTimeout(timer); }
+  }
+  throw new Error(errs.join(', '));
+}
+
 function yahooSymbol(ticker, market) {
   if (market === 'US') return ticker;
   if (market === 'JP') return ticker + '.T';
@@ -394,7 +627,28 @@ function yahooFallback(ticker, market) {
   return null;
 }
 
+function parseTWSENum(s) {
+  if (!s) return 0;
+  return parseInt(String(s).replace(/,/g, ''), 10) || 0;
+}
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+}
+
+function prevTradingDateStr() {
+  const d = new Date();
+  const day = d.getDay();
+  if (day === 0) d.setDate(d.getDate() - 2);
+  else if (day === 1) d.setDate(d.getDate() - 3);
+  else if (day === 6) d.setDate(d.getDate() - 1);
+  return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+}
+
 const sparkCharts = {};
+let detailChartInst = null;
+const instCache = {};
 
 createApp({
   setup() {
@@ -412,9 +666,20 @@ createApp({
     const renameInput = ref(null);
     const renamingId = ref(null);
     const renameValue = ref('');
-
     const dragIdx = ref(null);
     const dragOverIdx = ref(null);
+
+    // Detail modal
+    const detailStock = ref(null);
+    const detailTab = ref('chart');
+    const chipData = ref(null);
+    const chipLoading = ref(false);
+    const chipError = ref('');
+    const brokerData = ref(null);
+    const brokerLoading = ref(false);
+    const brokerError = ref('');
+    const brokerSide = ref('buy');
+    const brokerSearch = ref('');
 
     let saveTimer = null;
 
@@ -428,6 +693,14 @@ createApp({
       if (m === 'TW') return '代號（如 2330）';
       if (m === 'US') return '代號（如 AAPL）';
       return '代號（如 6857）';
+    });
+
+    const filteredBrokers = computed(() => {
+      if (!brokerData.value) return [];
+      const list = brokerSide.value === 'buy' ? brokerData.value.buyers : brokerData.value.sellers;
+      if (!brokerSearch.value.trim()) return list;
+      const q = brokerSearch.value.trim().toLowerCase();
+      return list.filter(b => b.name.toLowerCase().includes(q));
     });
 
     function load() {
@@ -454,6 +727,7 @@ createApp({
           stocks: s.stocks.map(st => ({
             id: st.id, ticker: st.ticker, name: st.name, market: st.market,
             price: st.price, change: st.change, changePct: st.changePct,
+            open: st.open, high: st.high, low: st.low, volume: st.volume,
             lastUpdate: st.lastUpdate,
             spark: st.spark || null
           })),
@@ -498,7 +772,6 @@ createApp({
       save();
     }
 
-    // Rename in sidebar
     function startRename(sec) {
       renamingId.value = sec.id;
       renameValue.value = sec.name;
@@ -512,7 +785,6 @@ createApp({
       save();
     }
 
-    // Rename in header
     function startEditTitle() {
       if (!activeSector.value) return;
       editingTitle.value = true;
@@ -537,8 +809,9 @@ createApp({
       const st = {
         id: 'st' + Date.now() + Math.random().toString(36).slice(2, 5),
         ticker: t, name: newStock.value.name.trim(), market: newStock.value.market,
-        price: null, change: null, changePct: null, spark: null,
-        lastUpdate: null, loading: false
+        price: null, change: null, changePct: null,
+        open: null, high: null, low: null, volume: null,
+        spark: null, lastUpdate: null, loading: false
       };
       activeSector.value.stocks.push(st);
       newStock.value.ticker = '';
@@ -588,6 +861,11 @@ createApp({
           stock.error = '無法取得報價';
         }
 
+        stock.open = meta.regularMarketOpen ?? null;
+        stock.high = meta.regularMarketDayHigh ?? null;
+        stock.low = meta.regularMarketDayLow ?? null;
+        stock.volume = meta.regularMarketVolume ?? null;
+
         if (!stock.name && meta.shortName) stock.name = meta.shortName;
 
         if (validIdx.length > 1) {
@@ -621,7 +899,214 @@ createApp({
       return result;
     }
 
-    // Sparkline rendering
+    // ── 三大法人 (TWSE T86) ──
+    async function fetchInstitutionalForDate(dateStr) {
+      if (instCache[dateStr]) return instCache[dateStr];
+      const url = `https://www.twse.com.tw/rwd/zh/fund/T86?date=${dateStr}&selectType=ALL&response=json`;
+      const data = await fetchVia(url);
+      if (data.stat !== 'OK' || !data.data) return null;
+      const map = {};
+      data.data.forEach(row => {
+        const code = String(row[0]).trim();
+        map[code] = {
+          foreignBuy: parseTWSENum(row[2]),
+          foreignSell: parseTWSENum(row[3]),
+          foreignNet: parseTWSENum(row[4]),
+          trustBuy: parseTWSENum(row[8]),
+          trustSell: parseTWSENum(row[9]),
+          trustNet: parseTWSENum(row[10]),
+          dealerNet: parseTWSENum(row[13]) + parseTWSENum(row[16]),
+          totalNet: parseTWSENum(row[17]),
+          date: data.date
+        };
+      });
+      instCache[dateStr] = map;
+      return map;
+    }
+
+    async function loadChipData(ticker) {
+      chipLoading.value = true;
+      chipError.value = '';
+      chipData.value = null;
+      try {
+        let map = await fetchInstitutionalForDate(todayStr());
+        if (!map || !map[ticker]) {
+          map = await fetchInstitutionalForDate(prevTradingDateStr());
+        }
+        if (!map || !map[ticker]) {
+          chipError.value = '查無籌碼資料（可能為上櫃股或非交易日）';
+          return;
+        }
+        const d = map[ticker];
+        chipData.value = {
+          ...d,
+          foreignNet: Math.round(d.foreignNet / 1000),
+          foreignBuy: Math.round(d.foreignBuy / 1000),
+          foreignSell: Math.round(d.foreignSell / 1000),
+          trustNet: Math.round(d.trustNet / 1000),
+          trustBuy: Math.round(d.trustBuy / 1000),
+          trustSell: Math.round(d.trustSell / 1000),
+          dealerNet: Math.round(d.dealerNet / 1000),
+          totalNet: Math.round(d.totalNet / 1000),
+          date: d.date ? d.date.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3') : ''
+        };
+      } catch (e) {
+        chipError.value = '籌碼資料載入失敗：' + (e.message || '');
+      } finally {
+        chipLoading.value = false;
+      }
+    }
+
+    // ── 分點進出 (TWSE BSR) ──
+    async function loadBrokerData(ticker) {
+      brokerLoading.value = true;
+      brokerError.value = '';
+      brokerData.value = null;
+      brokerSearch.value = '';
+      try {
+        let dateStr = todayStr();
+        let html;
+        try {
+          html = await fetchBSRPage(ticker, dateStr);
+        } catch (e) {
+          dateStr = prevTradingDateStr();
+          html = await fetchBSRPage(ticker, dateStr);
+        }
+        const parsed = parseBSRHtml(html, dateStr);
+        if (!parsed || (!parsed.buyers.length && !parsed.sellers.length)) {
+          brokerError.value = '查無分點進出資料（可能為上櫃股或非交易日）';
+          return;
+        }
+        brokerData.value = parsed;
+      } catch (e) {
+        brokerError.value = '分點資料載入失敗：' + (e.message || '');
+      } finally {
+        brokerLoading.value = false;
+      }
+    }
+
+    async function fetchBSRPage(ticker, dateStr) {
+      const d = dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+      const url = `https://fubon-ebrokerdj.fbs.com.tw/z/zc/zco/zco.djhtm?a=${ticker}&e=${d}&f=${d}`;
+      return await fetchViaText(url);
+    }
+
+    function parseBSRHtml(html, dateStr) {
+      const rows = [];
+      const re = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+      let trMatch;
+      while ((trMatch = trRe.exec(html)) !== null) {
+        const cells = [];
+        let m;
+        const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+        while ((m = cellRe.exec(trMatch[1])) !== null) {
+          cells.push(m[1].replace(/<[^>]*>/g, '').trim());
+        }
+        if (cells.length >= 4) rows.push(cells);
+      }
+
+      const brokers = [];
+      for (const cells of rows) {
+        const name = cells[0];
+        if (!name || name === '券商' || name.includes('合計') || name.includes('統計')) continue;
+        const buy = parseTWSENum(cells[1]);
+        const sell = parseTWSENum(cells[2]);
+        const net = parseTWSENum(cells[3]) || (buy - sell);
+        if (buy === 0 && sell === 0) continue;
+        brokers.push({ name, buy, sell, net });
+      }
+
+      const buyers = brokers.filter(b => b.net > 0).sort((a, b) => b.net - a.net).slice(0, 15);
+      const sellers = brokers.filter(b => b.net < 0).sort((a, b) => a.net - b.net).slice(0, 15);
+
+      return {
+        buyers, sellers,
+        date: dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3')
+      };
+    }
+
+    // ── Detail Modal ──
+    function openDetail(stock) {
+      detailStock.value = stock;
+      detailTab.value = 'chart';
+      chipData.value = null;
+      brokerData.value = null;
+      brokerSearch.value = '';
+      nextTick(() => setTimeout(renderDetailChart, 80));
+    }
+    function closeDetail() {
+      if (detailChartInst) { detailChartInst.destroy(); detailChartInst = null; }
+      detailStock.value = null;
+    }
+    function switchDetailTab(tab) {
+      detailTab.value = tab;
+      if (tab === 'chip' && !chipData.value && !chipLoading.value && detailStock.value) {
+        loadChipData(detailStock.value.ticker);
+      }
+      if (tab === 'broker' && !brokerData.value && !brokerLoading.value && detailStock.value) {
+        loadBrokerData(detailStock.value.ticker);
+      }
+    }
+
+    function renderDetailChart() {
+      if (typeof Chart === 'undefined' || !detailStock.value?.spark) return;
+      const canvas = document.getElementById('detail-chart-canvas');
+      if (!canvas) return;
+      if (detailChartInst) { detailChartInst.destroy(); detailChartInst = null; }
+
+      const stock = detailStock.value;
+      const upDown = (stock.change ?? 0) >= 0;
+      const css = getComputedStyle(document.documentElement);
+      const color = (upDown ? css.getPropertyValue('--red') : css.getPropertyValue('--green')).trim() || '#5b8cff';
+      const tickColor = css.getPropertyValue('--text-muted').trim() || '#888';
+      const gridColor = PPTheme.isDark() ? 'rgba(255,255,255,.06)' : 'rgba(20,25,50,.06)';
+      const prevClose = stock.spark.prevClose;
+
+      detailChartInst = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: stock.spark.labels,
+          datasets: [
+            {
+              data: stock.spark.closes,
+              borderColor: color, borderWidth: 2, pointRadius: 0,
+              fill: true,
+              backgroundColor: (upDown ? 'rgba(230,72,61,.08)' : 'rgba(31,161,92,.08)'),
+              tension: .3, spanGaps: true
+            },
+            prevClose != null ? {
+              data: stock.spark.labels.map(() => prevClose),
+              borderColor: tickColor, borderWidth: 1, borderDash: [4, 3],
+              pointRadius: 0, fill: false, spanGaps: true
+            } : null
+          ].filter(Boolean)
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          scales: {
+            x: {
+              display: true, grid: { display: false },
+              ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 6, maxRotation: 0 },
+              border: { display: false }
+            },
+            y: {
+              display: true, position: 'right',
+              grid: { color: gridColor, drawTicks: false },
+              ticks: {
+                color: tickColor, font: { size: 10 }, maxTicksLimit: 5,
+                callback: v => stock.market === 'US' ? '$' + v.toFixed(1) : v.toFixed(stock.market === 'JP' ? 0 : 1)
+              },
+              border: { display: false }
+            }
+          },
+          animation: false, events: []
+        }
+      });
+    }
+
+    // ── Sparkline rendering ──
     function renderSpark(stock) {
       if (typeof Chart === 'undefined') return;
       if (!stock.spark || !stock.spark.closes) return;
@@ -634,7 +1119,6 @@ createApp({
       const color = (upDown ? css.getPropertyValue('--red') : css.getPropertyValue('--green')).trim() || '#5b8cff';
       const tickColor = css.getPropertyValue('--text-muted').trim() || '#888';
       const gridColor = PPTheme.isDark() ? 'rgba(255,255,255,.06)' : 'rgba(20,25,50,.06)';
-
       const labels = stock.spark.labels;
       const prevClose = stock.spark.prevClose;
 
@@ -644,22 +1128,12 @@ createApp({
           labels,
           datasets: [
             {
-              data: stock.spark.closes,
-              borderColor: color,
-              borderWidth: 1.5,
-              pointRadius: 0,
-              fill: false,
-              tension: .3,
-              spanGaps: true
+              data: stock.spark.closes, borderColor: color, borderWidth: 1.5,
+              pointRadius: 0, fill: false, tension: .3, spanGaps: true
             },
             prevClose != null ? {
-              data: labels.map(() => prevClose),
-              borderColor: tickColor,
-              borderWidth: 1,
-              borderDash: [4, 3],
-              pointRadius: 0,
-              fill: false,
-              spanGaps: true
+              data: labels.map(() => prevClose), borderColor: tickColor,
+              borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false, spanGaps: true
             } : null
           ].filter(Boolean)
         },
@@ -669,20 +1143,15 @@ createApp({
           plugins: { legend: { display: false }, tooltip: { enabled: false } },
           scales: {
             x: {
-              display: true,
-              grid: { display: false },
-              ticks: {
-                color: tickColor, font: { size: 9 },
-                maxTicksLimit: 4, maxRotation: 0
-              },
+              display: true, grid: { display: false },
+              ticks: { color: tickColor, font: { size: 9 }, maxTicksLimit: 4, maxRotation: 0 },
               border: { display: false }
             },
             y: {
               display: true, position: 'right',
               grid: { color: gridColor, drawTicks: false },
               ticks: {
-                color: tickColor, font: { size: 9 },
-                maxTicksLimit: 3,
+                color: tickColor, font: { size: 9 }, maxTicksLimit: 3,
                 callback: v => stock.market === 'US' ? '$' + v.toFixed(1) : v.toFixed(stock.market === 'JP' ? 0 : 1)
               },
               border: { display: false }
@@ -751,8 +1220,9 @@ createApp({
         if (activeSector.value.stocks.some(s => s.ticker === ticker && s.market === market)) continue;
         activeSector.value.stocks.push({
           id: 'st' + Date.now() + Math.random().toString(36).slice(2, 5),
-          ticker, name, market, price: null, change: null, changePct: null, spark: null,
-          lastUpdate: null, loading: false
+          ticker, name, market, price: null, change: null, changePct: null,
+          open: null, high: null, low: null, volume: null,
+          spark: null, lastUpdate: null, loading: false
         });
         added++;
       }
@@ -788,6 +1258,17 @@ createApp({
       if (market === 'US') return '$' + price.toFixed(2);
       return price.toFixed(market === 'JP' ? 0 : 2);
     }
+    function fmtNum(n) { return n != null ? n.toLocaleString('zh-TW') : '—'; }
+    function fmtVol(v) {
+      if (v == null) return '—';
+      if (v >= 1e8) return (v / 1e8).toFixed(1) + '億';
+      if (v >= 1e4) return (v / 1e4).toFixed(0) + '萬';
+      return v.toLocaleString('zh-TW');
+    }
+    function fmtChipVol(v) {
+      if (v == null) return '—';
+      return v.toLocaleString('zh-TW');
+    }
     function changeClass(change) { return change == null ? '' : change >= 0 ? 'up' : 'down'; }
     function fmtTime(iso) {
       if (!iso) return '';
@@ -797,10 +1278,8 @@ createApp({
 
     onMounted(() => {
       load();
-      // 延遲確保 DOM 與 Chart.js 都就緒
       setTimeout(() => {
         renderAllSparks();
-        // 舊版資料沒有 spark 欄位，自動補抓
         if (activeSector.value) {
           const missing = activeSector.value.stocks.filter(s => !s.spark);
           if (missing.length) refreshSectorQuotes(activeSector.value);
@@ -815,15 +1294,18 @@ createApp({
       showImportModal, importText, sortedNotes, tickerPlaceholder,
       renamingId, renameValue, renameInput,
       dragIdx, dragOverIdx,
+      detailStock, detailTab, chipData, chipLoading, chipError,
+      brokerData, brokerLoading, brokerError, brokerSide, brokerSearch, filteredBrokers,
       selectSector, addSector, deleteSector,
       startRename, finishRename, startEditTitle, finishEditTitle,
       addStock, removeStock,
+      openDetail, closeDetail, switchDetailTab,
       refreshSectorQuotes, refreshAllQuotes,
       addNote, removeNote, onNoteInput,
       doBatchImport,
       onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
-      marketLabel, marketFullLabel, fmtPrice, changeClass, fmtTime,
-      save
+      marketLabel, marketFullLabel, fmtPrice, fmtNum, fmtVol, fmtChipVol,
+      changeClass, fmtTime, save
     };
   }
 }).mount('#app');
