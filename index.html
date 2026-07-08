@@ -203,6 +203,60 @@
   }
   .module-card .card-title { font-size: 13.5px; font-weight: 650; }
   .module-card .card-desc { font-size: 11px; color: var(--text-muted); margin-top: 5px; line-height: 1.5; }
+
+  /* ── 懸浮直播視窗 ── */
+  .pip-window {
+    position: fixed;
+    z-index: 9000;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: 0 16px 60px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.08);
+    display: flex;
+    flex-direction: column;
+    background: #000;
+    min-width: 280px;
+    min-height: 200px;
+  }
+  .pip-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: rgba(20,22,35,.92);
+    cursor: grab;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  .pip-bar:active { cursor: grabbing; }
+  .pip-bar-title { font-size: 11px; font-weight: 650; color: #ccc; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pip-bar-btn {
+    background: none; border: none; color: #999; font-size: 14px;
+    cursor: pointer; padding: 2px 5px; border-radius: 6px; line-height: 1;
+  }
+  .pip-bar-btn:hover { color: #fff; background: rgba(255,255,255,.1); }
+  .pip-body { flex: 1; position: relative; }
+  .pip-body iframe { width: 100%; height: 100%; border: none; display: block; }
+  .pip-ch-bar {
+    display: flex; gap: 3px; padding: 5px 10px; background: rgba(20,22,35,.92);
+    flex-shrink: 0;
+  }
+  .pip-ch-btn {
+    padding: 3px 10px; font-size: 10px; font-weight: 600; cursor: pointer;
+    color: #aaa; border-radius: 999px; white-space: nowrap;
+    background: rgba(255,255,255,.06); border: none; font-family: inherit;
+  }
+  .pip-ch-btn:hover { color: #fff; }
+  .pip-ch-btn.active { color: #fff; background: rgba(91,140,255,.5); }
+  .pip-resize {
+    position: absolute; bottom: 0; right: 0; width: 18px; height: 18px;
+    cursor: nwse-resize; z-index: 2;
+  }
+  .pip-resize::after {
+    content: ''; position: absolute; right: 3px; bottom: 3px;
+    width: 10px; height: 10px;
+    border-right: 2px solid rgba(255,255,255,.3);
+    border-bottom: 2px solid rgba(255,255,255,.3);
+  }
 </style>
 </head>
 <body>
@@ -231,6 +285,7 @@
       <button class="menu-btn" onclick="toggleSidebar()" aria-label="開啟選單">&#9776;</button>
       <span class="header-title" id="headerTitle">總覽</span>
       <div class="header-right">
+        <button class="btn btn-sm" onclick="togglePip()" id="pipBtn" title="非凡新聞直播懸浮窗">📺</button>
         <button class="btn btn-sm" onclick="openDataHub()" id="syncBtn" title="資料中心">☁ 同步</button>
         <button class="btn btn-sm" onclick="onThemeClick()" id="themeBtn">⚙ 系統</button>
       </div>
@@ -247,6 +302,22 @@
       <iframe id="contentFrame" class="content-frame" style="display:none" title="模組內容" allowfullscreen allow="fullscreen; autoplay; encrypted-media; picture-in-picture; clipboard-write; web-share"></iframe>
     </div>
   </div>
+</div>
+
+<!-- 懸浮直播視窗 -->
+<div class="pip-window" id="pipWindow" style="display:none; width:400px; height:260px; right:24px; bottom:24px;">
+  <div class="pip-bar" id="pipBar">
+    <span class="pip-bar-title" id="pipTitle">📺 非凡新聞直播</span>
+    <button class="pip-bar-btn" onclick="pipSize('sm')" title="小">S</button>
+    <button class="pip-bar-btn" onclick="pipSize('md')" title="中">M</button>
+    <button class="pip-bar-btn" onclick="pipSize('lg')" title="大">L</button>
+    <button class="pip-bar-btn" onclick="togglePip()" title="關閉">✕</button>
+  </div>
+  <div class="pip-ch-bar" id="pipChannels"></div>
+  <div class="pip-body">
+    <iframe id="pipFrame" src="" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>
+  </div>
+  <div class="pip-resize" id="pipResize"></div>
 </div>
 
 <script src="pp-store.js"></script>
@@ -293,6 +364,14 @@ const MODULES = [
     icon: '🏭',
     desc: '依產業板塊分類看盤，搭配研究筆記',
     src: 'sector-notes.html',
+    section: '分析工具'
+  },
+  {
+    id: 'heatmap',
+    title: '產業熱力圖',
+    icon: '🗺',
+    desc: '個股依產業分類的漲跌幅色塊圖',
+    src: 'heatmap.html',
     section: '分析工具'
   },
   {
@@ -418,6 +497,134 @@ function refreshSyncHint() {
     btn.title = '上次備份：' + d.toLocaleString('zh-TW', { hour12: false });
   }
 }
+
+// ── 懸浮直播視窗 ──
+const PIP_KEY = 'pptools-pip';
+const PIP_CHANNELS = [
+  { id: 'ustvbiz', label: '投資看非凡', video: 'eA6Aczd3FZM' },
+  { id: 'ustv', label: '非凡電視', video: 'TKf1nKiUXVI' },
+];
+const PIP_SIZES = { sm: [320, 210], md: [440, 280], lg: [640, 400] };
+
+function loadPipState() {
+  try { return JSON.parse(localStorage.getItem(PIP_KEY)) || {}; } catch { return {}; }
+}
+function savePipState(patch) {
+  const s = { ...loadPipState(), ...patch };
+  localStorage.setItem(PIP_KEY, JSON.stringify(s));
+}
+
+function togglePip() {
+  const w = document.getElementById('pipWindow');
+  const show = w.style.display === 'none';
+  w.style.display = show ? 'flex' : 'none';
+  savePipState({ show });
+  if (show) {
+    const st = loadPipState();
+    setPipChannel(st.channel || PIP_CHANNELS[0].id);
+  } else {
+    document.getElementById('pipFrame').src = '';
+  }
+}
+
+function setPipChannel(id) {
+  const ch = PIP_CHANNELS.find(c => c.id === id) || PIP_CHANNELS[0];
+  document.getElementById('pipFrame').src = 'https://www.youtube.com/embed/' + ch.video + '?rel=0&autoplay=1';
+  document.getElementById('pipTitle').textContent = '📺 ' + ch.label;
+  savePipState({ channel: ch.id });
+  document.querySelectorAll('.pip-ch-btn').forEach(b => b.classList.toggle('active', b.dataset.id === ch.id));
+}
+
+function pipSize(size) {
+  const [w, h] = PIP_SIZES[size] || PIP_SIZES.md;
+  const win = document.getElementById('pipWindow');
+  win.style.width = w + 'px';
+  win.style.height = h + 'px';
+  savePipState({ w, h });
+}
+
+function buildPipChannels() {
+  const bar = document.getElementById('pipChannels');
+  PIP_CHANNELS.forEach(ch => {
+    const btn = document.createElement('button');
+    btn.className = 'pip-ch-btn';
+    btn.dataset.id = ch.id;
+    btn.textContent = ch.label;
+    btn.onclick = () => setPipChannel(ch.id);
+    bar.appendChild(btn);
+  });
+}
+
+function initPipDrag() {
+  const win = document.getElementById('pipWindow');
+  const bar = document.getElementById('pipBar');
+  let dragging = false, ox, oy;
+
+  bar.addEventListener('pointerdown', e => {
+    if (e.target.closest('.pip-bar-btn')) return;
+    dragging = true;
+    ox = e.clientX - win.offsetLeft;
+    oy = e.clientY - win.offsetTop;
+    bar.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  bar.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    let x = Math.max(0, Math.min(window.innerWidth - 80, e.clientX - ox));
+    let y = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - oy));
+    win.style.left = x + 'px';
+    win.style.top = y + 'px';
+    win.style.right = 'auto';
+    win.style.bottom = 'auto';
+  });
+  bar.addEventListener('pointerup', e => {
+    if (!dragging) return;
+    dragging = false;
+    savePipState({ x: win.offsetLeft, y: win.offsetTop });
+  });
+
+  const handle = document.getElementById('pipResize');
+  let resizing = false, startW, startH, startX, startY;
+  handle.addEventListener('pointerdown', e => {
+    resizing = true;
+    startW = win.offsetWidth;
+    startH = win.offsetHeight;
+    startX = e.clientX;
+    startY = e.clientY;
+    handle.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  handle.addEventListener('pointermove', e => {
+    if (!resizing) return;
+    const w = Math.max(280, startW + e.clientX - startX);
+    const h = Math.max(180, startH + e.clientY - startY);
+    win.style.width = w + 'px';
+    win.style.height = h + 'px';
+  });
+  handle.addEventListener('pointerup', e => {
+    if (!resizing) return;
+    resizing = false;
+    savePipState({ w: win.offsetWidth, h: win.offsetHeight });
+  });
+}
+
+function restorePip() {
+  const st = loadPipState();
+  const win = document.getElementById('pipWindow');
+  if (st.w) win.style.width = st.w + 'px';
+  if (st.h) win.style.height = st.h + 'px';
+  if (st.x != null) { win.style.left = st.x + 'px'; win.style.right = 'auto'; }
+  if (st.y != null) { win.style.top = st.y + 'px'; win.style.bottom = 'auto'; }
+  if (st.show) {
+    win.style.display = 'flex';
+    setPipChannel(st.channel || PIP_CHANNELS[0].id);
+  }
+}
+
+buildPipChannels();
+initPipDrag();
+restorePip();
 
 // Init
 buildNav();
