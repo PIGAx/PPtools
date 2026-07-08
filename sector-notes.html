@@ -8,7 +8,8 @@
 <script src="pp-theme.js"></script>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script>window.Vue || document.write('<script src="vue.global.prod.js"><\/script>')</script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>window.Chart || document.write('<script src="chart.umd.min.js"><\/script>')</script>
 <style>
   .container { max-width: 1400px; margin: 0 auto; padding: 20px 20px 40px; height: 100vh; display: flex; flex-direction: column; }
 
@@ -590,7 +591,7 @@ createApp({
 
         stock.lastUpdate = new Date().toISOString();
         save();
-        nextTick(() => renderSpark(stock));
+        nextTick(() => setTimeout(() => renderSpark(stock), 50));
       } catch (e) {
         console.warn('fetchQuote failed for', stock.ticker, e);
       } finally {
@@ -608,6 +609,7 @@ createApp({
 
     // Sparkline rendering
     function renderSpark(stock) {
+      if (typeof Chart === 'undefined') return;
       if (!stock.spark || !stock.spark.closes) return;
       const canvas = document.getElementById('spark-' + stock.id);
       if (!canvas) return;
@@ -744,8 +746,16 @@ createApp({
 
     onMounted(() => {
       load();
-      nextTick(renderAllSparks);
-      window.addEventListener('pp-theme-change', () => nextTick(renderAllSparks));
+      // 延遲確保 DOM 與 Chart.js 都就緒
+      setTimeout(() => {
+        renderAllSparks();
+        // 舊版資料沒有 spark 欄位，自動補抓
+        if (activeSector.value) {
+          const missing = activeSector.value.stocks.filter(s => !s.spark);
+          if (missing.length) refreshSectorQuotes(activeSector.value);
+        }
+      }, 300);
+      window.addEventListener('pp-theme-change', () => setTimeout(renderAllSparks, 50));
     });
 
     return {
