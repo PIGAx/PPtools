@@ -18,25 +18,24 @@
   .status-text { color: var(--text-muted); font-size: 12px; }
 
   /* 指標統計磚 */
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px; }
-  .stat-tile { padding: 16px 18px; border-radius: var(--radius-lg); transition: transform .22s cubic-bezier(.3,.7,.4,1.2), box-shadow .22s; }
+  .stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 18px; }
+  @media (max-width: 760px) { .stat-grid { grid-template-columns: 1fr; } .container { padding: 16px 12px 32px; } }
+  .stat-tile { padding: 22px 24px 20px; border-radius: var(--radius-lg); display: flex; flex-direction: column; transition: transform .22s cubic-bezier(.3,.7,.4,1.2), box-shadow .22s; }
   .stat-tile:hover { transform: translateY(-2px); box-shadow: var(--shadow), inset 0 1px 0 var(--glass-inner); }
-  .stat-label { font-size: 12px; font-weight: 650; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
-  .stat-value { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.4px; margin-top: 4px; }
-  .stat-sub { font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
-  .stat-note { font-size: 10.5px; color: var(--text-muted); margin-top: 6px; }
+  .stat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .stat-label { font-size: 13px; font-weight: 650; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+  .stat-value { font-size: 42px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.8px; line-height: 1.1; margin-top: 10px; }
+  .stat-sub { font-size: 13.5px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 6px; }
+  .stat-hilo { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--text-muted); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--stroke); }
+  .stat-hilo b { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat-note { font-size: 10.5px; color: var(--text-muted); margin-top: 8px; }
   .up { color: var(--red); }
   .down { color: var(--green); }
   .flat { color: var(--text-muted); }
 
-  /* 圖表卡 */
-  .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 18px; }
-  @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } .container { padding: 16px 12px 32px; } }
-  .chart-card { padding: 16px 18px; border-radius: var(--radius-lg); }
-  .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-  .chart-head h3 { font-size: 13.5px; font-weight: 700; }
-  .chart-box { position: relative; width: 100%; height: 190px; }
-  .chart-box canvas { width: 100% !important; height: 100% !important; }
+  /* 磚內走勢圖 */
+  .stat-chart-box { position: relative; width: 100%; height: 200px; margin-top: 14px; }
+  .stat-chart-box canvas { width: 100% !important; height: 100% !important; }
 
   /* 玻璃分段控制器（日內／近一月） */
   .seg { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--surface-alt); }
@@ -106,58 +105,86 @@
     </div>
   </div>
 
-  <!-- 指標統計磚 -->
+  <!-- 指標統計磚（含日內／近一月走勢圖） -->
   <div class="stat-grid">
     <div class="stat-tile glass">
-      <div class="stat-label">💵 美元／台幣</div>
+      <div class="stat-head">
+        <div class="stat-label">💵 美元／台幣</div>
+        <div class="seg">
+          <div class="seg-btn" :class="{ active: tabs.fx === 'intra' }" @click="setTab('fx', 'intra')">日內</div>
+          <div class="seg-btn" :class="{ active: tabs.fx === 'month' }" @click="setTab('fx', 'month')">近一月</div>
+        </div>
+      </div>
       <div class="stat-value">{{ q.fx.price != null ? q.fx.price.toFixed(3) : '—' }}</div>
       <div class="stat-sub" :class="pnClass(q.fx.changePct)" v-if="q.fx.changePct != null">
         {{ sign(q.fx.change, 3) }} ({{ sign(q.fx.changePct, 2) }}%)
       </div>
+      <div class="stat-hilo" v-if="q.fx.high != null || q.fx.low != null || q.fx.prevClose != null">
+        <span v-if="q.fx.high != null">高 <b>{{ fmt(q.fx.high, 3) }}</b></span>
+        <span v-if="q.fx.low != null">低 <b>{{ fmt(q.fx.low, 3) }}</b></span>
+        <span v-if="q.fx.prevClose != null">昨收 <b>{{ fmt(q.fx.prevClose, 3) }}</b></span>
+      </div>
+      <div class="stat-chart-box"><canvas id="chart-fx"></canvas></div>
+      <div class="err-note" v-if="q.fx.error">⚠ {{ q.fx.error }}</div>
       <div class="stat-note">Yahoo Finance · USD/TWD</div>
     </div>
 
     <div class="stat-tile glass">
-      <div class="stat-label">🇹🇼 加權指數</div>
+      <div class="stat-head">
+        <div class="stat-label">🇹🇼 加權指數</div>
+        <div class="seg">
+          <div class="seg-btn" :class="{ active: tabs.twii === 'intra' }" @click="setTab('twii', 'intra')">日內</div>
+          <div class="seg-btn" :class="{ active: tabs.twii === 'month' }" @click="setTab('twii', 'month')">近一月</div>
+        </div>
+      </div>
       <div class="stat-value">{{ q.twii.price != null ? fmt(q.twii.price, 0) : '—' }}</div>
       <div class="stat-sub" :class="pnClass(q.twii.changePct)" v-if="q.twii.changePct != null">
         {{ sign(q.twii.change, 0) }} ({{ sign(q.twii.changePct, 2) }}%)
       </div>
+      <div class="stat-hilo" v-if="q.twii.high != null || q.twii.low != null || q.twii.prevClose != null">
+        <span v-if="q.twii.high != null">高 <b>{{ fmt(q.twii.high, 0) }}</b></span>
+        <span v-if="q.twii.low != null">低 <b>{{ fmt(q.twii.low, 0) }}</b></span>
+        <span v-if="q.twii.prevClose != null">昨收 <b>{{ fmt(q.twii.prevClose, 0) }}</b></span>
+      </div>
+      <div class="stat-chart-box"><canvas id="chart-twii"></canvas></div>
+      <div class="err-note" v-if="q.twii.error">⚠ {{ q.twii.error }}</div>
       <div class="stat-note">Yahoo Finance · ^TWII</div>
     </div>
 
     <div class="stat-tile glass">
-      <div class="stat-label">📈 台指期（近月）</div>
+      <div class="stat-head">
+        <div class="stat-label">📈 台指期（近月）</div>
+        <div class="seg">
+          <div class="seg-btn" :class="{ active: tabs.txf === 'intra' }" @click="setTab('txf', 'intra')">日內</div>
+          <div class="seg-btn" :class="{ active: tabs.txf === 'month' }" @click="setTab('txf', 'month')">近一月</div>
+        </div>
+      </div>
       <div class="stat-value">{{ txPrice != null ? fmt(txPrice, 0) : '—' }}</div>
       <div class="stat-sub" :class="pnClass(txChangePct)" v-if="txChangePct != null">
         {{ sign(txChange, 0) }} ({{ sign(txChangePct, 2) }}%)
       </div>
+      <div class="stat-hilo" v-if="txHigh != null || txLow != null || txPrevClose != null">
+        <span v-if="txHigh != null">高 <b>{{ fmt(txHigh, 0) }}</b></span>
+        <span v-if="txLow != null">低 <b>{{ fmt(txLow, 0) }}</b></span>
+        <span v-if="txPrevClose != null">昨收 <b>{{ fmt(txPrevClose, 0) }}</b></span>
+      </div>
       <div class="stat-sub flat" v-if="basis != null">
         期現價差 <b :class="pnClass(basis)">{{ sign(basis, 0) }}</b>
       </div>
+      <div class="stat-chart-box"><canvas id="chart-txf"></canvas></div>
+      <div class="err-note" v-if="q.txf.error">⚠ {{ q.txf.error }}</div>
       <div class="stat-note">{{ q.txf.price != null ? 'Yahoo Finance · 台指期近一（WTX&）' : '期交所 OpenAPI' + (tx.month ? ' · ' + tx.month : '') + (tx.date ? ' · ' + tx.date : '') }}</div>
     </div>
 
     <div class="stat-tile glass">
       <div class="stat-label">🌏 外資台指期淨未平倉</div>
       <div class="stat-value" :class="pnClass(fi.netOI)">{{ fi.netOI != null ? sign(fi.netOI, 0) : '—' }}</div>
-      <div class="stat-sub flat" v-if="fi.shortOI != null">空方 {{ fmt(fi.shortOI, 0) }} 口 ｜ 多方 {{ fmt(fi.longOI, 0) }} 口</div>
-      <div class="stat-note">期交所三大法人 · 外資及陸資{{ fi.date ? ' · ' + fi.date : '' }}</div>
-    </div>
-  </div>
-
-  <!-- 走勢圖：日內／近一月 -->
-  <div class="chart-grid">
-    <div class="chart-card glass" v-for="c in chartCards" :key="c.key">
-      <div class="chart-head">
-        <h3>{{ c.title }}</h3>
-        <div class="seg">
-          <div class="seg-btn" :class="{ active: tabs[c.key] === 'intra' }" @click="setTab(c.key, 'intra')">日內</div>
-          <div class="seg-btn" :class="{ active: tabs[c.key] === 'month' }" @click="setTab(c.key, 'month')">近一月</div>
-        </div>
+      <div class="stat-hilo" v-if="fi.shortOI != null">
+        <span>空方 <b>{{ fmt(fi.shortOI, 0) }}</b> 口</span>
+        <span>多方 <b>{{ fmt(fi.longOI, 0) }}</b> 口</span>
       </div>
-      <div class="chart-box"><canvas :id="'chart-' + c.key"></canvas></div>
-      <div class="err-note" v-if="q[c.key].error">⚠ {{ q[c.key].error }}</div>
+      <div class="err-note" v-if="fi.error">⚠ {{ fi.error }}</div>
+      <div class="stat-note">期交所三大法人 · 外資及陸資{{ fi.date ? ' · ' + fi.date : '' }}</div>
     </div>
   </div>
 
@@ -397,6 +424,12 @@ createApp({
     const txPrice = computed(() => q.txf.price ?? tx.value.last ?? null);
     const txChange = computed(() => q.txf.price != null ? q.txf.change : tx.value.change ?? null);
     const txChangePct = computed(() => q.txf.price != null ? q.txf.changePct : tx.value.changePct ?? null);
+    const txHigh = computed(() => q.txf.price != null ? q.txf.high : tx.value.high ?? null);
+    const txLow = computed(() => q.txf.price != null ? q.txf.low : tx.value.low ?? null);
+    const txPrevClose = computed(() => {
+      if (q.txf.price != null) return q.txf.prevClose ?? null;
+      return (tx.value.last != null && tx.value.change != null) ? tx.value.last - tx.value.change : null;
+    });
     const basis = computed(() => {
       if (txPrice.value == null || q.twii.price == null) return null;
       return txPrice.value - q.twii.price;
@@ -422,9 +455,13 @@ createApp({
       const lastClose = validIdx.length ? closes[validIdx[validIdx.length - 1]] : null;
       const price = meta.regularMarketPrice ?? lastClose;
       const prev = meta.chartPreviousClose ?? meta.previousClose ?? null;
+      const validCloses = closes.filter(v => v != null);
+      const high = meta.regularMarketDayHigh ?? (validCloses.length ? Math.max(...validCloses) : null);
+      const low = meta.regularMarketDayLow ?? (validCloses.length ? Math.min(...validCloses) : null);
       return {
         price,
         prevClose: prev,
+        high, low,
         change: (price != null && prev != null) ? price - prev : null,
         changePct: (price != null && prev) ? (price - prev) / prev * 100 : null,
         labels, closes
@@ -442,6 +479,9 @@ createApp({
         out.price = ir.value.price;
         out.change = ir.value.change;
         out.changePct = ir.value.changePct;
+        out.high = ir.value.high;
+        out.low = ir.value.low;
+        out.prevClose = ir.value.prevClose;
         out.intra = { labels: ir.value.labels, closes: ir.value.closes, prevClose: ir.value.prevClose };
       }
       if (mr.status === 'fulfilled') {
@@ -820,7 +860,7 @@ createApp({
     return {
       loading, statusText,
       q, chartCards, tabs, setTab,
-      tx, fi, txPrice, txChange, txChangePct, basis,
+      tx, fi, txPrice, txChange, txChangePct, txHigh, txLow, txPrevClose, basis,
       stocks, newStock, addStock, removeStock, importWatchlist,
       news, newsPresets, newsVideoId, setNewsPreset, saveNews,
       refreshAll, fmt, sign, pnClass
