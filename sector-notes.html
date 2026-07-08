@@ -171,10 +171,13 @@
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 
   /* ── 個股詳情 Modal ── */
-  .detail-mask { position: fixed; inset: 0; background: rgba(10,12,25,.5); backdrop-filter: blur(10px); z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .detail-mask { position: fixed; inset: 0; background: rgba(0,0,0,.65); backdrop-filter: blur(12px); z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 16px; }
   .detail-panel {
     width: 100%; max-width: 640px; max-height: 90vh;
     border-radius: var(--radius-lg); display: flex; flex-direction: column; overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--stroke);
+    box-shadow: 0 32px 80px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.06);
   }
   .detail-top { padding: 20px 22px 14px; border-bottom: 1px solid var(--stroke); }
   .detail-top-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -441,7 +444,7 @@ JP 6857 愛德萬測試</pre>
 
   <!-- ── 個股詳情 Modal ── -->
   <div class="detail-mask" v-if="detailStock" @click.self="closeDetail">
-    <div class="detail-panel glass">
+    <div class="detail-panel">
       <div class="detail-top">
         <div class="detail-top-row">
           <span class="market-badge" :class="detailStock.market.toLowerCase()">{{ marketLabel(detailStock.market) }}</span>
@@ -535,7 +538,10 @@ JP 6857 愛德萬測試</pre>
         <!-- 分點進出 Tab -->
         <template v-if="detailTab==='broker'">
           <div v-if="brokerLoading" class="detail-loading">載入分點資料中…</div>
-          <div v-else-if="brokerError" class="detail-empty">{{ brokerError }}</div>
+          <div v-else-if="brokerError" class="detail-empty">
+            {{ brokerError }}
+            <br><button class="btn btn-sm" style="margin-top:12px" @click="loadBrokerData(detailStock.ticker)">重試</button>
+          </div>
           <template v-else-if="brokerData">
             <input class="pp-field broker-search" v-model="brokerSearch" placeholder="搜尋券商名稱…" style="font-size:12px;padding:8px 12px;width:100%" />
             <div class="broker-tabs">
@@ -564,7 +570,7 @@ JP 6857 愛德萬測試</pre>
               </tbody>
             </table>
             <div style="font-size:10px;color:var(--text-muted);margin-top:10px;text-align:right">
-              資料日期：{{ brokerData.date || '—' }} · 來源：TWSE
+              資料日期：{{ brokerData.date || '—' }} · 來源：{{ brokerData.source || 'TWSE' }}
             </div>
           </template>
         </template>
@@ -957,27 +963,30 @@ createApp({
       }
     }
 
-    // ── 分點進出 (TWSE BSR) ──
+    // ── 分點進出 ──
     async function loadBrokerData(ticker) {
       brokerLoading.value = true;
       brokerError.value = '';
       brokerData.value = null;
       brokerSearch.value = '';
       try {
-        let dateStr = todayStr();
-        let html;
-        try {
-          html = await fetchBSRPage(ticker, dateStr);
-        } catch (e) {
-          dateStr = prevTradingDateStr();
-          html = await fetchBSRPage(ticker, dateStr);
+        // Primary: TWSE BFIAMU JSON API
+        let result = await tryTWSEBroker(ticker, todayStr());
+        if (!result || (!result.buyers.length && !result.sellers.length)) {
+          result = await tryTWSEBroker(ticker, prevTradingDateStr());
         }
-        const parsed = parseBSRHtml(html, dateStr);
-        if (!parsed || (!parsed.buyers.length && !parsed.sellers.length)) {
-          brokerError.value = '查無分點進出資料（可能為上櫃股或非交易日）';
+        // Fallback: Fubon eDJ HTML parse
+        if (!result || (!result.buyers.length && !result.sellers.length)) {
+          result = await tryFubonBroker(ticker, todayStr());
+        }
+        if (!result || (!result.buyers.length && !result.sellers.length)) {
+          result = await tryFubonBroker(ticker, prevTradingDateStr());
+        }
+        if (!result || (!result.buyers.length && !result.sellers.length)) {
+          brokerError.value = '查無分點進出資料（此股或本日尚無資料）';
           return;
         }
-        brokerData.value = parsed;
+        brokerData.value = result;
       } catch (e) {
         brokerError.value = '分點資料載入失敗：' + (e.message || '');
       } finally {
@@ -985,45 +994,59 @@ createApp({
       }
     }
 
-    async function fetchBSRPage(ticker, dateStr) {
-      const d = dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
-      const url = `https://fubon-ebrokerdj.fbs.com.tw/z/zc/zco/zco.djhtm?a=${ticker}&e=${d}&f=${d}`;
-      return await fetchViaText(url);
+    async function tryTWSEBroker(ticker, dateStr) {
+      try {
+        const url = `https://www.twse.com.tw/rwd/zh/brokerTransaction/BFIAMU?stockNo=${ticker}&date=${dateStr}&response=json`;
+        const data = await fetchVia(url);
+        if (data.stat !== 'OK' || !data.data || !data.data.length) return null;
+        const fields = data.fields || [];
+        const brokers = data.data.map(row => {
+          const name = (row[1] || row[0] || '').replace(/\s+/g, '');
+          const buy = parseTWSENum(row[2]);
+          const sell = parseTWSENum(row[3]);
+          const net = row[4] != null ? parseTWSENum(row[4]) : buy - sell;
+          return { name, buy, sell, net };
+        }).filter(b => b.name && (b.buy || b.sell));
+        const buyers = brokers.filter(b => b.net > 0).sort((a, b) => b.net - a.net).slice(0, 20);
+        const sellers = brokers.filter(b => b.net < 0).sort((a, b) => a.net - b.net).slice(0, 20);
+        return { buyers, sellers, date: dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3'), source: 'TWSE' };
+      } catch { return null; }
+    }
+
+    async function tryFubonBroker(ticker, dateStr) {
+      try {
+        const d = dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+        const url = `https://fubon-ebrokerdj.fbs.com.tw/z/zc/zco/zco.djhtm?a=${ticker}&e=${d}&f=${d}`;
+        const html = await fetchViaText(url);
+        return parseBSRHtml(html, dateStr);
+      } catch { return null; }
     }
 
     function parseBSRHtml(html, dateStr) {
-      const rows = [];
-      const re = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      if (!html || html.length < 100) return null;
+      const brokers = [];
       const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
       let trMatch;
       while ((trMatch = trRe.exec(html)) !== null) {
         const cells = [];
-        let m;
         const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+        let m;
         while ((m = cellRe.exec(trMatch[1])) !== null) {
-          cells.push(m[1].replace(/<[^>]*>/g, '').trim());
+          cells.push(m[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').trim());
         }
-        if (cells.length >= 4) rows.push(cells);
-      }
-
-      const brokers = [];
-      for (const cells of rows) {
+        if (cells.length < 4) continue;
         const name = cells[0];
-        if (!name || name === '券商' || name.includes('合計') || name.includes('統計')) continue;
+        if (!name || name === '券商' || /合計|統計|名稱/.test(name)) continue;
         const buy = parseTWSENum(cells[1]);
         const sell = parseTWSENum(cells[2]);
         const net = parseTWSENum(cells[3]) || (buy - sell);
         if (buy === 0 && sell === 0) continue;
         brokers.push({ name, buy, sell, net });
       }
-
-      const buyers = brokers.filter(b => b.net > 0).sort((a, b) => b.net - a.net).slice(0, 15);
-      const sellers = brokers.filter(b => b.net < 0).sort((a, b) => a.net - b.net).slice(0, 15);
-
-      return {
-        buyers, sellers,
-        date: dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3')
-      };
+      if (!brokers.length) return null;
+      const buyers = brokers.filter(b => b.net > 0).sort((a, b) => b.net - a.net).slice(0, 20);
+      const sellers = brokers.filter(b => b.net < 0).sort((a, b) => a.net - b.net).slice(0, 20);
+      return { buyers, sellers, date: dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3'), source: 'eDJ' };
     }
 
     // ── Detail Modal ──
