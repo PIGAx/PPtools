@@ -585,7 +585,7 @@ JP 6857 愛德萬測試</pre>
               </tbody>
             </table>
             <div style="font-size:10px;color:var(--text-muted);margin-top:10px;text-align:right">
-              資料日期：{{ brokerData.date || '—' }} · 來源：{{ brokerData.source || 'TWSE' }}
+              資料日期：{{ brokerData.date || '—' }} · 來源：{{ brokerData.source || 'TWSE BSR' }}（券商分點）
             </div>
           </template>
         </template>
@@ -978,28 +978,27 @@ createApp({
       }
     }
 
-    // ── 分點進出 ──
+    // ── 分點進出 (TWSE BSR 券商分點明細) ──
+    function toROCDate(dateStr) {
+      const y = parseInt(dateStr.substring(0, 4)) - 1911;
+      return y + '/' + dateStr.substring(4, 6) + '/' + dateStr.substring(6, 8);
+    }
+
     async function loadBrokerData(ticker) {
       brokerLoading.value = true;
       brokerError.value = '';
       brokerData.value = null;
       brokerSearch.value = '';
       try {
-        // Primary: TWSE BFIAMU JSON API
-        let result = await tryTWSEBroker(ticker, todayStr());
+        let result = await tryBSR(ticker, todayStr());
         if (!result || (!result.buyers.length && !result.sellers.length)) {
-          result = await tryTWSEBroker(ticker, prevTradingDateStr());
+          result = await tryBSR(ticker, prevTradingDateStr());
         }
-        // Fallback: Fubon eDJ HTML parse
         if (!result || (!result.buyers.length && !result.sellers.length)) {
           result = await tryFubonBroker(ticker, todayStr());
         }
         if (!result || (!result.buyers.length && !result.sellers.length)) {
           result = await tryFubonBroker(ticker, prevTradingDateStr());
-        }
-        // Fallback: GoodInfo
-        if (!result || (!result.buyers.length && !result.sellers.length)) {
-          result = await tryGoodInfoBroker(ticker, todayStr());
         }
         if (!result || (!result.buyers.length && !result.sellers.length)) {
           brokerError.value = '查無分點進出資料（此股或本日尚無資料）';
@@ -1013,64 +1012,18 @@ createApp({
       }
     }
 
-    const BROKER_ENDPOINTS = [
-      (ticker, dateStr) => `https://www.twse.com.tw/rwd/zh/fund/TWT43U?stockNo=${ticker}&date=${dateStr}&response=json`,
-      (ticker, dateStr) => `https://www.twse.com.tw/fund/TWT43U?stockNo=${ticker}&date=${dateStr}&response=json`,
-      (ticker, dateStr) => `https://www.twse.com.tw/rwd/zh/brokerTransaction/BFIAMU?stockNo=${ticker}&date=${dateStr}&response=json`,
-    ];
-
-    async function tryTWSEBroker(ticker, dateStr) {
-      for (const mkUrl of BROKER_ENDPOINTS) {
-        try {
-          const url = mkUrl(ticker, dateStr);
-          const data = await fetchVia(url);
-          if (!data || (data.stat && data.stat !== 'OK')) continue;
-          const rows = data.data || data.tables?.[0]?.data;
-          if (!rows || !rows.length) continue;
-          const brokers = rows.map(row => {
-            const nameIdx = row.findIndex(c => /[一-鿿]/.test(String(c)));
-            const name = nameIdx >= 0 ? String(row[nameIdx]).replace(/\s+/g, '') : '';
-            const nums = row.filter(c => /^[\d,\-]+$/.test(String(c).replace(/,/g, '')));
-            if (nums.length < 2) return null;
-            const buy = parseTWSENum(nums[0]);
-            const sell = parseTWSENum(nums[1]);
-            const net = nums.length >= 3 ? parseTWSENum(nums[2]) : buy - sell;
-            return { name, buy, sell, net };
-          }).filter(b => b && b.name && (b.buy || b.sell));
-          if (!brokers.length) continue;
-          const buyers = brokers.filter(b => b.net > 0).sort((a, b) => b.net - a.net).slice(0, 20);
-          const sellers = brokers.filter(b => b.net < 0).sort((a, b) => a.net - b.net).slice(0, 20);
-          return { buyers, sellers, date: dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3'), source: 'TWSE' };
-        } catch { continue; }
-      }
-      return null;
-    }
-
-    async function tryFubonBroker(ticker, dateStr) {
+    async function tryBSR(ticker, dateStr) {
       try {
-        const d = dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
-        const url = `https://fubon-ebrokerdj.fbs.com.tw/z/zc/zco/zco.djhtm?a=${ticker}&e=${d}&f=${d}`;
+        const rocDate = toROCDate(dateStr);
+        const url = `https://bsr.twse.com.tw/bshtm/bsContent.aspx?v=t&StockNo=${ticker}&d=${rocDate}`;
         const html = await fetchViaText(url);
-        return parseBSRHtml(html, dateStr);
+        if (!html || html.length < 200) return null;
+        return parseBSRContent(html, dateStr);
       } catch { return null; }
     }
 
-    async function tryGoodInfoBroker(ticker, dateStr) {
-      try {
-        const url = `https://goodinfo.tw/tw/ShowBuySaleChart.asp?STOCK_ID=${ticker}&CHT_CAT=DATE`;
-        const html = await fetchViaText(url);
-        return parseBrokerTableHtml(html, dateStr);
-      } catch { return null; }
-    }
-
-    function parseBSRHtml(html, dateStr) {
-      if (!html || html.length < 100) return null;
-      return parseBrokerTableHtml(html, dateStr);
-    }
-
-    function parseBrokerTableHtml(html, dateStr) {
-      if (!html || html.length < 100) return null;
-      const brokers = [];
+    function parseBSRContent(html, dateStr) {
+      const brokerMap = {};
       const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
       let trMatch;
       while ((trMatch = trRe.exec(html)) !== null) {
@@ -1078,23 +1031,43 @@ createApp({
         const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
         let m;
         while ((m = cellRe.exec(trMatch[1])) !== null) {
-          cells.push(m[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').trim());
+          cells.push(m[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim());
         }
-        if (cells.length < 3) continue;
-        const name = cells.find(c => /[一-鿿]/.test(c) && !/合計|統計|名稱|券商|日期/.test(c));
-        if (!name) continue;
-        const numCells = cells.filter(c => /^[\d,.\-]+$/.test(c.replace(/,/g, '')));
-        if (numCells.length < 2) continue;
-        const buy = parseTWSENum(numCells[0]);
-        const sell = parseTWSENum(numCells[1]);
-        const net = numCells.length >= 3 ? parseTWSENum(numCells[2]) : buy - sell;
+        // BSR format: 券商, 價格, 買進股數, 賣出股數 (or variations)
+        if (cells.length < 4) continue;
+        const name = cells[0].replace(/\s+/g, '');
+        if (!name || !/[一-鿿]/.test(name)) continue;
+        if (/合計|統計|券商|名稱|說明/.test(name)) continue;
+        const buy = parseTWSENum(cells[2]);
+        const sell = parseTWSENum(cells[3]);
         if (buy === 0 && sell === 0) continue;
-        brokers.push({ name, buy, sell, net });
+        if (brokerMap[name]) {
+          brokerMap[name].buy += buy;
+          brokerMap[name].sell += sell;
+        } else {
+          brokerMap[name] = { name, buy, sell };
+        }
       }
+      const brokers = Object.values(brokerMap).map(b => ({
+        ...b,
+        buy: Math.round(b.buy / 1000),
+        sell: Math.round(b.sell / 1000),
+        net: Math.round((b.buy - b.sell) / 1000)
+      }));
       if (!brokers.length) return null;
       const buyers = brokers.filter(b => b.net > 0).sort((a, b) => b.net - a.net).slice(0, 20);
       const sellers = brokers.filter(b => b.net < 0).sort((a, b) => a.net - b.net).slice(0, 20);
-      return { buyers, sellers, date: dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3'), source: 'Web' };
+      return { buyers, sellers, date: dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3'), source: 'TWSE BSR' };
+    }
+
+    async function tryFubonBroker(ticker, dateStr) {
+      try {
+        const d = dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+        const url = `https://fubon-ebrokerdj.fbs.com.tw/z/zc/zco/zco.djhtm?a=${ticker}&e=${d}&f=${d}`;
+        const html = await fetchViaText(url);
+        if (!html || html.length < 200) return null;
+        return parseBSRContent(html, dateStr);
+      } catch { return null; }
     }
 
     // ── Detail Modal ──
