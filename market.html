@@ -11,14 +11,26 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>window.Chart || document.write('<script src="chart.umd.min.js"><\/script>')</script>
 <style>
-  .container { max-width: 1080px; margin: 0 auto; padding: 24px 20px 40px; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px 20px 40px; }
 
   .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
   .page-header h1 { font-size: 21px; font-weight: 800; letter-spacing: .2px; }
   .status-text { color: var(--text-muted); font-size: 12px; }
 
+  /* 導覽提示條 */
+  .guide-strip {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 16px; border-radius: var(--radius); margin-bottom: 16px;
+    font-size: 12.5px; color: var(--text-muted); line-height: 1.5;
+  }
+  .guide-close {
+    background: none; border: none; color: var(--text-muted); font-size: 16px;
+    cursor: pointer; padding: 2px 8px; border-radius: 8px; flex-shrink: 0;
+  }
+  .guide-close:hover { color: var(--text); background: var(--surface-alt); }
+
   /* 指標統計磚 */
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 18px; }
   .stat-tile { padding: 16px 18px; border-radius: var(--radius-lg); transition: transform .22s cubic-bezier(.3,.7,.4,1.2), box-shadow .22s; }
   .stat-tile:hover { transform: translateY(-2px); box-shadow: var(--shadow), inset 0 1px 0 var(--glass-inner); }
   .stat-label { font-size: 12px; font-weight: 650; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
@@ -29,16 +41,25 @@
   .down { color: var(--green); }
   .flat { color: var(--text-muted); }
 
+  /* 市場寬度 chips */
+  .chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .mkt-chip {
+    padding: 8px 14px; border-radius: 999px; background: var(--surface-alt); border: 1px solid var(--stroke);
+    font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .mkt-chip b { font-variant-numeric: tabular-nums; }
+  .snap-loading-note { font-size: 11.5px; color: var(--text-muted); }
+
   /* 圖表卡 */
-  .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 18px; }
-  @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } .container { padding: 16px 12px 32px; } }
+  .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } .two-col-grid { grid-template-columns: 1fr; } .container { padding: 16px 12px 32px; } }
   .chart-card { padding: 16px 18px; border-radius: var(--radius-lg); }
   .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
   .chart-head h3 { font-size: 13.5px; font-weight: 700; }
   .chart-box { position: relative; width: 100%; height: 190px; }
   .chart-box canvas { width: 100% !important; height: 100% !important; }
 
-  /* 玻璃分段控制器（日內／近一月） */
+  /* 玻璃分段控制器（日內／近一月、上市／上櫃 等） */
   .seg { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--surface-alt); }
   .seg-btn {
     padding: 3px 11px; font-size: 11px; font-weight: 550; cursor: pointer;
@@ -51,6 +72,25 @@
     box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-inner);
   }
 
+  .etf-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); cursor: pointer; white-space: nowrap; }
+  .etf-toggle input { accent-color: var(--accent); cursor: pointer; }
+
+  /* 兩欄卡片（資金流向／類股漲跌） */
+  .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+
+  /* 資金流向長條 */
+  .flow-row {
+    display: grid; grid-template-columns: 84px 1fr 46px 58px; align-items: center; gap: 8px;
+    padding: 6px 2px; font-size: 12.5px; cursor: pointer; border-radius: 6px; transition: background .15s;
+  }
+  .flow-row:hover { background: var(--surface-alt); }
+  .flow-row:hover .flow-name { color: var(--accent); }
+  .flow-name { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color .15s; }
+  .flow-bar-track { height: 10px; border-radius: 5px; background: var(--surface-alt); overflow: hidden; }
+  .flow-bar-fill { height: 100%; background: var(--accent); opacity: .55; border-radius: 5px; transition: width .3s; }
+  .flow-pct { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+  .flow-chg { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
+
   /* 詳細表格卡 */
   .detail-card { padding: 18px; border-radius: var(--radius-lg); margin-bottom: 14px; }
   .detail-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
@@ -61,13 +101,28 @@
   .detail-table tr:last-child td { border-bottom: none; }
   .detail-table td.num { text-align: right; font-weight: 650; }
   .detail-table th.num { text-align: right; }
+  .detail-table tbody tr[data-clickable] { cursor: pointer; transition: background .15s; }
+  .detail-table tbody tr[data-clickable]:hover { background: var(--surface-alt); }
+  .table-wrap { overflow-x: auto; }
+
+  .card-head-row { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+  .card-head-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
   .err-note { font-size: 12px; color: var(--amber); padding: 8px 0; }
   .src-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .src-link { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--accent); text-decoration: none; padding: 4px 10px; border-radius: 999px; background: var(--accent-light); transition: opacity .15s; }
   .src-link:hover { opacity: .8; }
+  .retry-link { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; text-decoration: underline; margin-left: 4px; }
 
   .empty-note { font-size: 12.5px; color: var(--text-muted); padding: 10px 0; }
+
+  /* 類股個股 Modal */
+  .modal-mask { position: fixed; inset: 0; background: rgba(10,12,25,.45); backdrop-filter: blur(8px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .modal-box { width: 100%; max-width: 640px; border-radius: var(--radius-lg); padding: 22px 22px 18px; max-height: 82vh; display: flex; flex-direction: column; background: var(--bg-base); border: 1px solid var(--stroke); box-shadow: var(--shadow); }
+  .modal-title { font-size: 16px; font-weight: 750; margin-bottom: 4px; }
+  .modal-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 14px; }
+  .modal-body { flex: 1; overflow-y: auto; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; flex-shrink: 0; }
 
   /* 非凡新聞直播 */
   .news-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
@@ -89,17 +144,14 @@
     </div>
   </div>
 
+  <!-- 導覽提示條 -->
+  <div class="guide-strip glass" v-if="!guideDismissed">
+    <span>先看指數磚判斷今天偏強偏弱 → 再看資金流向與類股漲跌找出資金集中的產業 → 點類股展開該產業的資金集中個股</span>
+    <button class="guide-close" @click="dismissGuide" title="關閉提示">×</button>
+  </div>
+
   <!-- 指標統計磚 -->
   <div class="stat-grid">
-    <div class="stat-tile glass">
-      <div class="stat-label">💵 美元／台幣</div>
-      <div class="stat-value">{{ q.fx.price != null ? q.fx.price.toFixed(3) : '—' }}</div>
-      <div class="stat-sub" :class="pnClass(q.fx.changePct)" v-if="q.fx.changePct != null">
-        {{ sign(q.fx.change, 3) }} ({{ sign(q.fx.changePct, 2) }}%)
-      </div>
-      <div class="stat-note">Yahoo Finance · USD/TWD</div>
-    </div>
-
     <div class="stat-tile glass">
       <div class="stat-label">🇹🇼 加權指數</div>
       <div class="stat-value">{{ q.twii.price != null ? fmt(q.twii.price, 0) : '—' }}</div>
@@ -107,6 +159,16 @@
         {{ sign(q.twii.change, 0) }} ({{ sign(q.twii.changePct, 2) }}%)
       </div>
       <div class="stat-note">Yahoo Finance · ^TWII</div>
+    </div>
+
+    <div class="stat-tile glass">
+      <div class="stat-label">🏪 櫃買指數</div>
+      <div class="stat-value">{{ q.otc.price != null ? fmt(q.otc.price, 2) : '—' }}</div>
+      <div class="stat-sub" :class="pnClass(q.otc.changePct)" v-if="q.otc.changePct != null">
+        {{ sign(q.otc.change, 2) }} ({{ sign(q.otc.changePct, 2) }}%)
+      </div>
+      <div class="stat-note" v-if="q.otc.error" style="color:var(--amber)">⚠ {{ q.otc.error }}</div>
+      <div class="stat-note" v-else>{{ q.otc.source || '尚無資料' }}</div>
     </div>
 
     <div class="stat-tile glass">
@@ -122,10 +184,24 @@
     </div>
 
     <div class="stat-tile glass">
-      <div class="stat-label">🌏 外資台指期淨未平倉</div>
-      <div class="stat-value" :class="pnClass(fi.netOI)">{{ fi.netOI != null ? sign(fi.netOI, 0) : '—' }}</div>
-      <div class="stat-sub flat" v-if="fi.shortOI != null">空方 {{ fmt(fi.shortOI, 0) }} 口 ｜ 多方 {{ fmt(fi.longOI, 0) }} 口</div>
-      <div class="stat-note">期交所三大法人 · 外資及陸資{{ fi.date ? ' · ' + fi.date : '' }}</div>
+      <div class="stat-label">💹 市場成交金額</div>
+      <div class="stat-value">
+        {{ turnover.total != null ? fmt(turnover.total / 1e8, 1) : '—' }}<span style="font-size:13px;font-weight:600"> 億</span>
+      </div>
+      <div class="stat-sub flat" v-if="turnover.twse != null || turnover.tpex != null">
+        市 {{ turnover.twse != null ? fmt(turnover.twse / 1e8, 1) : '—' }} 億｜櫃 {{ turnover.tpex != null ? fmt(turnover.tpex / 1e8, 1) : '—' }} 億
+      </div>
+      <div class="stat-note" v-if="turnover.error" style="color:var(--amber)">⚠ {{ turnover.error }}</div>
+      <div class="stat-note" v-else>TWSE FMTQIK · TPEX OpenAPI{{ turnover.date ? ' · ' + turnover.date : '' }}</div>
+    </div>
+
+    <div class="stat-tile glass">
+      <div class="stat-label">💵 美元／台幣</div>
+      <div class="stat-value">{{ q.fx.price != null ? q.fx.price.toFixed(3) : '—' }}</div>
+      <div class="stat-sub" :class="pnClass(q.fx.changePct)" v-if="q.fx.changePct != null">
+        {{ sign(q.fx.change, 3) }} ({{ sign(q.fx.changePct, 2) }}%)
+      </div>
+      <div class="stat-note">Yahoo Finance · USD/TWD</div>
     </div>
   </div>
 
@@ -144,37 +220,127 @@
     </div>
   </div>
 
-  <!-- 非凡新聞直播 -->
-  <div class="detail-card glass">
-    <div class="news-head">
-      <div>
-        <h3>📺 非凡新聞直播</h3>
-        <div class="detail-sub" style="margin-bottom:0">YouTube 財經直播頻道 · 直播網址若失效，切到「自訂」貼上新的直播網址即可</div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <div class="seg">
-          <div class="seg-btn" v-for="p in newsPresets" :key="p.id" :class="{ active: news.preset === p.id }" @click="setNewsPreset(p.id)">{{ p.label }}</div>
-          <div class="seg-btn" :class="{ active: news.preset === 'custom' }" @click="setNewsPreset('custom')">自訂</div>
+  <!-- 市場寬度 -->
+  <div class="chip-row" v-if="marketBreadth">
+    <div class="mkt-chip">平均漲跌幅 <b :class="pnClass(marketBreadth.avgChangePct)">{{ sign(marketBreadth.avgChangePct, 2) }}%</b></div>
+    <div class="mkt-chip">紅 <b class="up">{{ marketBreadth.up }}</b>・綠 <b class="down">{{ marketBreadth.down }}</b>・平 <b class="flat">{{ marketBreadth.flat }}</b></div>
+    <div class="mkt-chip">成交 <b>{{ fmt(marketBreadth.valueTotal / 1e8, 1) }}</b> 億</div>
+    <span class="snap-loading-note" v-if="snapshotLoading">全市場資料更新中…</span>
+  </div>
+  <div class="err-note" v-else-if="snapshotErrors.stocks">
+    ⚠ {{ snapshotErrors.stocks }}
+    <button class="retry-link" @click="fetchMarketSnapshot(true)">重試</button>
+  </div>
+
+  <!-- 資金流向 + 類股漲跌 -->
+  <div class="two-col-grid">
+    <div class="detail-card glass">
+      <div class="card-head-row">
+        <div>
+          <h3>💰 資金流向</h3>
+          <div class="detail-sub" style="margin-bottom:0">依成交金額彙整產業占比{{ excludeETF ? '（已排除ETF）' : '' }}</div>
         </div>
-        <button class="btn btn-sm" @click="news.show = !news.show; saveNews()">{{ news.show ? '收合' : '展開' }}</button>
+        <div class="card-head-controls">
+          <div class="seg">
+            <div class="seg-btn" :class="{ active: fundFlowTab === 'TWSE' }" @click="fundFlowTab = 'TWSE'">上市</div>
+            <div class="seg-btn" :class="{ active: fundFlowTab === 'TPEX' }" @click="fundFlowTab = 'TPEX'">上櫃</div>
+            <div class="seg-btn" :class="{ active: fundFlowTab === 'ALL' }" @click="fundFlowTab = 'ALL'">合計</div>
+          </div>
+          <label class="etf-toggle"><input type="checkbox" v-model="excludeETF"> 排除ETF</label>
+        </div>
+      </div>
+      <div v-if="!snapshot.stocks.length" class="err-note">
+        ⚠ {{ snapshotErrors.stocks || '全市場資料尚未取得，請按「全部更新」' }}
+      </div>
+      <div v-else-if="fundFlowTab === 'TPEX' && !hasTpexData" class="err-note">⚠ 上櫃資料暫缺，請切換「上市」或「合計」</div>
+      <template v-else>
+        <div v-if="!topIndustriesForFlow.length" class="empty-note">尚無資料</div>
+        <div class="flow-row" v-for="g in topIndustriesForFlow" :key="g.industry" @click="openIndustry(g.industry)">
+          <div class="flow-name">{{ g.industry }}</div>
+          <div class="flow-bar-track"><div class="flow-bar-fill" :style="{ width: Math.max(g.pct, 1).toFixed(1) + '%' }"></div></div>
+          <div class="flow-pct">{{ g.pct.toFixed(1) }}%</div>
+          <div class="flow-chg" :class="pnClass(g.avgChangePct)">{{ sign(g.avgChangePct, 2) }}%</div>
+        </div>
+      </template>
+    </div>
+
+    <div class="detail-card glass">
+      <h3>📈 類股漲跌</h3>
+      <div class="detail-sub">依平均漲跌幅排序{{ excludeETF ? '（已排除ETF）' : '' }}・點列可展開個股</div>
+      <div v-if="!snapshot.stocks.length" class="err-note">
+        ⚠ {{ snapshotErrors.stocks || '全市場資料尚未取得，請按「全部更新」' }}
+      </div>
+      <div v-else-if="fundFlowTab === 'TPEX' && !hasTpexData" class="err-note">⚠ 上櫃資料暫缺，請切換「上市」或「合計」</div>
+      <div v-else class="table-wrap">
+        <table class="detail-table">
+          <thead>
+            <tr><th>類股</th><th class="num">平均漲跌幅</th><th class="num">漲跌家數</th><th class="num">成交金額(億)</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="g in sectorTable" :key="g.industry" data-clickable @click="openIndustry(g.industry)">
+              <td>{{ g.industry }}</td>
+              <td class="num" :class="pnClass(g.avgChangePct)">{{ sign(g.avgChangePct, 2) }}%</td>
+              <td class="num"><span class="up">{{ g.up }}</span>・<span class="down">{{ g.down }}</span>・<span class="flat">{{ g.flat }}</span></td>
+              <td class="num">{{ fmt(g.value / 1e8, 1) }}</td>
+            </tr>
+            <tr v-if="!sectorTable.length"><td colspan="4" style="text-align:center;color:var(--text-muted)">尚無資料</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
-    <div class="custom-bar" v-if="news.preset === 'custom'">
-      <input class="pp-field" v-model="news.customUrl" placeholder="貼上 YouTube 直播網址或影片 ID（如 https://www.youtube.com/watch?v=…）" @change="saveNews" @keydown.enter="saveNews" />
-    </div>
-    <template v-if="news.show">
-      <div class="video-box" v-if="newsVideoId">
-        <iframe :src="'https://www.youtube.com/embed/' + newsVideoId + '?rel=0'"
-                title="非凡新聞直播" loading="lazy"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+  </div>
+
+  <!-- 排行 -->
+  <div class="detail-card glass">
+    <div class="card-head-row">
+      <h3 style="margin-bottom:0">🏆 排行 Top 20</h3>
+      <div class="card-head-controls">
+        <div class="seg">
+          <div class="seg-btn" :class="{ active: rankTab === 'value' }" @click="rankTab = 'value'">成交金額</div>
+          <div class="seg-btn" :class="{ active: rankTab === 'up' }" @click="rankTab = 'up'">漲幅</div>
+          <div class="seg-btn" :class="{ active: rankTab === 'down' }" @click="rankTab = 'down'">跌幅</div>
+          <div class="seg-btn" :class="{ active: rankTab === 'instBuy' }" @click="rankTab = 'instBuy'">法人買超</div>
+          <div class="seg-btn" :class="{ active: rankTab === 'instSell' }" @click="rankTab = 'instSell'">法人賣超</div>
+        </div>
+        <label class="etf-toggle"><input type="checkbox" v-model="rankExcludeETF"> 排除ETF</label>
       </div>
-      <div class="empty-note" v-else>請貼上有效的 YouTube 網址或影片 ID。</div>
+    </div>
+    <div class="detail-sub" style="margin-top:8px">
+      {{ rankTab === 'value' ? '依成交金額排序' : rankTab === 'up' ? '依漲幅排序（已排除成交金額過低個股）' : rankTab === 'down' ? '依跌幅排序（已排除成交金額過低個股）' : rankTab === 'instBuy' ? '依三大法人合計買超張數排序' : '依三大法人合計賣超張數排序' }}
+    </div>
+
+    <div v-if="!snapshot.stocks.length" class="err-note">
+      ⚠ {{ snapshotErrors.stocks || '全市場資料尚未取得，請按「全部更新」' }}
+    </div>
+    <template v-else>
+      <div v-if="(rankTab === 'instBuy' || rankTab === 'instSell') && !hasInstData" class="err-note">
+        ⚠ {{ snapshotErrors.inst || '法人籌碼資料暫時無法取得' }}
+      </div>
+      <div v-else-if="rankRows.length" class="table-wrap">
+        <table class="detail-table">
+          <thead>
+            <tr>
+              <th>#</th><th>股票</th><th class="num">收盤</th><th class="num">漲跌幅</th>
+              <th class="num" v-if="rankTab === 'value'">成交金額(億)</th>
+              <th class="num" v-if="rankTab === 'instBuy' || rankTab === 'instSell'">買賣超(張)</th>
+              <th class="num" v-if="rankTab === 'instBuy' || rankTab === 'instSell'">估計金額(億)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(s, i) in rankRows" :key="s.market + s.code">
+              <td>{{ i + 1 }}</td>
+              <td>{{ s.name }} <span style="color:var(--text-muted);font-size:11px">{{ s.code }}・{{ s.industry }}</span></td>
+              <td class="num">{{ fmt(s.close, 2) }}</td>
+              <td class="num" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</td>
+              <td class="num" v-if="rankTab === 'value'">{{ fmt((s.value || 0) / 1e8, 1) }}</td>
+              <td class="num" v-if="rankTab === 'instBuy' || rankTab === 'instSell'" :class="pnClass(s.netShares)">{{ sign(s.netLots, 0) }}</td>
+              <td class="num" v-if="rankTab === 'instBuy' || rankTab === 'instSell'" :class="pnClass(s.netShares)">{{ sign(s.estAmount, 2) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-else class="empty-note">尚無資料</div>
     </template>
-    <div class="src-links">
-      <a class="src-link" href="https://www.youtube.com/@ustvbiz/streams" target="_blank" rel="noopener">📡 投資看非凡 直播列表</a>
-      <a class="src-link" href="https://www.youtube.com/@ustv/streams" target="_blank" rel="noopener">📡 USTV 非凡電視 直播列表</a>
-    </div>
   </div>
 
   <!-- 台指期詳細 -->
@@ -222,6 +388,67 @@
       <a class="src-link" href="https://www.taifex.com.tw/cht/3/futDailyMarketReport" target="_blank" rel="noopener">📈 期交所每日行情</a>
     </div>
   </div>
+
+  <!-- 非凡新聞直播 -->
+  <div class="detail-card glass">
+    <div class="news-head">
+      <div>
+        <h3>📺 非凡新聞直播</h3>
+        <div class="detail-sub" style="margin-bottom:0">YouTube 財經直播頻道 · 直播網址若失效，切到「自訂」貼上新的直播網址即可</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="seg">
+          <div class="seg-btn" v-for="p in newsPresets" :key="p.id" :class="{ active: news.preset === p.id }" @click="setNewsPreset(p.id)">{{ p.label }}</div>
+          <div class="seg-btn" :class="{ active: news.preset === 'custom' }" @click="setNewsPreset('custom')">自訂</div>
+        </div>
+        <button class="btn btn-sm" @click="news.show = !news.show; saveNews()">{{ news.show ? '收合' : '展開' }}</button>
+      </div>
+    </div>
+    <div class="custom-bar" v-if="news.preset === 'custom'">
+      <input class="pp-field" v-model="news.customUrl" placeholder="貼上 YouTube 直播網址或影片 ID（如 https://www.youtube.com/watch?v=…）" @change="saveNews" @keydown.enter="saveNews" />
+    </div>
+    <template v-if="news.show">
+      <div class="video-box" v-if="newsVideoId">
+        <iframe :src="'https://www.youtube.com/embed/' + newsVideoId + '?rel=0'"
+                title="非凡新聞直播" loading="lazy"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+      </div>
+      <div class="empty-note" v-else>請貼上有效的 YouTube 網址或影片 ID。</div>
+    </template>
+    <div class="src-links">
+      <a class="src-link" href="https://www.youtube.com/@ustvbiz/streams" target="_blank" rel="noopener">📡 投資看非凡 直播列表</a>
+      <a class="src-link" href="https://www.youtube.com/@ustv/streams" target="_blank" rel="noopener">📡 USTV 非凡電視 直播列表</a>
+    </div>
+  </div>
+
+  <!-- ── 類股個股 Modal ── -->
+  <div class="modal-mask" v-if="selectedIndustry" @click.self="closeIndustry">
+    <div class="modal-box glass">
+      <div class="modal-title">{{ selectedIndustry }}</div>
+      <div class="modal-sub">{{ industryStocks.length }} 檔・合計成交金額 {{ fmt(industryModalTotal / 1e8, 1) }} 億</div>
+      <div class="modal-body table-wrap">
+        <table class="detail-table">
+          <thead>
+            <tr><th>#</th><th>股票</th><th class="num">成交金額(億)</th><th class="num">類股占比</th><th class="num">漲跌幅</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="(s, i) in industryStocks" :key="s.market + s.code">
+              <td>{{ i + 1 }}</td>
+              <td>{{ s.name }} <span style="color:var(--text-muted);font-size:11px">{{ s.code }}・{{ s.market === 'TWSE' ? '上市' : '上櫃' }}</span></td>
+              <td class="num">{{ fmt((s.value || 0) / 1e8, 1) }}</td>
+              <td class="num">{{ s.sharePct.toFixed(1) }}%</td>
+              <td class="num" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</td>
+            </tr>
+            <tr v-if="!industryStocks.length"><td colspan="5" style="text-align:center;color:var(--text-muted)">此類股尚無個股資料</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-sm" @click="closeIndustry">關閉</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -229,7 +456,10 @@ const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
 
 const CACHE_KEY = 'pptools-market-cache';
 const NEWS_KEY = 'pptools-market-news';
+const GUIDE_KEY = 'pptools-market-guide-dismissed';
+const SNAP_KEY = 'pptools-market-snapshot';
 const STALE_MS = 10 * 60 * 1000; // 快取超過 10 分鐘自動重抓
+const SNAP_STALE_MS = 30 * 60 * 1000; // 全市場快照超過 30 分鐘才重抓
 
 /* 期交所 OpenAPI 端點（回傳最近一個交易日資料）。
    若期交所調整端點名稱，改這裡即可。 */
@@ -325,7 +555,7 @@ async function fetchText(url) {
   throw new Error([...new Set(errs)].join('、'));
 }
 
-/* ── 寬容欄位取值：期交所 OpenAPI 欄位名稱可能是英文或中文 ── */
+/* ── 寬容欄位取值：開放資料欄位名稱可能是英文或中文，逐一嘗試 ── */
 function pick(row, patterns) {
   for (const key of Object.keys(row)) {
     for (const p of patterns) {
@@ -350,27 +580,75 @@ function parseYouTubeId(input) {
   return null;
 }
 
+/* ── 交易日期字串工具（給法人籌碼查詢用） ── */
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+}
+function prevTradingDateStr() {
+  const d = new Date();
+  const day = d.getDay();
+  if (day === 0) d.setDate(d.getDate() - 2);
+  else if (day === 1) d.setDate(d.getDate() - 3);
+  else if (day === 6) d.setDate(d.getDate() - 1);
+  else d.setDate(d.getDate() - 1);
+  return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+}
+
+/* TWSE 上市產業別代碼 → 中文名稱（t187ap03_L 的「產業別」欄位若已是代碼而非名稱時使用） */
+const TWSE_INDUSTRY_MAP = {
+  '01': '水泥', '02': '食品', '03': '塑膠', '04': '紡織纖維', '05': '電機機械', '06': '電器電纜',
+  '08': '玻璃陶瓷', '09': '造紙', '10': '鋼鐵', '11': '橡膠', '12': '汽車', '14': '建材營造',
+  '15': '航運', '16': '觀光餐旅', '17': '金融保險', '18': '貿易百貨', '19': '綜合', '20': '其他',
+  '21': '化學', '22': '生技醫療', '23': '油電燃氣', '24': '半導體', '25': '電腦及週邊', '26': '光電',
+  '27': '通信網路', '28': '電子零組件', '29': '電子通路', '30': '資訊服務', '31': '其他電子',
+  '32': '文化創意', '33': '農業科技', '34': '電子商務', '35': '綠能環保', '36': '數位雲端',
+  '37': '運動休閒', '38': '居家生活'
+};
+function mapIndustry(raw) {
+  if (raw == null) return '其他';
+  const s = String(raw).trim();
+  if (!s) return '其他';
+  if (/^\d{1,2}$/.test(s)) return TWSE_INDUSTRY_MAP[s.padStart(2, '0')] || '其他';
+  return s; // 已是名稱字串，直接使用
+}
+
 createApp({
   setup() {
     const loading = ref(false);
     const statusText = ref('');
+    const guideDismissed = ref(false);
 
-    /* 上排三大指數即時報價 + 日內/近一月序列 */
+    /* 上排指數即時報價 + 日內/近一月序列 */
     const q = reactive({
       fx: {},   // 美元/台幣  TWD=X
       twii: {}, // 加權指數  ^TWII
+      otc: {},  // 櫃買指數  ^TWOII（Yahoo 失敗時改走 TPEX OpenAPI，見 runOtc）
       txf: {}   // 台指期近月（多來源備援，見 runTxf／fetchTxfFallback；q.txf.source 記錄實際來源）
     });
     const chartCards = [
       { key: 'fx', title: '美元／台幣', symbol: 'TWD=X', color: 'rgb(91,140,255)' },
       { key: 'twii', title: '加權指數', symbol: '^TWII', color: 'rgb(139,92,246)' },
+      { key: 'otc', title: '櫃買指數', symbol: '^TWOII', color: 'rgb(46,189,133)' },
       { key: 'txf', title: '台指期近月', symbol: 'WTX&', color: 'rgb(238,122,47)' }
     ];
-    const tabs = reactive({ fx: 'intra', twii: 'intra', txf: 'intra' });
+    const tabs = reactive({ fx: 'intra', twii: 'intra', otc: 'intra', txf: 'intra' });
 
     const tx = ref({}); // 期交所日盤詳細
     const fi = ref({}); // 外資未平倉
+    const turnover = ref({}); // 上市+上櫃市場成交金額
     const charts = {};
+
+    /* ── 全市場快照（資金流向／類股漲跌／排行／市場寬度共用資料源） ── */
+    const snapshot = ref({ date: null, stocks: [], inst: {}, fetchedAt: null });
+    const snapshotErrors = reactive({ stocks: null, industry: null, inst: null });
+    const snapshotLoading = ref(false);
+
+    const fundFlowTab = ref('ALL'); // 'TWSE' | 'TPEX' | 'ALL'
+    const excludeETF = ref(true);
+    const rankTab = ref('value'); // 'value' | 'up' | 'down' | 'instBuy' | 'instSell'
+    const rankExcludeETF = ref(true);
+    const selectedIndustry = ref(null);
 
     /* 非凡新聞直播 */
     const newsPresets = [
@@ -433,7 +711,7 @@ createApp({
       };
     }
 
-    /* 三大指數：日內 + 近一月一次抓齊 */
+    /* 指數：日內 + 近一月一次抓齊 */
     async function fetchIndex(key, symbol) {
       const [ir, mr] = await Promise.allSettled([
         fetchYahoo(symbol, '1d', '5m'),
@@ -634,6 +912,390 @@ createApp({
       await fetchTxfFallback();
     }
 
+    /* ── 櫃買指數備援：TPEX OpenAPI「上櫃概況」（端點拼字歷史上有 mainborad / mainboard 兩種，兩者都試） ── */
+    async function fetchOtcFallback() {
+      q.otc.error = null;
+      const urls = [
+        'https://www.tpex.org.tw/openapi/v1/tpex_mainborad_highlight',
+        'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_highlight'
+      ];
+      for (const url of urls) {
+        try {
+          const rows = await fetchJson(url);
+          const row = Array.isArray(rows) ? rows[0] : (rows && typeof rows === 'object' ? rows : null);
+          if (!row) continue;
+          const idx = num(pick(row, [/指數|index/i]));
+          const chg = num(pick(row, [/漲跌|change/i]));
+          if (idx == null) continue;
+          q.otc.price = idx;
+          q.otc.change = chg;
+          q.otc.changePct = (chg != null && (idx - chg) !== 0) ? chg / (idx - chg) * 100 : null;
+          q.otc.source = 'TPEX OpenAPI（上櫃概況）';
+          return;
+        } catch (e) { /* 換下一個端點拼字再試 */ }
+      }
+      q.otc.error = '櫃買指數資料暫時無法取得';
+    }
+
+    /* 櫃買指數主流程：先走 Yahoo ^TWOII（有日內/近一月序列可畫圖），失敗才進入 TPEX 備援。 */
+    async function runOtc() {
+      let yahooOk = true;
+      await fetchIndex('otc', '^TWOII').catch(() => { yahooOk = false; });
+      if (yahooOk && q.otc.price != null) {
+        q.otc.source = 'Yahoo Finance · ^TWOII';
+        return;
+      }
+      await fetchOtcFallback();
+    }
+
+    /* ── 市場成交金額：TWSE FMTQIK（上市，取最後一筆） + TPEX 上櫃概況（成交金額欄位） ── */
+    async function fetchTurnover() {
+      const errs = [];
+      let twseVal = null, twseDate = null;
+      try {
+        const rows = await fetchJson('https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK');
+        if (Array.isArray(rows) && rows.length) {
+          const last = rows[rows.length - 1];
+          twseVal = num(pick(last, [/tradevalue/i, /成交金額/]));
+          twseDate = String(pick(last, [/^date$/i, /日期/]) || '').trim();
+        }
+        if (twseVal == null) errs.push('市 資料格式不符');
+      } catch (e) { errs.push('市 ' + errText(e)); }
+
+      let tpexVal = null;
+      const tpexUrls = [
+        'https://www.tpex.org.tw/openapi/v1/tpex_mainborad_highlight',
+        'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_highlight'
+      ];
+      let tpexOk = false;
+      for (const url of tpexUrls) {
+        try {
+          const rows = await fetchJson(url);
+          const row = Array.isArray(rows) ? rows[0] : (rows && typeof rows === 'object' ? rows : null);
+          if (row) {
+            tpexVal = num(pick(row, [/amount|成交金額|金額/i]));
+            if (tpexVal != null) { tpexOk = true; break; }
+          }
+        } catch (e) { /* 換下一個端點拼字再試 */ }
+      }
+      if (!tpexOk) errs.push('櫃 資料暫缺');
+
+      turnover.value = {
+        twse: twseVal,
+        tpex: tpexVal,
+        total: (twseVal != null || tpexVal != null) ? (twseVal || 0) + (tpexVal || 0) : null,
+        date: twseDate || null,
+        error: (twseVal == null && tpexVal == null) ? '成交金額資料暫時無法取得' : (errs.length ? errs.join('、') : null)
+      };
+    }
+
+    /* ── 全市場個股報價：統一欄位對應（TWSE / TPEX 開放資料欄位名稱可能是英文或中文） ── */
+    function mapStockRow(r, market) {
+      const code = String(pick(r, [/code/i, /代號/]) || '').trim();
+      const name = String(pick(r, [/name/i, /名稱/]) || '').trim();
+      const close = num(pick(r, [/closingprice/i, /close/i, /收盤/]));
+      const change = num(pick(r, [/^change$/i, /change/i, /漲跌/]));
+      const value = num(pick(r, [/tradevalue/i, /amount/i, /成交金額/, /金額/]));
+      const volume = num(pick(r, [/tradevolume/i, /shares/i, /成交股數/, /股數/]));
+      return { code, name, market, close, change, value, volume };
+    }
+
+    async function fetchTwseStocks() {
+      const rows = await fetchJson('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL');
+      if (!Array.isArray(rows) || !rows.length) throw new Error('回傳格式不符');
+      return rows.map(r => mapStockRow(r, 'TWSE')).filter(s => s.code);
+    }
+
+    async function fetchTpexStocks() {
+      const urls = [
+        'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes',
+        'https://www.tpex.org.tw/openapi/v1/tpex_mainborad_quotes'
+      ];
+      let lastErr = null;
+      for (const url of urls) {
+        try {
+          const rows = await fetchJson(url);
+          if (Array.isArray(rows) && rows.length) {
+            return rows.map(r => mapStockRow(r, 'TPEX')).filter(s => s.code);
+          }
+        } catch (e) { lastErr = e; }
+      }
+      throw lastErr || new Error('查無上櫃資料');
+    }
+
+    /* ── 產業分類：TWSE 上市公司基本資料 + TPEX 上櫃公司基本資料 ── */
+    async function fetchIndustryMap() {
+      const map = {};
+      const errs = [];
+      try {
+        const rows = await fetchJson('https://openapi.twse.com.tw/v1/opendata/t187ap03_L');
+        if (Array.isArray(rows)) {
+          rows.forEach(r => {
+            const code = String(pick(r, [/code/i, /代號/]) || '').trim();
+            const ind = pick(r, [/industry/i, /產業別/]);
+            if (code) map[code] = mapIndustry(ind);
+          });
+        }
+      } catch (e) { errs.push('上市產業別：' + errText(e)); }
+
+      let tpexOk = false;
+      const tpexUrls = [
+        'https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O',
+        'https://openapi.tpex.org.tw/v1/mopsfin_t187ap03_O'
+      ];
+      for (const url of tpexUrls) {
+        try {
+          const rows = await fetchJson(url);
+          if (Array.isArray(rows) && rows.length) {
+            rows.forEach(r => {
+              const code = String(pick(r, [/code/i, /代號/]) || '').trim();
+              const ind = pick(r, [/industry/i, /產業別/]);
+              if (code) map[code] = mapIndustry(ind);
+            });
+            tpexOk = true;
+            break;
+          }
+        } catch (e) { /* 換下一個網域再試 */ }
+      }
+      if (!tpexOk) errs.push('上櫃產業別暫缺');
+      return { map, errors: errs };
+    }
+
+    /* ── 三大法人（TWSE T86，上市）：整市場一次抓齊 ── */
+    async function fetchTwseInstMap(dateStr) {
+      const data = await fetchJson(`https://www.twse.com.tw/rwd/zh/fund/T86?date=${dateStr}&selectType=ALL&response=json`);
+      if (data.stat !== 'OK' || !Array.isArray(data.data)) return null;
+      const map = {};
+      data.data.forEach(row => {
+        const code = String(row[0]).trim();
+        if (!code) return;
+        map[code] = {
+          foreignNet: num(row[4]) || 0,
+          totalNet: num(row[17]) || 0
+        };
+      });
+      return map;
+    }
+
+    /* ── 三大法人（TPEX 上櫃）：整市場一次抓齊，新舊兩種 API 都試 ── */
+    async function fetchTpexInstMap(dateStr) {
+      const y = parseInt(dateStr.substring(0, 4), 10) - 1911;
+      const rocDate = `${y}/${dateStr.substring(4, 6)}/${dateStr.substring(6, 8)}`;
+      let rows = null;
+      try {
+        const data = await fetchJson(`https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade?type=Daily&sect=EW&date=${rocDate}&id=&response=json`);
+        rows = data?.tables?.[0]?.data || null;
+      } catch (e) { /* 改試舊版 API */ }
+      if (!rows || !rows.length) {
+        try {
+          const data2 = await fetchJson(`https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&se=EW&t=D&d=${rocDate}&o=json`);
+          rows = data2?.aaData || null;
+        } catch (e) { /* 兩種 API 都失敗 */ }
+      }
+      if (!rows || !rows.length) return null;
+      const map = {};
+      rows.forEach(row => {
+        const code = String(row[0]).trim();
+        if (!code) return;
+        const foreignNet = num(row[3]) || 0;
+        const totalNet = num(row[row.length - 1]) || 0;
+        map[code] = { foreignNet, totalNet };
+      });
+      return map;
+    }
+
+    async function fetchInstMap() {
+      const errs = [];
+      const map = {};
+      try {
+        let m = await fetchTwseInstMap(todayStr());
+        if (!m || !Object.keys(m).length) m = await fetchTwseInstMap(prevTradingDateStr());
+        if (m) Object.assign(map, m);
+        else errs.push('上市法人資料暫缺');
+      } catch (e) { errs.push('上市法人：' + errText(e)); }
+      try {
+        let m2 = await fetchTpexInstMap(todayStr());
+        if (!m2 || !Object.keys(m2).length) m2 = await fetchTpexInstMap(prevTradingDateStr());
+        if (m2) Object.assign(map, m2);
+        else errs.push('上櫃法人資料暫缺');
+      } catch (e) { errs.push('上櫃法人：' + errText(e)); }
+      return { map, errors: errs };
+    }
+
+    /* ── 全市場快照：整合上市+上櫃報價、產業分類、三大法人，供資金流向／類股漲跌／排行／市場寬度使用。
+       每個子任務各自 try/catch（實際上是透過 Promise.allSettled），任一失敗都不影響其他區塊。 ── */
+    function isSameTradingDay(ts) {
+      if (!ts) return false;
+      const d1 = new Date(ts), d2 = new Date();
+      return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+    }
+    function loadSnapshotCache() {
+      try {
+        const raw = localStorage.getItem(SNAP_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) { return null; }
+    }
+    function saveSnapshotCache() {
+      try { localStorage.setItem(SNAP_KEY, JSON.stringify(snapshot.value)); }
+      catch (e) { /* 資料量大時可能超過額度，捨棄快取但記憶體內仍保有本次資料 */ }
+    }
+
+    async function fetchMarketSnapshot(force) {
+      if (snapshotLoading.value) return; // 快照抓取量大，進行中一律不重複啟動（開站背景抓取與「全部更新」可能同時觸發）
+      if (!force) {
+        const cached = loadSnapshotCache();
+        if (cached && cached.stocks && cached.stocks.length) {
+          snapshot.value = cached;
+          if (cached.fetchedAt && isSameTradingDay(cached.fetchedAt) && (Date.now() - cached.fetchedAt < SNAP_STALE_MS)) {
+            return; // 快取夠新，不重抓
+          }
+          // 快取偏舊：先顯示舊資料，仍繼續背景重抓
+        }
+      }
+      snapshotLoading.value = true;
+      try {
+        const [twseR, tpexR, indR, instR] = await Promise.allSettled([
+          fetchTwseStocks(),
+          fetchTpexStocks(),
+          fetchIndustryMap(),
+          fetchInstMap()
+        ]);
+
+        let stocks = [];
+        if (twseR.status === 'fulfilled') stocks = stocks.concat(twseR.value);
+        if (tpexR.status === 'fulfilled') stocks = stocks.concat(tpexR.value);
+
+        if (twseR.status === 'rejected' && tpexR.status === 'rejected') {
+          snapshotErrors.stocks = '全市場報價資料暫時無法取得（' + errText(twseR.reason) + '）';
+        } else {
+          snapshotErrors.stocks = null; // 上市或上櫃至少一邊成功即可運作，個別缺漏改由各卡片提示
+        }
+
+        const indMap = indR.status === 'fulfilled' ? indR.value.map : {};
+        snapshotErrors.industry = indR.status === 'fulfilled'
+          ? (indR.value.errors.length ? indR.value.errors.join('、') : null)
+          : errText(indR.reason);
+
+        const instResult = instR.status === 'fulfilled' ? instR.value : { map: {}, errors: ['上市法人資料暫缺', '上櫃法人資料暫缺'] };
+        snapshotErrors.inst = instResult.errors.length >= 2 ? instResult.errors.join('、') : null;
+
+        stocks.forEach(s => {
+          s.isETF = /^0/.test(s.code) || /ETF|ETN/i.test(s.name || '');
+          s.industry = s.isETF ? 'ETF' : (indMap[s.code] || '其他');
+          s.changePct = (s.change != null && s.close != null && (s.close - s.change) !== 0)
+            ? s.change / (s.close - s.change) * 100 : null;
+        });
+
+        if (!stocks.length) {
+          if (!(snapshot.value.stocks && snapshot.value.stocks.length)) {
+            snapshotErrors.stocks = snapshotErrors.stocks || '全市場快照暫時無法取得';
+          }
+          return; // 保留舊快照（若有）
+        }
+
+        snapshot.value = {
+          date: new Date().toLocaleDateString('zh-TW'),
+          stocks,
+          inst: instResult.map,
+          fetchedAt: Date.now()
+        };
+        saveSnapshotCache();
+      } finally {
+        snapshotLoading.value = false;
+      }
+    }
+
+    /* ── 衍生視圖：資金流向 / 類股漲跌 / 市場寬度 / 排行，皆為 computed，切換分頁或排除ETF不需重抓 ── */
+    const hasTpexData = computed(() => (snapshot.value.stocks || []).some(s => s.market === 'TPEX'));
+    const hasInstData = computed(() => Object.keys(snapshot.value.inst || {}).length > 0);
+
+    const filteredStocks = computed(() => {
+      let list = snapshot.value.stocks || [];
+      if (fundFlowTab.value !== 'ALL') list = list.filter(s => s.market === fundFlowTab.value);
+      if (excludeETF.value) list = list.filter(s => !s.isETF);
+      return list;
+    });
+
+    const industryFlow = computed(() => {
+      const list = filteredStocks.value;
+      const totalValue = list.reduce((sum, s) => sum + (s.value || 0), 0);
+      const groups = {};
+      list.forEach(s => {
+        const key = s.industry || '其他';
+        if (!groups[key]) groups[key] = { industry: key, value: 0, changeSum: 0, changeCount: 0, up: 0, down: 0, flat: 0 };
+        const g = groups[key];
+        g.value += (s.value || 0);
+        if (s.changePct != null) { g.changeSum += s.changePct; g.changeCount++; }
+        if (s.change > 0) g.up++; else if (s.change < 0) g.down++; else if (s.change === 0) g.flat++;
+      });
+      return Object.values(groups).map(g => ({
+        industry: g.industry,
+        value: g.value,
+        pct: totalValue > 0 ? g.value / totalValue * 100 : 0,
+        avgChangePct: g.changeCount ? g.changeSum / g.changeCount : null,
+        up: g.up, down: g.down, flat: g.flat
+      })).sort((a, b) => b.value - a.value);
+    });
+
+    const topIndustriesForFlow = computed(() => industryFlow.value.slice(0, 14));
+    const sectorTable = computed(() => [...industryFlow.value].sort((a, b) => (b.avgChangePct ?? -Infinity) - (a.avgChangePct ?? -Infinity)));
+
+    const marketBreadth = computed(() => {
+      const list = (snapshot.value.stocks || []).filter(s => !s.isETF);
+      if (!list.length) return null;
+      let up = 0, down = 0, flat = 0, changeSum = 0, changeCount = 0, valueSum = 0;
+      list.forEach(s => {
+        if (s.change > 0) up++; else if (s.change < 0) down++; else if (s.change === 0) flat++;
+        if (s.changePct != null) { changeSum += s.changePct; changeCount++; }
+        valueSum += (s.value || 0);
+      });
+      return { up, down, flat, avgChangePct: changeCount ? changeSum / changeCount : null, valueTotal: valueSum };
+    });
+
+    const industryStocks = computed(() => {
+      if (!selectedIndustry.value) return [];
+      const list = filteredStocks.value.filter(s => s.industry === selectedIndustry.value);
+      const totalValue = list.reduce((sum, s) => sum + (s.value || 0), 0);
+      return [...list].sort((a, b) => (b.value || 0) - (a.value || 0)).map(s => ({
+        ...s, sharePct: totalValue > 0 ? (s.value || 0) / totalValue * 100 : 0
+      }));
+    });
+    const industryModalTotal = computed(() => industryStocks.value.reduce((sum, s) => sum + (s.value || 0), 0));
+    function openIndustry(name) { selectedIndustry.value = name; }
+    function closeIndustry() { selectedIndustry.value = null; }
+
+    const rankFiltered = computed(() => {
+      let list = snapshot.value.stocks || [];
+      if (rankExcludeETF.value) list = list.filter(s => !s.isETF);
+      return list;
+    });
+
+    const rankRows = computed(() => {
+      const list = rankFiltered.value;
+      if (rankTab.value === 'value') {
+        return [...list].filter(s => s.value != null).sort((a, b) => (b.value || 0) - (a.value || 0)).slice(0, 20);
+      }
+      if (rankTab.value === 'up') {
+        return [...list].filter(s => s.close > 0 && (s.value || 0) > 1e7 && s.changePct != null)
+          .sort((a, b) => b.changePct - a.changePct).slice(0, 20);
+      }
+      if (rankTab.value === 'down') {
+        return [...list].filter(s => s.close > 0 && (s.value || 0) > 1e7 && s.changePct != null)
+          .sort((a, b) => a.changePct - b.changePct).slice(0, 20);
+      }
+      if (rankTab.value === 'instBuy' || rankTab.value === 'instSell') {
+        const inst = snapshot.value.inst || {};
+        const withInst = list.map(s => {
+          const i = inst[s.code];
+          if (!i) return null;
+          return { ...s, netShares: i.totalNet, netLots: i.totalNet / 1000, estAmount: (i.totalNet * (s.close || 0)) / 1e8 };
+        }).filter(Boolean);
+        if (rankTab.value === 'instBuy') return withInst.sort((a, b) => b.netShares - a.netShares).slice(0, 20);
+        return withInst.sort((a, b) => a.netShares - b.netShares).slice(0, 20);
+      }
+      return [];
+    });
+
     function saveNews() {
       try { localStorage.setItem(NEWS_KEY, JSON.stringify(news.value)); } catch (e) {}
     }
@@ -646,6 +1308,11 @@ createApp({
     function setNewsPreset(id) {
       news.value.preset = id;
       saveNews();
+    }
+
+    function dismissGuide() {
+      guideDismissed.value = true;
+      try { localStorage.setItem(GUIDE_KEY, '1'); } catch (e) {}
     }
 
     /* ── 圖表 ── */
@@ -715,14 +1382,15 @@ createApp({
       nextTick(() => renderIndexChart(key));
     }
 
-    /* ── 快取 ── */
+    /* ── 快取（僅存指數磚/圖表/期交所資料，全市場快照另存 SNAP_KEY 以免撐爆容量） ── */
     function saveCache() {
       try {
         localStorage.setItem(CACHE_KEY, JSON.stringify({
           fetchedAt: Date.now(),
-          q: { fx: q.fx, twii: q.twii, txf: q.txf },
+          q: { fx: q.fx, twii: q.twii, txf: q.txf, otc: q.otc },
           tabs: { ...tabs },
-          tx: tx.value, fi: fi.value
+          tx: tx.value, fi: fi.value,
+          turnover: turnover.value
         }));
       } catch (e) {}
     }
@@ -735,10 +1403,12 @@ createApp({
           Object.assign(q.fx, c.q.fx || {});
           Object.assign(q.twii, c.q.twii || {});
           Object.assign(q.txf, c.q.txf || {});
+          Object.assign(q.otc, c.q.otc || {});
         }
         if (c.tabs) Object.assign(tabs, c.tabs);
         tx.value = c.tx || {};
         fi.value = c.fi || {};
+        turnover.value = c.turnover || {};
         return c.fetchedAt || null;
       } catch (e) { return null; }
     }
@@ -749,17 +1419,22 @@ createApp({
       statusText.value = '更新中…';
       const errs = [];
 
-      const [fxr, twr, , txr, fir] = await Promise.allSettled([
+      const [fxr, twr, , txr, fir, otcr, , snapr] = await Promise.allSettled([
         fetchIndex('fx', 'TWD=X'),
         fetchIndex('twii', '^TWII'),
         runTxf(), // 內含完整備援鏈，不會拋出例外
         fetchTaifexTX(),
-        fetchTaifexForeign()
+        fetchTaifexForeign(),
+        runOtc(), // 內含 TPEX 備援鏈，不會拋出例外
+        fetchTurnover(), // 內部已自行 try/catch，不會拋出例外
+        fetchMarketSnapshot(true)
       ]);
 
       if (fxr.status === 'rejected') errs.push('匯率');
       if (twr.status === 'rejected') errs.push('加權指數');
       if (q.txf.price == null) errs.push('台指期即時');
+      if (q.otc.price == null) errs.push('櫃買指數');
+      if (turnover.value.total == null) errs.push('市場成交金額');
 
       if (txr.status === 'fulfilled') tx.value = txr.value;
       else {
@@ -784,11 +1459,14 @@ createApp({
         errs.push('外資部位');
       }
 
+      if (snapr.status === 'rejected' || snapshotErrors.stocks) errs.push('全市場快照');
+      if (snapshotErrors.inst) errs.push('法人籌碼');
+
       renderCharts();
       saveCache();
       loading.value = false;
       statusText.value = errs.length
-        ? `部分更新失敗：${errs.join('、')}`
+        ? `部分更新失敗：${[...new Set(errs)].join('、')}`
         : '更新完成 ' + new Date().toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
       setTimeout(() => { statusText.value = ''; }, 8000);
     }
@@ -799,17 +1477,23 @@ createApp({
     function pnClass(v) { return v == null ? 'flat' : (v > 0 ? 'up' : v < 0 ? 'down' : 'flat'); }
 
     onMounted(() => {
+      try { guideDismissed.value = localStorage.getItem(GUIDE_KEY) === '1'; } catch (e) {}
       const at = loadCache();
       loadNews();
+      fetchMarketSnapshot(false); // 先用快取或背景重抓，不阻塞頁面其他區塊渲染
       renderCharts();
       if (!at || Date.now() - at > STALE_MS) refreshAll();
       window.addEventListener('pp-theme-change', renderCharts);
     });
 
     return {
-      loading, statusText,
+      loading, statusText, guideDismissed, dismissGuide,
       q, chartCards, tabs, setTab,
-      tx, fi, txPrice, txChange, txChangePct, txSource, basis,
+      tx, fi, turnover, txPrice, txChange, txChangePct, txSource, basis,
+      snapshot, snapshotErrors, snapshotLoading, fetchMarketSnapshot,
+      fundFlowTab, excludeETF, rankTab, rankExcludeETF,
+      hasTpexData, hasInstData, topIndustriesForFlow, sectorTable, marketBreadth, rankRows,
+      selectedIndustry, industryStocks, industryModalTotal, openIndustry, closeIndustry,
       news, newsPresets, newsVideoId, setNewsPreset, saveNews,
       refreshAll, fmt, sign, pnClass
     };
