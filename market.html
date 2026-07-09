@@ -67,23 +67,6 @@
   .src-link { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--accent); text-decoration: none; padding: 4px 10px; border-radius: 999px; background: var(--accent-light); transition: opacity .15s; }
   .src-link:hover { opacity: .8; }
 
-  /* 自選股票 */
-  .sec-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
-  .add-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
-  .add-bar input { flex: 1; min-width: 130px; }
-  .mini-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 12px; }
-  .mini-card { padding: 12px 14px; border-radius: var(--radius); background: var(--surface-alt); border: 1px solid var(--stroke); }
-  .mini-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
-  .mini-ticker { font-size: 13.5px; font-weight: 750; }
-  .mini-name { font-size: 11px; color: var(--text-muted); margin-left: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mini-price-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
-  .mini-price { font-size: 19px; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
-  .mini-change { font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
-  .mini-spark { position: relative; width: 100%; height: 44px; margin-top: 6px; }
-  .mini-spark canvas { width: 100% !important; height: 100% !important; }
-  .mini-note { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
-  .del-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 15px; padding: 0 4px; opacity: .5; border-radius: 8px; transition: opacity .15s; flex-shrink: 0; }
-  .del-btn:hover { opacity: 1; color: var(--red); }
   .empty-note { font-size: 12.5px; color: var(--text-muted); padding: 10px 0; }
 
   /* 非凡新聞直播 */
@@ -135,7 +118,7 @@
       <div class="stat-sub flat" v-if="basis != null">
         期現價差 <b :class="pnClass(basis)">{{ sign(basis, 0) }}</b>
       </div>
-      <div class="stat-note">{{ q.txf.price != null ? 'Yahoo Finance · 台指期近一（WTX&）' : '期交所 OpenAPI' + (tx.month ? ' · ' + tx.month : '') + (tx.date ? ' · ' + tx.date : '') }}</div>
+      <div class="stat-note">{{ txSource || '尚無資料' }}</div>
     </div>
 
     <div class="stat-tile glass">
@@ -158,43 +141,6 @@
       </div>
       <div class="chart-box"><canvas :id="'chart-' + c.key"></canvas></div>
       <div class="err-note" v-if="q[c.key].error">⚠ {{ q[c.key].error }}</div>
-    </div>
-  </div>
-
-  <!-- 自選股票行情 -->
-  <div class="detail-card glass">
-    <div class="sec-head">
-      <h3>⭐ 自選股票</h3>
-      <button class="btn btn-sm" @click="importWatchlist">📋 匯入觀察清單</button>
-    </div>
-    <div class="detail-sub">加入台股／美股代號即可追蹤即時報價與日內走勢（與觀察清單模組共用 Yahoo 資料源）</div>
-    <div class="add-bar">
-      <select class="pp-field" v-model="newStock.market">
-        <option value="TW">🇹🇼 台股</option>
-        <option value="US">🇺🇸 美股</option>
-      </select>
-      <input class="pp-field" v-model="newStock.ticker" :placeholder="newStock.market === 'TW' ? '股票代號（如 2330）' : '股票代號（如 AAPL）'" @keydown.enter="addStock" />
-      <button class="btn btn-primary btn-sm" @click="addStock" :disabled="!newStock.ticker.trim()">＋ 加入</button>
-    </div>
-    <div v-if="!stocks.length" class="empty-note">尚無自選股票 — 輸入代號加入，或一鍵匯入觀察清單。</div>
-    <div class="mini-grid">
-      <div class="mini-card" v-for="s in stocks" :key="s.id">
-        <div class="mini-head">
-          <div style="min-width:0;display:flex;align-items:baseline">
-            <span class="mini-ticker">{{ s.ticker }}</span>
-            <span class="mini-name">{{ s.name }}</span>
-          </div>
-          <button class="del-btn" @click="removeStock(s.id)" title="移除">×</button>
-        </div>
-        <div class="mini-price-row">
-          <span class="mini-price">{{ s.price != null ? fmt(s.price, 2) : (s.loading ? '…' : '—') }}</span>
-          <span class="mini-change" :class="pnClass(s.change)" v-if="s.change != null">
-            {{ s.change >= 0 ? '▲' : '▼' }} {{ fmt(Math.abs(s.change), 2) }} ({{ sign(s.changePct, 2) }}%)
-          </span>
-        </div>
-        <div class="mini-spark"><canvas :id="'spark-' + s.id"></canvas></div>
-        <div class="mini-note">{{ s.error ? '⚠ ' + s.error : '日內走勢 · ' + (s.market === 'TW' ? '台股' : '美股') }}</div>
-      </div>
     </div>
   </div>
 
@@ -282,15 +228,15 @@
 const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
 
 const CACHE_KEY = 'pptools-market-cache';
-const STOCKS_KEY = 'pptools-market-stocks';
 const NEWS_KEY = 'pptools-market-news';
-const WATCHLIST_KEY = 'pptools-watchlist'; // 觀察清單模組的儲存鍵，匯入用
 const STALE_MS = 10 * 60 * 1000; // 快取超過 10 分鐘自動重抓
 
 /* 期交所 OpenAPI 端點（回傳最近一個交易日資料）。
    若期交所調整端點名稱，改這裡即可。 */
 const TAIFEX_FUT_URL = 'https://openapi.taifex.com.tw/v1/DailyMarketReportFut';
 const TAIFEX_INST_URL = 'https://openapi.taifex.com.tw/v1/MarketDataOfMajorInstitutionalTradersDetailsOfFuturesContractsBytheDate';
+/* 期交所 MIS 即時報價 API（台指期近月備援來源之一，POST JSON） */
+const TAIFEX_MIS_URL = 'https://mis.taifex.com.tw/futures/api/getQuoteList';
 
 /* 部分來源沒開 CORS，先直連、失敗再依序走公開代理。
    期交所回傳的 JSON 很大（整日全部契約），代理轉送常超過 12 秒，
@@ -321,6 +267,55 @@ async function fetchJson(url) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const text = await res.text(); // 逾時計時涵蓋整段下載，避免大檔下載中途卡死
       return JSON.parse(text);
+    } catch (e) {
+      errs.push(errText(e));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw new Error([...new Set(errs)].join('、'));
+}
+
+/* POST JSON 版本（給期交所 MIS 即時報價用）。
+   corsproxy.io 會原封轉送 method/body，allorigins／codetabs 只支援 GET，故不列入。 */
+async function fetchJsonPost(url, body) {
+  const errs = [];
+  const postFetchers = [
+    { wrap: u => u, timeout: 10000 },
+    { wrap: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 20000 }
+  ];
+  for (const f of postFetchers) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), f.timeout);
+    try {
+      const res = await fetch(f.wrap(url), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      return JSON.parse(text);
+    } catch (e) {
+      errs.push(errText(e));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw new Error([...new Set(errs)].join('、'));
+}
+
+/* 純文字版本（給嗨投資網頁擷取用），沿用同一組代理鏈 */
+async function fetchText(url) {
+  const errs = [];
+  for (const f of FETCHERS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), f.timeout);
+    try {
+      const res = await fetch(f.wrap(url), { signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.text();
     } catch (e) {
       errs.push(errText(e));
     } finally {
@@ -364,7 +359,7 @@ createApp({
     const q = reactive({
       fx: {},   // 美元/台幣  TWD=X
       twii: {}, // 加權指數  ^TWII
-      txf: {}   // 台指期近一 WTX&
+      txf: {}   // 台指期近月（多來源備援，見 runTxf／fetchTxfFallback；q.txf.source 記錄實際來源）
     });
     const chartCards = [
       { key: 'fx', title: '美元／台幣', symbol: 'TWD=X', color: 'rgb(91,140,255)' },
@@ -376,10 +371,6 @@ createApp({
     const tx = ref({}); // 期交所日盤詳細
     const fi = ref({}); // 外資未平倉
     const charts = {};
-
-    /* 自選股票 */
-    const stocks = ref([]);
-    const newStock = ref({ ticker: '', market: 'TW' });
 
     /* 非凡新聞直播 */
     const newsPresets = [
@@ -393,12 +384,23 @@ createApp({
       return p.video;
     });
 
-    /* 台指期磚：優先用 Yahoo 即時價，抓不到再退回期交所日盤收盤 */
+    /* 台指期磚：Yahoo（WTX&）→ SGX 富時台灣期貨參考 → 期交所 MIS 即時 → 嗨投資網頁擷取 → 期交所日盤收盤，逐一備援 */
     const txPrice = computed(() => q.txf.price ?? tx.value.last ?? null);
     const txChange = computed(() => q.txf.price != null ? q.txf.change : tx.value.change ?? null);
     const txChangePct = computed(() => q.txf.price != null ? q.txf.changePct : tx.value.changePct ?? null);
+    /* 顯示於磚上的資料來源說明；q.txf.source 由 runTxf/fetchTxfFallback 寫入 */
+    const txSource = computed(() => {
+      if (q.txf.price != null && q.txf.source) return q.txf.source;
+      if (tx.value.last != null) return '期交所 OpenAPI 日盤' + (tx.value.month ? ' · ' + tx.value.month : '') + (tx.value.date ? ' · ' + tx.value.date : '');
+      return null;
+    });
+    /* 期現價差只有在期貨價格確實來自台灣期交所 TX 報價時才有意義（SGX／嗨投資僅供參考，不可混用） */
+    const txIsTaifexSource = computed(() => {
+      if (q.txf.price != null) return q.txf.isTaifex === true;
+      return tx.value.last != null;
+    });
     const basis = computed(() => {
-      if (txPrice.value == null || q.twii.price == null) return null;
+      if (txPrice.value == null || q.twii.price == null || !txIsTaifexSource.value) return null;
       return txPrice.value - q.twii.price;
     });
 
@@ -518,94 +520,118 @@ createApp({
       };
     }
 
-    /* ── 自選股票報價 ── */
-    function yahooStockSymbol(s, fallback) {
-      if (s.market === 'US') return s.ticker;
-      return s.ticker + (fallback ? '.TWO' : '.TW');
+    /* ── 期交所 MIS 即時報價（台指期備援來源 2）── */
+    async function fetchTaifexMIS() {
+      const body = { MarketType: '0', SymbolType: 'F', KindID: '1', CID: 'TXF', ExpireMonth: '', RowSize: '全部', PageNo: '', SortColumn: '', AscDesc: 'A' };
+      const data = await fetchJsonPost(TAIFEX_MIS_URL, body);
+      const list = data?.RtData?.QuoteList;
+      if (String(data?.RtCode) !== '0' || !Array.isArray(list) || !list.length) throw new Error('MIS 查無資料');
+      // 取近月台指期（排除跨月價差、週選等帶 '/' 的商品）
+      const row = list.find(r => {
+        const sid = String(pick(r, [/^SymbolID$/i]) || '');
+        const name = String(pick(r, [/DispCName/i]) || '');
+        return sid && !sid.includes('/') && !name.includes('/');
+      }) || list[0];
+      const last = num(pick(row, [/^CLastPrice$/i, /LastPrice/i]));
+      const ref = num(pick(row, [/^CRefPrice$/i, /RefPrice/i]));
+      if (last == null) throw new Error('MIS 無成交價');
+      const change = ref != null ? last - ref : num(pick(row, [/change/i]));
+      return {
+        price: last,
+        change,
+        changePct: (change != null && ref) ? change / ref * 100 : null
+      };
     }
 
-    async function fetchStockQuote(s) {
-      s.loading = true;
-      s.error = null;
+    /* ── 嗨投資網頁擷取（台指期備援來源 3，來源不穩定僅供參考）── */
+    async function fetchHiStockTXF() {
+      const html = await fetchText('https://histock.tw/index-tw/FITX');
+      if (!/台指期/.test(html)) throw new Error('頁面內容不符預期');
+      const idx = html.indexOf('台指期');
+      const win = html.slice(idx, idx + 500);
+      const priceMatch = win.match(/(\d{1,2}[,，]\d{3}(?:\.\d+)?|\d{4,6}(?:\.\d+)?)/);
+      if (!priceMatch) throw new Error('無法擷取價格');
+      const price = num(priceMatch[1]);
+      if (price == null || price < 1000 || price > 99999) throw new Error('擷取結果不可信'); // 台指期價位通常落在此區間，超出視為擷取失誤
+      const changeMatch = win.match(/[▲▼]\s*([\d,，.]+)/) || win.match(/([+\-－])\s*(\d[\d,，.]*)/);
+      let change = null;
+      if (changeMatch) {
+        if (changeMatch[0].includes('▼')) change = -Math.abs(num(changeMatch[1]));
+        else if (changeMatch[0].includes('▲')) change = Math.abs(num(changeMatch[1]));
+        else change = num(changeMatch[2] || changeMatch[1]);
+      }
+      return { price, change };
+    }
+
+    /* ── 台指期備援鏈：Yahoo WTX& 失敗（或無報價）時才呼叫。
+       依序嘗試：期交所 MIS 即時 → 嗨投資網頁擷取 → SGX 富時台灣期貨。
+       真正的台指期（TX）報價優先；SGX 富時台灣期貨價位量級完全不同（約 2,000 點），
+       只能當最後的參考備援，且不可用於期現價差。
+       全部失敗則保留 q.txf 空白，交由 txPrice／txSource 退回期交所日盤資料。 ── */
+    async function fetchTxfFallback() {
+      q.txf.error = null;
+
       try {
-        let r;
-        try {
-          r = await fetchYahoo(yahooStockSymbol(s), '1d', '5m');
-        } catch (e) {
-          if (s.market === 'TW') r = await fetchYahoo(yahooStockSymbol(s, true), '1d', '5m'); // 上櫃改抓 .TWO
-          else throw e;
+        const m = await fetchTaifexMIS();
+        if (m && m.price != null) {
+          q.txf.price = m.price;
+          q.txf.change = m.change;
+          q.txf.changePct = m.changePct;
+          q.txf.intra = null; // MIS 僅提供單一時點報價，無序列可畫圖
+          q.txf.month = null;
+          q.txf.source = '期交所 MIS 即時';
+          q.txf.isTaifex = true;
+          return;
         }
-        s.price = r.price;
-        s.change = r.change;
-        s.changePct = r.changePct;
-        s.spark = { labels: r.labels, closes: r.closes, prevClose: r.prevClose };
-        nextTick(() => renderSpark(s));
-      } catch (e) {
-        s.error = '報價取得失敗（' + errText(e) + '）';
-      } finally {
-        s.loading = false;
-        saveStocks();
-      }
+      } catch (e) { /* 繼續嘗試下一個來源 */ }
+
+      try {
+        const h = await fetchHiStockTXF();
+        if (h && h.price != null) {
+          q.txf.price = h.price;
+          q.txf.change = h.change ?? null;
+          q.txf.changePct = null;
+          q.txf.intra = null;
+          q.txf.month = null;
+          q.txf.source = '嗨投資 HiStock（參考）';
+          q.txf.isTaifex = false;
+          return;
+        }
+      } catch (e) { /* 繼續嘗試下一個來源 */ }
+
+      try {
+        const [ir, mr] = await Promise.allSettled([
+          fetchYahoo('TWN=F', '1d', '5m'),
+          fetchYahoo('TWN=F', '1mo', '1d')
+        ]);
+        if (ir.status === 'fulfilled' && ir.value.price != null) {
+          q.txf.price = ir.value.price;
+          q.txf.change = ir.value.change;
+          q.txf.changePct = ir.value.changePct;
+          q.txf.intra = { labels: ir.value.labels, closes: ir.value.closes, prevClose: ir.value.prevClose };
+          if (mr.status === 'fulfilled') q.txf.month = { labels: mr.value.labels, closes: mr.value.closes };
+          q.txf.source = 'SGX 富時台灣期貨（非台指期，僅供參考）';
+          q.txf.isTaifex = false; // 非台灣期交所報價，不可用於期現價差
+          return;
+        }
+      } catch (e) { /* 繼續嘗試下一個來源 */ }
+
+      // 全部備援皆失敗：不覆寫 price，改由 txPrice／txSource 退回期交所日盤收盤價顯示
+      q.txf.error = '即時來源皆無法取得，已改用期交所日盤收盤價';
     }
 
-    function addStock() {
-      const t = newStock.value.ticker.trim().toUpperCase();
-      if (!t) return;
-      if (stocks.value.some(s => s.ticker === t && s.market === newStock.value.market)) {
-        statusText.value = '此標的已在自選清單中';
-        setTimeout(() => { statusText.value = ''; }, 4000);
+    /* 台指期主流程：先走 Yahoo WTX&，失敗才進入備援鏈；此函式不對外拋出例外。
+       注意：q.txf.price 可能殘留 loadCache 的舊值，因此以 fetchIndex 是否成功
+       （而非 price 是否為 null）判斷 Yahoo 來源是否可用，避免舊快取被誤標成即時報價。 */
+    async function runTxf() {
+      let yahooOk = true;
+      await fetchIndex('txf', 'WTX&').catch(() => { yahooOk = false; }); // 錯誤已記錄在 q.txf.error
+      if (yahooOk && q.txf.price != null) {
+        q.txf.source = 'Yahoo Finance';
+        q.txf.isTaifex = true;
         return;
       }
-      const s = reactive({ id: 'm' + Date.now(), ticker: t, market: newStock.value.market, name: '', price: null, change: null, changePct: null, spark: null, loading: false, error: null });
-      stocks.value.push(s);
-      newStock.value.ticker = '';
-      saveStocks();
-      fetchStockQuote(s);
-    }
-
-    function removeStock(id) {
-      stocks.value = stocks.value.filter(s => s.id !== id);
-      if (charts['spark-' + id]) { charts['spark-' + id].destroy(); delete charts['spark-' + id]; }
-      saveStocks();
-    }
-
-    /* 把觀察清單模組（watchlist.html）的標的一鍵帶進來 */
-    function importWatchlist() {
-      let list = [];
-      try { list = JSON.parse(localStorage.getItem(WATCHLIST_KEY) || '[]'); } catch (e) {}
-      if (!Array.isArray(list) || !list.length) {
-        statusText.value = '觀察清單目前沒有標的';
-        setTimeout(() => { statusText.value = ''; }, 4000);
-        return;
-      }
-      let added = 0;
-      for (const w of list) {
-        if (!w.ticker) continue;
-        if (stocks.value.some(s => s.ticker === w.ticker && s.market === w.market)) continue;
-        const s = reactive({ id: 'm' + Date.now() + '-' + added, ticker: w.ticker, market: w.market || 'TW', name: w.name || '', price: null, change: null, changePct: null, spark: null, loading: false, error: null });
-        stocks.value.push(s);
-        fetchStockQuote(s);
-        added++;
-      }
-      saveStocks();
-      statusText.value = added ? `已匯入 ${added} 檔標的` : '觀察清單標的皆已在自選清單中';
-      setTimeout(() => { statusText.value = ''; }, 4000);
-    }
-
-    function saveStocks() {
-      try {
-        localStorage.setItem(STOCKS_KEY, JSON.stringify(stocks.value.map(s => ({
-          id: s.id, ticker: s.ticker, market: s.market, name: s.name,
-          price: s.price, change: s.change, changePct: s.changePct, spark: s.spark
-        }))));
-      } catch (e) {}
-    }
-    function loadStocks() {
-      try {
-        const raw = localStorage.getItem(STOCKS_KEY);
-        if (!raw) return;
-        stocks.value = JSON.parse(raw).map(s => reactive({ ...s, loading: false, error: null }));
-      } catch (e) {}
+      await fetchTxfFallback();
     }
 
     function saveNews() {
@@ -677,43 +703,9 @@ createApp({
       renderLine('chart-' + key, series, card.color, mode === 'intra' ? (q[key].intra?.prevClose ?? null) : null);
     }
 
-    function renderSpark(s) {
-      const canvas = document.getElementById('spark-' + s.id);
-      if (!canvas || !s.spark || !s.spark.closes) return;
-      const key = 'spark-' + s.id;
-      if (charts[key]) charts[key].destroy();
-      const upDown = (s.change ?? 0) >= 0;
-      const css = getComputedStyle(document.documentElement);
-      const color = (upDown ? css.getPropertyValue('--red') : css.getPropertyValue('--green')).trim() || '#5b8cff';
-      charts[key] = new Chart(canvas.getContext('2d'), {
-        type: 'line',
-        data: {
-          labels: s.spark.labels,
-          datasets: [{
-            data: s.spark.closes,
-            borderColor: color,
-            borderWidth: 1.5,
-            pointRadius: 0,
-            fill: false,
-            tension: .3,
-            spanGaps: true
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { enabled: false } },
-          scales: { x: { display: false }, y: { display: false } },
-          animation: false,
-          events: []
-        }
-      });
-    }
-
     function renderCharts() {
       nextTick(() => {
         chartCards.forEach(c => renderIndexChart(c.key));
-        stocks.value.forEach(s => renderSpark(s));
       });
     }
 
@@ -757,19 +749,17 @@ createApp({
       statusText.value = '更新中…';
       const errs = [];
 
-      const [fxr, twr, txfr, txr, fir] = await Promise.allSettled([
+      const [fxr, twr, , txr, fir] = await Promise.allSettled([
         fetchIndex('fx', 'TWD=X'),
         fetchIndex('twii', '^TWII'),
-        fetchIndex('txf', 'WTX&'),
+        runTxf(), // 內含完整備援鏈，不會拋出例外
         fetchTaifexTX(),
         fetchTaifexForeign()
       ]);
-      // 自選股與指數並行更新
-      await Promise.allSettled(stocks.value.map(s => fetchStockQuote(s)));
 
       if (fxr.status === 'rejected') errs.push('匯率');
       if (twr.status === 'rejected') errs.push('加權指數');
-      if (txfr.status === 'rejected') errs.push('台指期即時');
+      if (q.txf.price == null) errs.push('台指期即時');
 
       if (txr.status === 'fulfilled') tx.value = txr.value;
       else {
@@ -810,7 +800,6 @@ createApp({
 
     onMounted(() => {
       const at = loadCache();
-      loadStocks();
       loadNews();
       renderCharts();
       if (!at || Date.now() - at > STALE_MS) refreshAll();
@@ -820,8 +809,7 @@ createApp({
     return {
       loading, statusText,
       q, chartCards, tabs, setTab,
-      tx, fi, txPrice, txChange, txChangePct, basis,
-      stocks, newStock, addStock, removeStock, importWatchlist,
+      tx, fi, txPrice, txChange, txChangePct, txSource, basis,
       news, newsPresets, newsVideoId, setNewsPreset, saveNews,
       refreshAll, fmt, sign, pnClass
     };

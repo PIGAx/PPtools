@@ -1,91 +1,99 @@
 /* ════════════════════════════════════════════════════════════
-   PP-UI — PPtools 液態玻璃設計系統（iOS 26 Liquid Glass 風格）
-   全站共用：設計代幣（tokens）、環境光背景、玻璃面板、按鈕、
-   徽章與捲軸。所有頁面載入本檔後，各自的版面樣式引用這些
-   變數，即可維持一致的日夜模式與玻璃質感。
+   PP-UI — PPtools 終端機設計系統（Bloomberg Terminal 風格）
+   全站共用：設計代幣（tokens）、扁平面板、按鈕、徽章與捲軸。
+   所有頁面載入本檔後，各自的版面樣式引用這些變數，即可維持
+   一致的日夜模式與終端機質感（純黑／純白背景 + 琥珀色強調）。
    主題規則：
      - 預設跟隨系統（prefers-color-scheme）
      - html[data-theme="dark" / "light"] 由 pp-theme.js 強制覆寫
    ════════════════════════════════════════════════════════════ */
 
 :root {
-  /* 色彩 — 淺色 */
-  --bg-base: #eef1f9;
-  --glass: rgba(255, 255, 255, .58);
-  --glass-strong: rgba(255, 255, 255, .8);
-  --glass-border: rgba(255, 255, 255, .75);
-  --glass-inner: rgba(255, 255, 255, .95);
-  --stroke: rgba(20, 25, 50, .08);
-  --surface-alt: rgba(110, 120, 165, .1);
-  --text: #1b1e2e;
-  --text-muted: #5f6684;
-  --shadow: 0 12px 40px rgba(30, 40, 90, .13);
-  --shadow-sm: 0 4px 16px rgba(30, 40, 90, .09);
+  /* 色彩 — 淺色（純白桌面） */
+  --bg-base: #ffffff;
+  --glass: #ffffff;
+  --glass-strong: #f6f6f4;
+  --glass-border: #d9d9d4;
+  --glass-inner: rgba(0, 0, 0, .02);
+  --stroke: #e3e3de;
+  --surface-alt: #f2f2ee;
+  --text: #17170f;
+  --text-muted: #6e6e66;
+  --shadow: 0 8px 24px rgba(0, 0, 0, .08);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, .05);
 
-  /* 品牌與語意色（台股慣例：紅漲綠跌） */
-  --accent: #4a7dff;
-  --accent-deep: #3f5ef0;
-  --accent-light: rgba(74, 125, 255, .12);
-  --red: #e6483d;
-  --green: #1fa15c;
-  --amber: #d98a0b;
-  --purple: #8b5cf6;
-  --teal: #0ea5a5;
-  --orange: #ee7a2f;
+  /* 品牌與語意色（台股慣例：紅漲綠跌；強調色為 Bloomberg 橙／琥珀） */
+  --accent: #e07800;
+  --accent-deep: #b86200;
+  --accent-light: rgba(224, 120, 0, .10);
+  --red: #d92616;
+  --green: #0e8a52;
+  --amber: #b3760a;
+  --purple: #7c4fd6;
+  --teal: #0a8f8f;
+  --orange: #e07800;
 
-  /* 幾何 */
-  --radius-lg: 24px;
-  --radius: 16px;
-  --radius-sm: 10px;
-  --blur: blur(28px) saturate(180%);
-  --ring: 0 0 0 3px rgba(74, 125, 255, .3);
+  /* 幾何 — 扁平模組化面板，無圓潤玻璃 */
+  --radius-lg: 10px;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --blur: none;
+  --ring: 0 0 0 3px rgba(224, 120, 0, .3);
 
   color-scheme: light;
 }
 
-/* 深色（跟隨系統，且未被手動指定為淺色時） */
+/* 深色（跟隨系統，且未被手動指定為淺色時） — 純黑終端機 */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg-base: #0a0c15;
-    --glass: rgba(26, 30, 50, .55);
-    --glass-strong: rgba(30, 34, 56, .8);
-    --glass-border: rgba(255, 255, 255, .1);
-    --glass-inner: rgba(255, 255, 255, .08);
-    --stroke: rgba(255, 255, 255, .08);
-    --surface-alt: rgba(255, 255, 255, .07);
-    --text: #e6e8f2;
-    --text-muted: #8e94b4;
-    --shadow: 0 12px 40px rgba(0, 0, 0, .5);
-    --shadow-sm: 0 4px 16px rgba(0, 0, 0, .35);
-    --accent: #6d96ff;
-    --accent-light: rgba(109, 150, 255, .16);
-    --red: #ff6259;
-    --green: #34c979;
-    --amber: #f5a623;
-    --ring: 0 0 0 3px rgba(109, 150, 255, .35);
+    --bg-base: #000000;
+    --glass: #0c0c0e;
+    --glass-strong: #131316;
+    --glass-border: #2a2a30;
+    --glass-inner: rgba(255, 255, 255, .03);
+    --stroke: #232329;
+    --surface-alt: #16161a;
+    --text: #e8e6e1;
+    --text-muted: #8f8f98;
+    --shadow: 0 8px 24px rgba(0, 0, 0, .6);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, .5);
+    --accent: #ff9f1a;
+    --accent-deep: #e08000;
+    --accent-light: rgba(255, 159, 26, .13);
+    --red: #ff4d3d;
+    --green: #2ebd85;
+    --amber: #ffc14d;
+    --purple: #b18cff;
+    --teal: #2ec8c8;
+    --orange: #ff9f1a;
+    --ring: 0 0 0 3px rgba(255, 159, 26, .35);
     color-scheme: dark;
   }
 }
 
-/* 深色（使用者手動指定） */
+/* 深色（使用者手動指定） — 純黑終端機 */
 :root[data-theme="dark"] {
-  --bg-base: #0a0c15;
-  --glass: rgba(26, 30, 50, .55);
-  --glass-strong: rgba(30, 34, 56, .8);
-  --glass-border: rgba(255, 255, 255, .1);
-  --glass-inner: rgba(255, 255, 255, .08);
-  --stroke: rgba(255, 255, 255, .08);
-  --surface-alt: rgba(255, 255, 255, .07);
-  --text: #e6e8f2;
-  --text-muted: #8e94b4;
-  --shadow: 0 12px 40px rgba(0, 0, 0, .5);
-  --shadow-sm: 0 4px 16px rgba(0, 0, 0, .35);
-  --accent: #6d96ff;
-  --accent-light: rgba(109, 150, 255, .16);
-  --red: #ff6259;
-  --green: #34c979;
-  --amber: #f5a623;
-  --ring: 0 0 0 3px rgba(109, 150, 255, .35);
+  --bg-base: #000000;
+  --glass: #0c0c0e;
+  --glass-strong: #131316;
+  --glass-border: #2a2a30;
+  --glass-inner: rgba(255, 255, 255, .03);
+  --stroke: #232329;
+  --surface-alt: #16161a;
+  --text: #e8e6e1;
+  --text-muted: #8f8f98;
+  --shadow: 0 8px 24px rgba(0, 0, 0, .6);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, .5);
+  --accent: #ff9f1a;
+  --accent-deep: #e08000;
+  --accent-light: rgba(255, 159, 26, .13);
+  --red: #ff4d3d;
+  --green: #2ebd85;
+  --amber: #ffc14d;
+  --purple: #b18cff;
+  --teal: #2ec8c8;
+  --orange: #ff9f1a;
+  --ring: 0 0 0 3px rgba(255, 159, 26, .35);
   color-scheme: dark;
 }
 
@@ -97,102 +105,72 @@ body {
   background: var(--bg-base);
   color: var(--text);
   line-height: 1.55;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* 環境光背景（iOS 上 background-attachment: fixed 失效，改用固定偽元素） */
+/* 終端機風格：純色背景，不使用環境光暈（保留規則以維持版面結構） */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background:
-    radial-gradient(1100px 700px at 8% -10%, rgba(94, 130, 255, .18), transparent 62%),
-    radial-gradient(900px 620px at 102% -4%, rgba(56, 189, 248, .15), transparent 60%),
-    radial-gradient(1000px 800px at 50% 118%, rgba(214, 111, 255, .12), transparent 62%),
-    var(--bg-base);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) body::before {
-    background:
-      radial-gradient(1100px 700px at 8% -10%, rgba(84, 112, 255, .2), transparent 62%),
-      radial-gradient(900px 620px at 102% -4%, rgba(0, 170, 255, .12), transparent 60%),
-      radial-gradient(1000px 800px at 50% 118%, rgba(170, 80, 255, .13), transparent 62%),
-      var(--bg-base);
-  }
-}
-:root[data-theme="dark"] body::before {
-  background:
-    radial-gradient(1100px 700px at 8% -10%, rgba(84, 112, 255, .2), transparent 62%),
-    radial-gradient(900px 620px at 102% -4%, rgba(0, 170, 255, .12), transparent 60%),
-    radial-gradient(1000px 800px at 50% 118%, rgba(170, 80, 255, .13), transparent 62%),
-    var(--bg-base);
+  background: var(--bg-base);
 }
 
-/* ── 玻璃面板 ── */
+/* ── 面板（扁平模組化，取代玻璃擬態） ── */
 .glass {
   background: var(--glass);
-  -webkit-backdrop-filter: var(--blur);
-  backdrop-filter: var(--blur);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-inner);
+  box-shadow: none;
 }
 .glass-card { padding: 18px; }
 
-/* 不支援 backdrop-filter 的瀏覽器改用實色 */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass { background: var(--glass-strong); }
-}
-
-/* ── 按鈕 ── */
+/* ── 按鈕（扁平） ── */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   padding: 8px 18px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: 600;
   font-family: inherit;
   color: var(--text);
-  background: var(--glass);
-  border: 1px solid var(--glass-border);
-  -webkit-backdrop-filter: var(--blur);
-  backdrop-filter: var(--blur);
-  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-inner);
+  background: var(--surface-alt);
+  border: 1px solid var(--stroke);
   cursor: pointer;
   user-select: none;
-  transition: transform .15s cubic-bezier(.3, .7, .4, 1.2), box-shadow .2s, background .2s, color .2s;
+  transition: border-color .15s, background .15s, color .15s, filter .15s;
 }
-.btn:hover { transform: translateY(-1px); box-shadow: var(--shadow), inset 0 1px 0 var(--glass-inner); }
-.btn:active { transform: scale(.97); }
-.btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.btn:hover { border-color: var(--accent); color: var(--text); }
+.btn:active { filter: brightness(.95); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn:focus-visible { outline: none; box-shadow: var(--ring); }
 
 .btn-primary {
-  background: linear-gradient(135deg, #6d96ff, var(--accent-deep));
-  border-color: rgba(255, 255, 255, .35);
-  color: #fff;
-  box-shadow: 0 6px 20px rgba(74, 125, 255, .35), inset 0 1px 0 rgba(255, 255, 255, .35);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #111;
 }
-.btn-primary:hover { box-shadow: 0 8px 26px rgba(74, 125, 255, .45), inset 0 1px 0 rgba(255, 255, 255, .35); }
+.btn-primary:hover { filter: brightness(1.08); border-color: var(--accent); color: #111; }
 
 .btn-danger { color: var(--red); }
 .btn-danger:hover { border-color: var(--red); }
 
 .btn-sm { padding: 5px 12px; font-size: 12px; }
 
-/* ── 表單元件（頁面加上 .pp-field 即套用玻璃輸入框） ── */
+/* ── 表單元件（頁面加上 .pp-field 即套用終端機輸入框） ── */
 .pp-field {
   font-size: 13px;
   font-family: inherit;
   padding: 9px 13px;
   border: 1px solid var(--stroke);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   background: var(--surface-alt);
   color: var(--text);
   outline: none;
@@ -207,7 +185,7 @@ select.pp-field { -webkit-appearance: none; appearance: none; }
   display: inline-flex;
   align-items: center;
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 11px;
   font-weight: 600;
   background: var(--accent-light);

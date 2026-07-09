@@ -37,7 +37,7 @@
       meta.name = 'theme-color';
       (document.head || document.documentElement).appendChild(meta);
     }
-    meta.content = isDark() ? '#0a0c15' : '#eef1f9';
+    meta.content = isDark() ? '#000000' : '#ffffff';
   }
 
   function apply() {
@@ -89,10 +89,10 @@
   function chartColors() {
     var dark = isDark();
     return {
-      grid: dark ? 'rgba(255,255,255,.07)' : 'rgba(20,25,50,.07)',
-      tick: dark ? '#8e94b4' : '#5f6684',
-      text: dark ? '#e6e8f2' : '#1b1e2e',
-      border: dark ? 'rgba(255,255,255,.12)' : 'rgba(20,25,50,.12)'
+      grid: dark ? 'rgba(255,255,255,.07)' : 'rgba(20,20,15,.07)',
+      tick: dark ? '#8f8f98' : '#6e6e66',
+      text: dark ? '#e8e6e1' : '#17170f',
+      border: dark ? 'rgba(255,255,255,.12)' : 'rgba(20,20,15,.12)'
     };
   }
 
