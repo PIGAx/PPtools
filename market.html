@@ -186,13 +186,13 @@
     <div class="stat-tile glass">
       <div class="stat-label">💹 市場成交金額</div>
       <div class="stat-value">
-        {{ turnover.total != null ? fmt(turnover.total / 1e8, 1) : '—' }}<span style="font-size:13px;font-weight:600"> 億</span>
+        {{ turnoverView.total != null ? fmt(turnoverView.total / 1e8, 1) : '—' }}<span style="font-size:13px;font-weight:600"> 億</span>
       </div>
-      <div class="stat-sub flat" v-if="turnover.twse != null || turnover.tpex != null">
-        市 {{ turnover.twse != null ? fmt(turnover.twse / 1e8, 1) : '—' }} 億｜櫃 {{ turnover.tpex != null ? fmt(turnover.tpex / 1e8, 1) : '—' }} 億
+      <div class="stat-sub flat" v-if="turnoverView.twse != null || turnoverView.tpex != null">
+        市 {{ turnoverView.twse != null ? fmt(turnoverView.twse / 1e8, 1) : '—' }} 億｜櫃 {{ turnoverView.tpex != null ? fmt(turnoverView.tpex / 1e8, 1) + (turnoverView.tpexEst ? '（估）' : '') : '—' }} 億
       </div>
-      <div class="stat-note" v-if="turnover.error" style="color:var(--amber)">⚠ {{ turnover.error }}</div>
-      <div class="stat-note" v-else>TWSE FMTQIK · TPEX OpenAPI{{ turnover.date ? ' · ' + turnover.date : '' }}</div>
+      <div class="stat-note" v-if="turnoverView.error" style="color:var(--amber)">⚠ {{ turnoverView.error }}</div>
+      <div class="stat-note" v-else>TWSE FMTQIK · TPEX OpenAPI{{ turnoverView.tpexEst ? '（櫃為個股加總估算）' : '' }}{{ turnoverView.date ? ' · ' + turnoverView.date : '' }}</div>
     </div>
 
     <div class="stat-tile glass">
@@ -217,6 +217,7 @@
       </div>
       <div class="chart-box"><canvas :id="'chart-' + c.key"></canvas></div>
       <div class="err-note" v-if="q[c.key].error">⚠ {{ q[c.key].error }}</div>
+      <div class="empty-note" v-else-if="!hasSeries(c.key)">此來源暫無走勢序列（僅提供即時報價）</div>
     </div>
   </div>
 
@@ -254,6 +255,7 @@
       </div>
       <div v-else-if="fundFlowTab === 'TPEX' && !hasTpexData" class="err-note">⚠ 上櫃資料暫缺，請切換「上市」或「合計」</div>
       <template v-else>
+        <div class="err-note" v-if="snapshotErrors.industry">⚠ 產業分類：{{ snapshotErrors.industry }}（未分類個股歸入「其他」）</div>
         <div v-if="!topIndustriesForFlow.length" class="empty-note">尚無資料</div>
         <div class="flow-row" v-for="g in topIndustriesForFlow" :key="g.industry" @click="openIndustry(g.industry)">
           <div class="flow-name">{{ g.industry }}</div>
@@ -804,12 +806,14 @@ createApp({
       const data = await fetchJsonPost(TAIFEX_MIS_URL, body);
       const list = data?.RtData?.QuoteList;
       if (String(data?.RtCode) !== '0' || !Array.isArray(list) || !list.length) throw new Error('MIS 查無資料');
-      // 取近月台指期（排除跨月價差、週選等帶 '/' 的商品）
+      // 只認 TXF 開頭的合約代碼：清單可能混入現貨指數列（實測曾誤抓加權指數），
+      // 並排除跨月價差、週選等帶 '/' 的商品；找不到就視為失敗交給下一個來源
       const row = list.find(r => {
         const sid = String(pick(r, [/^SymbolID$/i]) || '');
         const name = String(pick(r, [/DispCName/i]) || '');
-        return sid && !sid.includes('/') && !name.includes('/');
-      }) || list[0];
+        return /^TXF/i.test(sid) && !sid.includes('/') && !name.includes('/');
+      });
+      if (!row) throw new Error('MIS 清單中查無台指期合約');
       const last = num(pick(row, [/^CLastPrice$/i, /LastPrice/i]));
       const ref = num(pick(row, [/^CRefPrice$/i, /RefPrice/i]));
       if (last == null) throw new Error('MIS 無成交價');
@@ -912,9 +916,9 @@ createApp({
       await fetchTxfFallback();
     }
 
-    /* ── 櫃買指數備援：TPEX OpenAPI「上櫃概況」（端點拼字歷史上有 mainborad / mainboard 兩種，兩者都試） ── */
-    async function fetchOtcFallback() {
-      q.otc.error = null;
+    /* ── 櫃買指數（TPEX OpenAPI「上櫃概況」）：官方數值，無副作用，失敗回傳 null。
+       端點拼字歷史上有 mainborad / mainboard 兩種，兩者都試。 ── */
+    async function fetchTpexIndex() {
       const urls = [
         'https://www.tpex.org.tw/openapi/v1/tpex_mainborad_highlight',
         'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_highlight'
@@ -927,25 +931,33 @@ createApp({
           const idx = num(pick(row, [/指數|index/i]));
           const chg = num(pick(row, [/漲跌|change/i]));
           if (idx == null) continue;
-          q.otc.price = idx;
-          q.otc.change = chg;
-          q.otc.changePct = (chg != null && (idx - chg) !== 0) ? chg / (idx - chg) * 100 : null;
-          q.otc.source = 'TPEX OpenAPI（上櫃概況）';
-          return;
+          return {
+            price: idx,
+            change: chg,
+            changePct: (chg != null && (idx - chg) !== 0) ? chg / (idx - chg) * 100 : null
+          };
         } catch (e) { /* 換下一個端點拼字再試 */ }
       }
-      q.otc.error = '櫃買指數資料暫時無法取得';
+      return null;
     }
 
-    /* 櫃買指數主流程：先走 Yahoo ^TWOII（有日內/近一月序列可畫圖），失敗才進入 TPEX 備援。 */
+    /* 櫃買指數主流程：磚面數值以官方 TPEX 為準（Yahoo ^TWOII 實測數值可能有偏差/延遲），
+       Yahoo 只負責提供日內/近一月走勢序列；官方失敗時才退回 Yahoo 數值。 */
     async function runOtc() {
+      q.otc.error = null;
       let yahooOk = true;
       await fetchIndex('otc', '^TWOII').catch(() => { yahooOk = false; });
-      if (yahooOk && q.otc.price != null) {
-        q.otc.source = 'Yahoo Finance · ^TWOII';
-        return;
+      const official = await fetchTpexIndex();
+      if (official) {
+        q.otc.price = official.price;
+        q.otc.change = official.change;
+        q.otc.changePct = official.changePct;
+        q.otc.source = 'TPEX OpenAPI（上櫃概況）';
+      } else if (yahooOk && q.otc.price != null) {
+        q.otc.source = 'Yahoo Finance · ^TWOII（官方 TPEX 暫缺，數值僅供參考）';
+      } else {
+        q.otc.error = '櫃買指數資料暫時無法取得';
       }
-      await fetchOtcFallback();
     }
 
     /* ── 市場成交金額：TWSE FMTQIK（上市，取最後一筆） + TPEX 上櫃概況（成交金額欄位） ── */
@@ -1006,6 +1018,23 @@ createApp({
       return rows.map(r => mapStockRow(r, 'TWSE')).filter(s => s.code);
     }
 
+    /* 經典舊版上櫃行情（aaData 為陣列列，欄位固定位置）：
+       [0]代號 [1]名稱 [2]收盤 [3]漲跌 [4]開盤 [5]最高 [6]最低 [7]均價 [8]成交股數 [9]成交金額 */
+    function mapTpexLegacyRow(row) {
+      if (!Array.isArray(row) || row.length < 10) return null;
+      const code = String(row[0]).trim();
+      if (!code) return null;
+      return {
+        code,
+        name: String(row[1] || '').trim(),
+        market: 'TPEX',
+        close: num(row[2]),
+        change: num(row[3]),
+        value: num(row[9]),
+        volume: num(row[8])
+      };
+    }
+
     async function fetchTpexStocks() {
       const urls = [
         'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes',
@@ -1020,11 +1049,40 @@ createApp({
           }
         } catch (e) { lastErr = e; }
       }
+      // 新版 OpenAPI 全數失敗（實測常見），改走經典舊版全部上櫃行情端點，今日與前一交易日各試一次
+      for (const dateStr of [todayStr(), prevTradingDateStr()]) {
+        try {
+          const y = parseInt(dateStr.substring(0, 4), 10) - 1911;
+          const rocDate = `${y}/${dateStr.substring(4, 6)}/${dateStr.substring(6, 8)}`;
+          const data = await fetchJson(`https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?l=zh-tw&d=${rocDate}&se=EW&o=json`);
+          const rows = data?.aaData || data?.tables?.[0]?.data || null;
+          if (Array.isArray(rows) && rows.length) {
+            const mapped = rows.map(mapTpexLegacyRow).filter(Boolean);
+            if (mapped.length) return mapped;
+          }
+        } catch (e) { lastErr = e; }
+      }
       throw lastErr || new Error('查無上櫃資料');
     }
 
     /* ── 產業分類：TWSE 上市公司基本資料 + TPEX 上櫃公司基本資料 ── */
+    /* 產業分類幾乎不變動：成功一次就以 localStorage 快取 7 天，
+       之後即使公司基本資料端點暫時抓不到，資金流向/類股漲跌也不會整批退化成「其他」。 */
+    const IND_MAP_KEY = 'pptools-industry-map';
+    const IND_MAP_TTL = 7 * 24 * 60 * 60 * 1000;
+    function loadIndustryCache() {
+      try {
+        const c = JSON.parse(localStorage.getItem(IND_MAP_KEY) || 'null');
+        if (c && c.map && Object.keys(c.map).length) return c;
+      } catch (e) {}
+      return null;
+    }
+
     async function fetchIndustryMap() {
+      const cached = loadIndustryCache();
+      if (cached && Date.now() - (cached.fetchedAt || 0) < IND_MAP_TTL) {
+        return { map: cached.map, errors: [] };
+      }
       const map = {};
       const errs = [];
       try {
@@ -1058,6 +1116,12 @@ createApp({
         } catch (e) { /* 換下一個網域再試 */ }
       }
       if (!tpexOk) errs.push('上櫃產業別暫缺');
+      if (Object.keys(map).length) {
+        try { localStorage.setItem(IND_MAP_KEY, JSON.stringify({ map, fetchedAt: Date.now() })); } catch (e) {}
+        return { map, errors: errs };
+      }
+      // 這次完全抓不到：退回過期快取（仍遠勝於全部歸「其他」）
+      if (cached) return { map: cached.map, errors: errs.concat('使用既有快取分類') };
       return { map, errors: errs };
     }
 
@@ -1240,6 +1304,30 @@ createApp({
     const topIndustriesForFlow = computed(() => industryFlow.value.slice(0, 14));
     const sectorTable = computed(() => [...industryFlow.value].sort((a, b) => (b.avgChangePct ?? -Infinity) - (a.avgChangePct ?? -Infinity)));
 
+    /* 成交金額磚顯示值：TPEX 概況端點抓不到「櫃」金額時，改用全市場快照的上櫃個股金額加總估算 */
+    const turnoverView = computed(() => {
+      const t = turnover.value || {};
+      let tpex = t.tpex, tpexEst = false;
+      if (tpex == null) {
+        const list = (snapshot.value.stocks || []).filter(s => s.market === 'TPEX');
+        if (list.length) {
+          tpex = list.reduce((sum, s) => sum + (s.value || 0), 0);
+          tpexEst = true;
+        }
+      }
+      const total = (t.twse != null || tpex != null) ? (t.twse || 0) + (tpex || 0) : null;
+      return {
+        twse: t.twse, tpex, tpexEst, total, date: t.date,
+        error: total == null ? (t.error || '成交金額資料暫時無法取得') : null
+      };
+    });
+
+    /* 走勢圖卡是否有可畫的序列（依當前日內/近一月分頁判斷） */
+    function hasSeries(key) {
+      const s = tabs[key] === 'intra' ? q[key].intra : q[key].month;
+      return !!(s && s.closes && s.closes.some(v => v != null));
+    }
+
     const marketBreadth = computed(() => {
       const list = (snapshot.value.stocks || []).filter(s => !s.isETF);
       if (!list.length) return null;
@@ -1319,6 +1407,7 @@ createApp({
     function renderLine(canvasId, series, color, prevClose) {
       const canvas = document.getElementById(canvasId);
       if (!canvas || !series || !series.closes) return;
+      if (!series.closes.some(v => v != null)) return; // 全空序列不畫，避免出現 0~1 的殘影座標軸
       if (charts[canvasId]) charts[canvasId].destroy();
       const tc = PPTheme.chartColors();
       const datasets = [{
@@ -1489,7 +1578,7 @@ createApp({
     return {
       loading, statusText, guideDismissed, dismissGuide,
       q, chartCards, tabs, setTab,
-      tx, fi, turnover, txPrice, txChange, txChangePct, txSource, basis,
+      tx, fi, turnover, turnoverView, hasSeries, txPrice, txChange, txChangePct, txSource, basis,
       snapshot, snapshotErrors, snapshotLoading, fetchMarketSnapshot,
       fundFlowTab, excludeETF, rankTab, rankExcludeETF,
       hasTpexData, hasInstData, topIndustriesForFlow, sectorTable, marketBreadth, rankRows,
