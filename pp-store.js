@@ -21,7 +21,8 @@
     { key: 'pptools-calendar-custom', name: '投資行事曆',     desc: '自訂經濟事件與日程' },
     { key: 'pptools-forecast',        name: '財務預測',       desc: '關注標的財務預測' },
     { key: 'pptools-watchlist',       name: '觀察清單',       desc: '台美股觀察標的與報價資料' },
-    { key: 'pptools-sector-notes',    name: '產業族群筆記',   desc: '依產業分類的看盤清單與研究筆記' }
+    { key: 'pptools-sector-notes',    name: '產業族群筆記',   desc: '依產業分類的看盤清單與研究筆記' },
+    { key: 'pptools-dashboard',       name: '儀表板版面',     desc: '總覽儀表板的面板配置' }
   ];
 
   /* ── 設定與同步紀錄 ── */

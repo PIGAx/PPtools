@@ -24,7 +24,10 @@
     display: flex; flex-direction: column;
     border-radius: var(--radius-lg); overflow: hidden;
   }
-  .sector-panel-header { padding: 14px 16px 10px; border-bottom: 1px solid var(--stroke); }
+  .sector-panel-header {
+    padding: 14px 16px 10px; border-bottom: 1px solid var(--stroke);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
   .sector-panel-header h2 { font-size: 13px; font-weight: 700; color: var(--text-muted); letter-spacing: .5px; }
   .sector-list { flex: 1; overflow-y: auto; padding: 8px; }
   .sector-item {
@@ -53,13 +56,6 @@
     background: var(--surface-alt); color: var(--text-muted); flex-shrink: 0;
   }
   .sector-item.active .count { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
-  .sector-item .edit-btn {
-    background: none; border: none; color: var(--text-muted); cursor: pointer;
-    font-size: 12px; padding: 2px 4px; border-radius: 6px; opacity: 0; flex-shrink: 0;
-    transition: opacity .15s;
-  }
-  .sector-item:hover .edit-btn, .sector-item.active .edit-btn { opacity: .6; }
-  .sector-item .edit-btn:hover { opacity: 1; color: var(--accent); }
   .sector-add-row { padding: 8px; border-top: 1px solid var(--stroke); display: flex; gap: 6px; }
   .sector-add-row input { flex: 1; min-width: 0; }
 
@@ -79,11 +75,6 @@
     font-size: 18px; font-weight: 800; background: none; border: none; color: var(--text);
     border-bottom: 2px solid var(--accent); outline: none; padding: 0 0 2px; min-width: 120px;
   }
-  .header-edit-btn {
-    background: none; border: none; color: var(--text-muted); cursor: pointer;
-    font-size: 14px; padding: 4px 6px; border-radius: 8px; transition: color .15s;
-  }
-  .header-edit-btn:hover { color: var(--accent); }
   .sector-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
 
   .sector-body { flex: 1; overflow-y: auto; }
@@ -135,6 +126,17 @@
   }
   .del-btn:hover { opacity: 1; color: var(--red); }
 
+  .mini-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .refresh-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 13px; padding: 0 4px; opacity: .5; border-radius: 8px; flex-shrink: 0;
+    transition: opacity .15s, color .15s;
+  }
+  .refresh-btn:hover { opacity: 1; color: var(--accent); }
+  .refresh-btn:disabled { cursor: default; }
+  .refresh-btn.spinning { opacity: 1; color: var(--accent); animation: pp-spin .8s linear infinite; }
+  @keyframes pp-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
   .empty-hint { text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px; }
   .empty-hint h3 { font-size: 15px; margin-bottom: 6px; color: var(--text); }
 
@@ -175,24 +177,7 @@
   .detail-panel {
     width: 100%; max-width: 800px; max-height: 92vh;
     border-radius: var(--radius-lg); display: flex; flex-direction: column; overflow: hidden;
-    background: #ffffff;
-    border: 1px solid rgba(200,200,210,.4);
-    box-shadow: 0 32px 80px rgba(0,0,0,.25), 0 0 0 1px rgba(255,255,255,.5);
-    color: #1a1a2e;
-  }
-  [data-theme="dark"] .detail-panel {
-    background: #1e2030;
-    border-color: rgba(255,255,255,.1);
-    box-shadow: 0 32px 80px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.06);
-    color: #e8e8f0;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .detail-panel {
-      background: #1e2030;
-      border-color: rgba(255,255,255,.1);
-      box-shadow: 0 32px 80px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.06);
-      color: #e8e8f0;
-    }
+    background: var(--bg-base); border: 1px solid var(--stroke); color: var(--text); box-shadow: var(--shadow);
   }
   .detail-top { padding: 20px 22px 14px; border-bottom: 1px solid var(--stroke); }
   .detail-top-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -231,6 +216,7 @@
   .chip-grid {
     display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 16px;
   }
+  .broker-stat-grid { grid-template-columns: 1fr 1fr 1fr 1fr; margin-bottom: 14px; }
   .chip-card {
     padding: 14px; border-radius: var(--radius-sm); text-align: center;
     background: var(--surface-alt); border: 1px solid var(--stroke);
@@ -282,6 +268,7 @@
     .mini-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
     .detail-panel { max-width: 100%; max-height: 95vh; min-height: 60vh; }
     .chip-grid { grid-template-columns: 1fr; }
+    .broker-stat-grid { grid-template-columns: 1fr 1fr; }
   }
 </style>
 </head>
@@ -303,6 +290,7 @@
     <div class="sector-panel glass">
       <div class="sector-panel-header">
         <h2>族群列表</h2>
+        <button class="btn btn-sm" style="font-size:11px;padding:4px 10px" @click="editMode = !editMode">{{ editMode ? '完成' : '編輯' }}</button>
       </div>
       <div class="sector-list">
         <div
@@ -317,16 +305,14 @@
           @drop="onDrop(idx)"
           @dragend="onDragEnd"
         >
-          <template v-if="renamingId !== sec.id">
+          <template v-if="!editMode">
             <span class="s-name">{{ sec.name }}</span>
-            <button class="edit-btn" @click.stop="startRename(sec)" title="重新命名">✎</button>
           </template>
           <template v-else>
-            <input class="s-name-input" v-model="renameValue"
-              @keydown.enter="finishRename(sec)" @blur="finishRename(sec)"
-              @click.stop ref="renameInput" />
+            <input class="s-name-input" v-model="sec.name" @change="save" @blur="save" @click.stop />
           </template>
           <span class="count">{{ sec.stocks.length }}</span>
+          <button v-if="editMode" class="del-btn" @click.stop="deleteSector(sec.id)" title="刪除族群">🗑</button>
         </div>
         <div v-if="!sectors.length" style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;">
           尚無族群，在下方新增
@@ -342,17 +328,15 @@
     <div class="main-panel glass">
       <template v-if="activeSector">
         <div class="sector-header">
-          <template v-if="!editingTitle">
+          <template v-if="!editMode">
             <span class="sector-title">{{ activeSector.name }}</span>
-            <button class="header-edit-btn" @click="startEditTitle" title="重新命名">✎</button>
           </template>
           <template v-else>
-            <input class="sector-title-input" v-model="editTitleValue" @keydown.enter="finishEditTitle" @blur="finishEditTitle" ref="titleInput" />
+            <input class="sector-title-input" v-model="activeSector.name" @change="save" @blur="save" />
           </template>
           <div class="sector-actions">
             <button class="btn btn-sm" @click="refreshSectorQuotes(activeSector)" :disabled="refreshing">更新報價</button>
             <button class="btn btn-sm" @click="showImportModal = true">批次匯入</button>
-            <button class="btn btn-sm btn-danger" @click="deleteSector(activeSector.id)">刪除族群</button>
           </div>
         </div>
 
@@ -385,7 +369,10 @@
                     <span class="mini-ticker">{{ s.ticker }}</span>
                     <span class="mini-name">{{ s.name }}</span>
                   </div>
-                  <button class="del-btn" @click.stop="removeStock(activeSector, s.id)" title="移除">×</button>
+                  <div class="mini-actions">
+                    <button class="refresh-btn" :class="{ spinning: s.loading }" @click.stop="fetchQuote(s)" :disabled="s.loading" title="更新此檔報價">↻</button>
+                    <button class="del-btn" @click.stop="removeStock(activeSector, s.id)" title="移除">×</button>
+                  </div>
                 </div>
                 <div class="mini-price-row">
                   <span class="mini-price" :class="changeClass(s.change)">{{ s.price != null ? fmtPrice(s.price, s.market) : (s.loading ? '…' : '—') }}</span>
@@ -465,6 +452,9 @@ JP 6857 愛德萬測試</pre>
           <span class="market-badge" :class="detailStock.market.toLowerCase()">{{ marketLabel(detailStock.market) }}</span>
           <span class="mini-ticker">{{ detailStock.ticker }}</span>
           <span class="mini-name">{{ detailStock.name }}</span>
+          <button class="btn btn-sm" style="margin-left:auto;font-size:11px;padding:5px 10px" @click="refreshDetailQuote" :disabled="detailStock.loading">
+            {{ detailStock.loading ? '更新中…' : '更新報價' }}
+          </button>
           <button class="detail-close" @click="closeDetail">×</button>
         </div>
         <div>
@@ -547,6 +537,9 @@ JP 6857 愛德萬測試</pre>
                 <span class="val">{{ chipData.date || '—' }}</span>
               </div>
             </div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:10px;text-align:right">
+              來源：{{ chipData.source || 'TWSE T86' }}
+            </div>
           </template>
         </template>
 
@@ -559,6 +552,29 @@ JP 6857 愛德萬測試</pre>
           </div>
           <template v-else-if="brokerData">
             <input class="pp-field broker-search" v-model="brokerSearch" placeholder="搜尋券商名稱…" style="font-size:12px;padding:8px 12px;width:100%" />
+            <template v-if="brokerStats">
+              <div class="chip-grid broker-stat-grid">
+                <div class="chip-card">
+                  <div class="chip-label">買超合計</div>
+                  <div class="chip-value up">+{{ fmtChipVol(brokerStats.buySum) }}</div>
+                  <div class="chip-sub">張</div>
+                </div>
+                <div class="chip-card">
+                  <div class="chip-label">賣超合計</div>
+                  <div class="chip-value down">{{ fmtChipVol(brokerStats.sellSum) }}</div>
+                  <div class="chip-sub">張</div>
+                </div>
+                <div class="chip-card">
+                  <div class="chip-label">買賣超家數</div>
+                  <div class="chip-value">{{ brokerStats.buyCount }} 買 / {{ brokerStats.sellCount }} 賣</div>
+                </div>
+                <div class="chip-card">
+                  <div class="chip-label">主力買賣超</div>
+                  <div class="chip-value" :class="brokerStats.mainNet >= 0 ? 'up' : 'down'">{{ brokerStats.mainNet >= 0 ? '+' : '' }}{{ fmtChipVol(brokerStats.mainNet) }}</div>
+                  <div class="chip-sub">前15大合計・張</div>
+                </div>
+              </div>
+            </template>
             <div class="broker-tabs">
               <button class="broker-tab" :class="{active: brokerSide==='buy'}" @click="brokerSide='buy'">買超 Top</button>
               <button class="broker-tab" :class="{active: brokerSide==='sell'}" @click="brokerSide='sell'">賣超 Top</button>
@@ -570,6 +586,7 @@ JP 6857 愛德萬測試</pre>
                   <th class="num">買進(張)</th>
                   <th class="num">賣出(張)</th>
                   <th class="num">買賣超</th>
+                  <th class="num">均價</th>
                 </tr>
               </thead>
               <tbody>
@@ -578,9 +595,10 @@ JP 6857 愛德萬測試</pre>
                   <td class="num">{{ fmtChipVol(b.buy) }}</td>
                   <td class="num">{{ fmtChipVol(b.sell) }}</td>
                   <td class="num" :class="b.net >= 0 ? 'up' : 'down'">{{ b.net >= 0 ? '+' : '' }}{{ fmtChipVol(b.net) }}</td>
+                  <td class="num">{{ b.avgPrice != null ? b.avgPrice.toFixed(2) : '—' }}</td>
                 </tr>
                 <tr v-if="!filteredBrokers.length">
-                  <td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px">無符合的券商</td>
+                  <td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px">無符合的券商</td>
                 </tr>
               </tbody>
             </table>
@@ -671,6 +689,21 @@ const sparkCharts = {};
 let detailChartInst = null;
 const instCache = {};
 
+// ── 併發限制執行池：同時最多 limit 個 worker 在跑，跑完一個補一個 ──
+async function runPool(items, worker, limit = 5, onProgress) {
+  let done = 0, i = 0;
+  const results = [];
+  async function next() {
+    while (i < items.length) {
+      const idx = i++;
+      try { results[idx] = await worker(items[idx]); } catch (e) { results[idx] = e; }
+      done++; if (onProgress) onProgress(done, items.length);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, next));
+  return results;
+}
+
 createApp({
   setup() {
     const sectors = ref([]);
@@ -679,14 +712,9 @@ createApp({
     const newStock = ref({ ticker: '', name: '', market: 'TW' });
     const refreshing = ref(false);
     const statusText = ref('');
-    const editingTitle = ref(false);
-    const editTitleValue = ref('');
+    const editMode = ref(false);
     const showImportModal = ref(false);
     const importText = ref('');
-    const titleInput = ref(null);
-    const renameInput = ref(null);
-    const renamingId = ref(null);
-    const renameValue = ref('');
     const dragIdx = ref(null);
     const dragOverIdx = ref(null);
 
@@ -722,6 +750,22 @@ createApp({
       if (!brokerSearch.value.trim()) return list;
       const q = brokerSearch.value.trim().toLowerCase();
       return list.filter(b => b.name.toLowerCase().includes(q));
+    });
+
+    // 自行統計：彙整所有已解析券商的買賣超概況
+    const brokerStats = computed(() => {
+      if (!brokerData.value) return null;
+      const buyers = brokerData.value.buyers || [];
+      const sellers = brokerData.value.sellers || [];
+      const buySum = buyers.reduce((sum, b) => sum + b.net, 0);
+      const sellSum = sellers.reduce((sum, b) => sum + b.net, 0);
+      const top15BuySum = [...buyers].sort((a, b) => b.net - a.net).slice(0, 15).reduce((sum, b) => sum + b.net, 0);
+      const top15SellSum = [...sellers].sort((a, b) => a.net - b.net).slice(0, 15).reduce((sum, b) => sum + b.net, 0);
+      return {
+        buySum, sellSum,
+        buyCount: buyers.length, sellCount: sellers.length,
+        mainNet: top15BuySum + top15SellSum
+      };
     });
 
     function load() {
@@ -790,33 +834,6 @@ createApp({
       if (activeSectorId.value === id) {
         activeSectorId.value = sectors.value.length ? sectors.value[0].id : null;
       }
-      save();
-    }
-
-    function startRename(sec) {
-      renamingId.value = sec.id;
-      renameValue.value = sec.name;
-      nextTick(() => { if (renameInput.value) renameInput.value.focus(); });
-    }
-    function finishRename(sec) {
-      if (renamingId.value !== sec.id) return;
-      const v = renameValue.value.trim();
-      if (v) sec.name = v;
-      renamingId.value = null;
-      save();
-    }
-
-    function startEditTitle() {
-      if (!activeSector.value) return;
-      editingTitle.value = true;
-      editTitleValue.value = activeSector.value.name;
-      nextTick(() => { if (titleInput.value) titleInput.value.focus(); });
-    }
-    function finishEditTitle() {
-      if (!activeSector.value || !editingTitle.value) return;
-      const v = editTitleValue.value.trim();
-      if (v) activeSector.value.name = v;
-      editingTitle.value = false;
       save();
     }
 
@@ -920,7 +937,7 @@ createApp({
       return result;
     }
 
-    // ── 三大法人 (TWSE T86) ──
+    // ── 三大法人 (TWSE T86，上市) ──
     async function fetchInstitutionalForDate(dateStr) {
       if (instCache[dateStr]) return instCache[dateStr];
       const url = `https://www.twse.com.tw/rwd/zh/fund/T86?date=${dateStr}&selectType=ALL&response=json`;
@@ -938,10 +955,59 @@ createApp({
           trustNet: parseTWSENum(row[10]),
           dealerNet: parseTWSENum(row[13]) + parseTWSENum(row[16]),
           totalNet: parseTWSENum(row[17]),
-          date: data.date
+          date: data.date,
+          source: 'TWSE T86'
         };
       });
       instCache[dateStr] = map;
+      return map;
+    }
+
+    // ── 三大法人 (TPEX 櫃買，上櫃/興櫃備援) ──
+    async function fetchTpexInstForDate(dateStr) {
+      const cacheKey = 'tpex:' + dateStr;
+      if (instCache[cacheKey]) return instCache[cacheKey];
+      const y = parseInt(dateStr.substring(0, 4), 10) - 1911;
+      const MM = dateStr.substring(4, 6);
+      const DD = dateStr.substring(6, 8);
+      const rocDate = `${y}/${MM}/${DD}`;
+      let rows = null;
+      try {
+        const url = `https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade?type=Daily&sect=EW&date=${rocDate}&id=&response=json`;
+        const data = await fetchVia(url);
+        rows = data?.tables?.[0]?.data || null;
+      } catch (e) { /* 改試舊版 API */ }
+      if (!rows || !rows.length) {
+        try {
+          const url2 = `https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&se=EW&t=D&d=${rocDate}&o=json`;
+          const data2 = await fetchVia(url2);
+          rows = data2?.aaData || null;
+        } catch (e) { /* 兩種 API 都失敗，回傳 null */ }
+      }
+      if (!rows || !rows.length) return null;
+      const map = {};
+      rows.forEach(row => {
+        const code = String(row[0]).trim();
+        if (!code) return;
+        // 欄位配置（不含自營商）：[1]外資買 [2]外資賣 [3]外資買賣超；[10]投信買 [11]投信賣 [12]投信買賣超；最後一欄＝三大法人合計買賣超
+        const foreignNet = parseTWSENum(row[3]);
+        const trustNet = parseTWSENum(row[12]);
+        const totalNet = parseTWSENum(row[row.length - 1]);
+        map[code] = {
+          foreignBuy: parseTWSENum(row[1]),
+          foreignSell: parseTWSENum(row[2]),
+          foreignNet,
+          trustBuy: parseTWSENum(row[10]),
+          trustSell: parseTWSENum(row[11]),
+          trustNet,
+          // 自營商欄位在不同版本 API 中位置不一，改用合計反推，確保三大法人合計數字正確
+          dealerNet: totalNet - foreignNet - trustNet,
+          totalNet,
+          date: dateStr,
+          source: 'TPEX 三大法人'
+        };
+      });
+      instCache[cacheKey] = map;
       return map;
     }
 
@@ -955,7 +1021,14 @@ createApp({
           map = await fetchInstitutionalForDate(prevTradingDateStr());
         }
         if (!map || !map[ticker]) {
-          chipError.value = '查無籌碼資料（可能為上櫃股或非交易日）';
+          // 上市查無資料，改查上櫃 (TPEX)
+          map = await fetchTpexInstForDate(todayStr());
+        }
+        if (!map || !map[ticker]) {
+          map = await fetchTpexInstForDate(prevTradingDateStr());
+        }
+        if (!map || !map[ticker]) {
+          chipError.value = '查無籌碼資料（非交易日或資料未公布）';
           return;
         }
         const d = map[ticker];
@@ -969,7 +1042,8 @@ createApp({
           trustSell: Math.round(d.trustSell / 1000),
           dealerNet: Math.round(d.dealerNet / 1000),
           totalNet: Math.round(d.totalNet / 1000),
-          date: d.date ? d.date.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3') : ''
+          date: d.date ? d.date.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3') : '',
+          source: d.source
         };
       } catch (e) {
         chipError.value = '籌碼資料載入失敗：' + (e.message || '');
@@ -990,7 +1064,11 @@ createApp({
       brokerData.value = null;
       brokerSearch.value = '';
       try {
-        let result = await tryBSR(ticker, todayStr());
+        // 優先嘗試 HiStock 券商分點買賣日報（涵蓋上市/上櫃較完整）
+        let result = await tryHiStock(ticker);
+        if (!result || (!result.buyers.length && !result.sellers.length)) {
+          result = await tryBSR(ticker, todayStr());
+        }
         if (!result || (!result.buyers.length && !result.sellers.length)) {
           result = await tryBSR(ticker, prevTradingDateStr());
         }
@@ -1010,6 +1088,74 @@ createApp({
       } finally {
         brokerLoading.value = false;
       }
+    }
+
+    // ── HiStock 券商分點買賣日報 ──
+    async function tryHiStock(ticker) {
+      const urls = [
+        `https://histock.tw/stock/branch.aspx?no=${ticker}`,
+        `https://histock.tw/stock/${ticker}/` + encodeURIComponent('券商分點買賣日報'),
+        `https://histock.tw/stock/brokertrace.aspx?no=${ticker}`
+      ];
+      for (const url of urls) {
+        try {
+          const html = await fetchViaText(url);
+          if (!html || html.length < 200) continue;
+          const brokers = parseHiStockTables(html);
+          if (brokers.length >= 3) {
+            const buyers = brokers.filter(b => b.net > 0).sort((a, b) => b.net - a.net).slice(0, 20);
+            const sellers = brokers.filter(b => b.net < 0).sort((a, b) => a.net - b.net).slice(0, 20);
+            return { buyers, sellers, date: '', source: '嗨投資 HiStock' };
+          }
+        } catch { /* 換下一個網址 */ }
+      }
+      return null;
+    }
+
+    // 通用表格解析：找出「券商」+「買超/賣超/買張」的表格並解析（HiStock 頁面通常買超/賣超表各一）
+    function parseHiStockTables(html) {
+      const brokerMap = {};
+      const tableRe = /<table[^>]*>([\s\S]*?)<\/table>/gi;
+      let tm;
+      while ((tm = tableRe.exec(html)) !== null) {
+        const rows = [];
+        const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+        let rm;
+        while ((rm = rowRe.exec(tm[1])) !== null) {
+          const cells = [];
+          const cellRe = /<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi;
+          let cm;
+          while ((cm = cellRe.exec(rm[1])) !== null) {
+            cells.push(cm[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim());
+          }
+          if (cells.length) rows.push(cells);
+        }
+        if (rows.length < 2) continue;
+        const header = rows[0].join(' ');
+        if (!/券商/.test(header) || !/(買超|賣超|買張)/.test(header)) continue;
+        const isSellTable = /賣超/.test(header) && !/買超/.test(header);
+        for (let r = 1; r < rows.length; r++) {
+          const cells = rows[r];
+          if (cells.length < 4) continue;
+          const name = cells[0].replace(/\s+/g, '');
+          if (!name || !/[一-鿿]/.test(name)) continue;
+          if (/合計|統計|總計/.test(name)) continue;
+          const buy = parseTWSENum(cells[1]);
+          const sell = parseTWSENum(cells[2]);
+          let net = parseTWSENum(cells[3]);
+          if (isSellTable && net > 0) net = -net; // 賣超表的賣超欄若為正值代表賣超量，轉為負數
+          if (!net) net = buy - sell;
+          const avgPriceRaw = cells[4] ? parseFloat(cells[4].replace(/,/g, '')) : NaN;
+          if (brokerMap[name]) {
+            brokerMap[name].buy += buy;
+            brokerMap[name].sell += sell;
+            brokerMap[name].net += net;
+          } else {
+            brokerMap[name] = { name, buy, sell, net, avgPrice: !isNaN(avgPriceRaw) ? avgPriceRaw : null };
+          }
+        }
+      }
+      return Object.values(brokerMap);
     }
 
     async function tryBSR(ticker, dateStr) {
@@ -1038,22 +1184,30 @@ createApp({
         const name = cells[0].replace(/\s+/g, '');
         if (!name || !/[一-鿿]/.test(name)) continue;
         if (/合計|統計|券商|名稱|說明/.test(name)) continue;
+        const price = parseFloat(String(cells[1]).replace(/,/g, '')) || 0;
         const buy = parseTWSENum(cells[2]);
         const sell = parseTWSENum(cells[3]);
         if (buy === 0 && sell === 0) continue;
         if (brokerMap[name]) {
           brokerMap[name].buy += buy;
           brokerMap[name].sell += sell;
+          brokerMap[name].buyVal += price * buy;
+          brokerMap[name].sellVal += price * sell;
         } else {
-          brokerMap[name] = { name, buy, sell };
+          brokerMap[name] = { name, buy, sell, buyVal: price * buy, sellVal: price * sell };
         }
       }
-      const brokers = Object.values(brokerMap).map(b => ({
-        ...b,
-        buy: Math.round(b.buy / 1000),
-        sell: Math.round(b.sell / 1000),
-        net: Math.round((b.buy - b.sell) / 1000)
-      }));
+      const brokers = Object.values(brokerMap).map(b => {
+        const shares = b.buy + b.sell;
+        const avgPrice = shares > 0 ? Math.round((b.buyVal + b.sellVal) / shares * 100) / 100 : null;
+        return {
+          name: b.name,
+          buy: Math.round(b.buy / 1000),
+          sell: Math.round(b.sell / 1000),
+          net: Math.round((b.buy - b.sell) / 1000),
+          avgPrice
+        };
+      });
       if (!brokers.length) return null;
       const buyers = brokers.filter(b => b.net > 0).sort((a, b) => b.net - a.net).slice(0, 20);
       const sellers = brokers.filter(b => b.net < 0).sort((a, b) => a.net - b.net).slice(0, 20);
@@ -1082,6 +1236,11 @@ createApp({
     function closeDetail() {
       if (detailChartInst) { detailChartInst.destroy(); detailChartInst = null; }
       detailStock.value = null;
+    }
+    async function refreshDetailQuote() {
+      if (!detailStock.value) return;
+      await fetchQuote(detailStock.value);
+      nextTick(() => setTimeout(renderDetailChart, 80));
     }
     function switchDetailTab(tab) {
       detailTab.value = tab;
@@ -1218,26 +1377,32 @@ createApp({
     }
 
     async function refreshSectorQuotes(sector) {
+      const stocks = sector.stocks;
+      const total = stocks.length;
+      if (!total) return;
       refreshing.value = true;
-      statusText.value = '更新中…';
-      let ok = 0, fail = 0;
-      for (const st of sector.stocks) {
-        try { await fetchQuote(st); ok++; } catch { fail++; }
-      }
+      statusText.value = `更新中 0/${total}…`;
+      await runPool(stocks, st => fetchQuote(st), 5, (done, tot) => {
+        statusText.value = `更新中 ${done}/${tot}…`;
+      });
+      const fail = stocks.filter(st => st.error).length;
+      const ok = total - fail;
       refreshing.value = false;
       statusText.value = `${ok} 成功` + (fail ? `, ${fail} 失敗` : '');
       setTimeout(() => { statusText.value = ''; }, 4000);
     }
 
     async function refreshAllQuotes() {
+      const stocks = sectors.value.flatMap(sec => sec.stocks);
+      const total = stocks.length;
+      if (!total) return;
       refreshing.value = true;
-      statusText.value = '更新中…';
-      let ok = 0, fail = 0;
-      for (const sec of sectors.value) {
-        for (const st of sec.stocks) {
-          try { await fetchQuote(st); ok++; } catch { fail++; }
-        }
-      }
+      statusText.value = `更新中 0/${total}…`;
+      await runPool(stocks, st => fetchQuote(st), 5, (done, tot) => {
+        statusText.value = `更新中 ${done}/${tot}…`;
+      });
+      const fail = stocks.filter(st => st.error).length;
+      const ok = total - fail;
       refreshing.value = false;
       statusText.value = `${ok} 成功` + (fail ? `, ${fail} 失敗` : '');
       setTimeout(() => { statusText.value = ''; }, 4000);
@@ -1334,16 +1499,14 @@ createApp({
 
     return {
       sectors, activeSectorId, activeSector, newSectorName, newStock,
-      refreshing, statusText, editingTitle, editTitleValue, titleInput,
+      refreshing, statusText, editMode,
       showImportModal, importText, sortedNotes, tickerPlaceholder,
-      renamingId, renameValue, renameInput,
       dragIdx, dragOverIdx,
       detailStock, detailTab, chipData, chipLoading, chipError,
-      brokerData, brokerLoading, brokerError, brokerSide, brokerSearch, filteredBrokers,
+      brokerData, brokerLoading, brokerError, brokerSide, brokerSearch, filteredBrokers, brokerStats,
       selectSector, addSector, deleteSector,
-      startRename, finishRename, startEditTitle, finishEditTitle,
-      addStock, removeStock,
-      openDetail, closeDetail, switchDetailTab,
+      addStock, removeStock, fetchQuote,
+      openDetail, closeDetail, switchDetailTab, refreshDetailQuote, loadBrokerData,
       refreshSectorQuotes, refreshAllQuotes,
       addNote, removeNote, onNoteInput,
       doBatchImport,
