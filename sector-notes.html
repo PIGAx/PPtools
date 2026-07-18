@@ -209,6 +209,26 @@
 
   .detail-body { flex: 1; overflow-y: auto; padding: 16px 22px 22px; }
 
+  .freq-bar { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .freq-btn {
+    padding: 6px 14px; font-size: 12px; font-weight: 650; font-family: inherit;
+    border-radius: 999px; cursor: pointer;
+    background: var(--surface-alt); border: 1px solid var(--stroke); color: var(--text-muted);
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .freq-btn:hover { color: var(--text); }
+  .freq-btn.active { background: var(--accent-light); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
+
+  .return-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 12px; }
+  .return-chip {
+    padding: 10px 6px; border-radius: var(--radius-sm); text-align: center;
+    background: var(--surface-alt); border: 1px solid var(--stroke);
+  }
+  .return-chip .rc-label { font-size: 10px; color: var(--text-muted); font-weight: 650; letter-spacing: .3px; margin-bottom: 3px; }
+  .return-chip .rc-value { font-size: 13.5px; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .return-hint { font-size: 10.5px; color: var(--text-muted); text-align: center; margin-top: 10px; }
+  @media (max-width: 480px) { .return-strip { grid-template-columns: repeat(5, 1fr); gap: 5px; } .return-chip { padding: 8px 2px; } .return-chip .rc-value { font-size: 11.5px; } }
+
   .detail-chart { position: relative; width: 100%; height: 240px; margin-bottom: 12px; }
   .detail-chart canvas { width: 100% !important; height: 100% !important; }
 
@@ -472,7 +492,7 @@ JP 6857 愛德萬測試</pre>
       </div>
 
       <div class="detail-tabs">
-        <button class="detail-tab" :class="{active: detailTab==='chart'}" @click="detailTab='chart'">走勢圖</button>
+        <button class="detail-tab" :class="{active: detailTab==='chart'}" @click="switchDetailTab('chart')">走勢圖</button>
         <button class="detail-tab" :class="{active: detailTab==='chip'}" @click="switchDetailTab('chip')" v-if="detailStock.market==='TW'">籌碼</button>
         <button class="detail-tab" :class="{active: detailTab==='broker'}" @click="switchDetailTab('broker')" v-if="detailStock.market==='TW'">分點進出</button>
       </div>
@@ -480,7 +500,24 @@ JP 6857 愛德萬測試</pre>
       <div class="detail-body">
         <!-- 走勢圖 Tab -->
         <template v-if="detailTab==='chart'">
-          <div class="detail-chart"><canvas id="detail-chart-canvas"></canvas></div>
+          <div class="freq-bar">
+            <button v-for="f in freqOptions" :key="f.key" class="freq-btn"
+                    :class="{active: detailFreq===f.key}" @click="setDetailFreq(f.key)">{{ f.label }}</button>
+          </div>
+          <div v-if="klineError" class="detail-empty">{{ klineError }}</div>
+          <div class="detail-chart" v-show="!klineError">
+            <canvas id="detail-chart-canvas"></canvas>
+            <div v-if="klineLoading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-muted);background:color-mix(in srgb, var(--bg-base) 60%, transparent)">載入 K 線資料中…</div>
+          </div>
+          <div class="return-strip" v-if="returnStats">
+            <div class="return-chip" v-for="r in returnStats" :key="r.label">
+              <div class="rc-label">{{ r.label }}</div>
+              <div class="rc-value" :class="r.value == null ? '' : (r.value >= 0 ? 'up' : 'down')">
+                {{ r.value == null ? '—' : (r.value >= 0 ? '+' : '') + r.value.toFixed(2) + '%' }}
+              </div>
+            </div>
+          </div>
+          <div class="return-hint" v-else-if="returnsLoading">累計報酬計算中…</div>
         </template>
 
         <!-- 籌碼 Tab -->
@@ -721,6 +758,19 @@ createApp({
     // Detail modal
     const detailStock = ref(null);
     const detailTab = ref('chart');
+    const detailFreq = ref('intraday');
+    const klineLoading = ref(false);
+    const klineError = ref('');
+    const returnStats = ref(null);
+    const returnsLoading = ref(false);
+    const freqOptions = [
+      { key: 'intraday', label: '日內' },
+      { key: 'd', label: '日K' },
+      { key: 'w', label: '週K' },
+      { key: 'm', label: '月K' }
+    ];
+    const dailyCache = {};   // ticker|market → 2年日線（供日K顯示與累計報酬計算）
+    const wkMoCache = {};    // ticker|market|freq → 週K / 月K
     const chipData = ref(null);
     const chipLoading = ref(false);
     const chipError = ref('');
@@ -1228,10 +1278,14 @@ createApp({
     function openDetail(stock) {
       detailStock.value = stock;
       detailTab.value = 'chart';
+      detailFreq.value = 'intraday';
+      klineError.value = '';
       chipData.value = null;
       brokerData.value = null;
       brokerSearch.value = '';
+      returnStats.value = null;
       nextTick(() => setTimeout(renderDetailChart, 80));
+      loadReturns(stock);
     }
     function closeDetail() {
       if (detailChartInst) { detailChartInst.destroy(); detailChartInst = null; }
@@ -1239,11 +1293,259 @@ createApp({
     }
     async function refreshDetailQuote() {
       if (!detailStock.value) return;
-      await fetchQuote(detailStock.value);
-      nextTick(() => setTimeout(renderDetailChart, 80));
+      const stock = detailStock.value;
+      // 清掉此檔快取，強制重抓歷史資料
+      delete dailyCache[cacheKey(stock)];
+      ['w', 'm'].forEach(f => delete wkMoCache[cacheKey(stock) + '|' + f]);
+      await fetchQuote(stock);
+      returnStats.value = null;
+      loadReturns(stock);
+      nextTick(() => setTimeout(() => setDetailFreq(detailFreq.value, true), 80));
+    }
+
+    // ── K線頻率切換 ──
+    function cacheKey(stock) { return stock.ticker + '|' + stock.market; }
+
+    function setDetailFreq(key, force) {
+      if (!force && detailFreq.value === key && !klineError.value) {
+        // 同頻率重複點擊不動作（force 用於更新報價後重繪）
+      }
+      detailFreq.value = key;
+      klineError.value = '';
+      if (key === 'intraday') {
+        nextTick(() => setTimeout(renderDetailChart, 50));
+      } else {
+        loadAndRenderKline(key);
+      }
+    }
+
+    async function fetchHistory(stock, range, interval) {
+      let sym = yahooSymbol(stock.ticker, stock.market);
+      try {
+        return await fetchYahooChart(sym, range, interval);
+      } catch (e) {
+        const fb = yahooFallback(stock.ticker, stock.market);
+        if (fb) return await fetchYahooChart(fb, range, interval);
+        throw e;
+      }
+    }
+
+    function toKlineData(result, freq) {
+      const q = result.indicators?.quote?.[0] || {};
+      const ts = result.timestamp || [];
+      const rows = [];
+      for (let i = 0; i < ts.length; i++) {
+        if (q.close?.[i] == null) continue;
+        rows.push({
+          t: ts[i] * 1000,
+          o: q.open?.[i], h: q.high?.[i], l: q.low?.[i], c: q.close?.[i],
+          v: q.volume?.[i] || 0
+        });
+      }
+      const fmt = t => {
+        const d = new Date(t);
+        if (freq === 'm') return d.getFullYear() + '/' + (d.getMonth() + 1);
+        if (freq === 'w') return (d.getFullYear() % 100) + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+        return (d.getMonth() + 1) + '/' + d.getDate();
+      };
+      return {
+        labels: rows.map(r => fmt(r.t)),
+        opens: rows.map(r => r.o), highs: rows.map(r => r.h),
+        lows: rows.map(r => r.l), closes: rows.map(r => r.c),
+        volumes: rows.map(r => r.v),
+        times: rows.map(r => r.t)
+      };
+    }
+
+    async function getDaily(stock) {
+      const key = cacheKey(stock);
+      if (dailyCache[key]) return dailyCache[key];
+      const result = await fetchHistory(stock, '2y', '1d');
+      const kd = toKlineData(result, 'd');
+      dailyCache[key] = kd;
+      return kd;
+    }
+
+    async function loadAndRenderKline(freq) {
+      const stock = detailStock.value;
+      if (!stock) return;
+      klineLoading.value = true;
+      try {
+        let kd;
+        if (freq === 'd') {
+          kd = await getDaily(stock);
+          kd = sliceKline(kd, 130);           // 日K顯示近半年左右
+        } else {
+          const key = cacheKey(stock) + '|' + freq;
+          if (wkMoCache[key]) {
+            kd = wkMoCache[key];
+          } else {
+            const params = freq === 'w' ? ['3y', '1wk'] : ['max', '1mo'];
+            const result = await fetchHistory(stock, params[0], params[1]);
+            kd = toKlineData(result, freq);
+            wkMoCache[key] = kd;
+          }
+          kd = sliceKline(kd, freq === 'w' ? 120 : 120);
+        }
+        if (detailFreq.value !== freq || !detailStock.value) return; // 使用者已切走
+        renderDetailKline(kd, stock);
+      } catch (e) {
+        klineError.value = 'K 線資料載入失敗：' + (e.message || '');
+      } finally {
+        klineLoading.value = false;
+      }
+    }
+
+    function sliceKline(kd, n) {
+      if (kd.closes.length <= n) return kd;
+      const s = kd.closes.length - n;
+      return {
+        labels: kd.labels.slice(s), opens: kd.opens.slice(s), highs: kd.highs.slice(s),
+        lows: kd.lows.slice(s), closes: kd.closes.slice(s), volumes: kd.volumes.slice(s),
+        times: kd.times.slice(s)
+      };
+    }
+
+    function renderDetailKline(kd, stock) {
+      if (typeof Chart === 'undefined') return;
+      const canvas = document.getElementById('detail-chart-canvas');
+      if (!canvas) return;
+      if (detailChartInst) { detailChartInst.destroy(); detailChartInst = null; }
+
+      const css = getComputedStyle(document.documentElement);
+      const red = css.getPropertyValue('--red').trim() || '#ef4444';
+      const green = css.getPropertyValue('--green').trim() || '#22c55e';
+      const tickColor = css.getPropertyValue('--text-muted').trim() || '#888';
+      const gridColor = PPTheme.isDark() ? 'rgba(255,255,255,.06)' : 'rgba(20,25,50,.06)';
+
+      const candleColors = kd.closes.map((c, i) => {
+        const o = kd.opens[i];
+        if (c == null || o == null) return 'rgba(0,0,0,.2)';
+        return c >= o ? red : green;                 // 台股慣例：紅漲綠跌
+      });
+      const bodyData = kd.closes.map((c, i) => {
+        const o = kd.opens[i];
+        if (c == null || o == null) return null;
+        return c >= o ? [o, c] : [c, o];
+      });
+      const wickData = kd.highs.map((h, i) => {
+        const l = kd.lows[i];
+        if (h == null || l == null) return null;
+        return [l, h];
+      });
+
+      const lowsV = kd.lows.filter(v => v != null);
+      const highsV = kd.highs.filter(v => v != null);
+      let yMin, yMax;
+      if (lowsV.length && highsV.length) {
+        const lo = Math.min(...lowsV), hi = Math.max(...highsV);
+        const pad = (hi - lo) * 0.06 || lo * 0.02 || 1;
+        yMin = Math.max(0, lo - pad);
+        yMax = hi + pad;
+      }
+      const vMax = Math.max(1, ...kd.volumes.filter(v => v != null));
+
+      detailChartInst = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: kd.labels,
+          datasets: [
+            { label: '實體', data: bodyData, backgroundColor: candleColors,
+              barPercentage: 0.7, categoryPercentage: 0.9, yAxisID: 'y' },
+            { label: '影線', data: wickData,
+              backgroundColor: candleColors.map(c => c + 'AA'),
+              barPercentage: 0.12, categoryPercentage: 0.9, yAxisID: 'y' },
+            { label: '成交量', data: kd.volumes.map(v => v || 0),
+              backgroundColor: 'rgba(245,158,11,.22)',
+              barPercentage: 0.6, yAxisID: 'y1' }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label(ctx) {
+                  const i = ctx.dataIndex;
+                  if (ctx.datasetIndex <= 1) {
+                    return `開:${kd.opens[i]?.toFixed(2)} 高:${kd.highs[i]?.toFixed(2)} 低:${kd.lows[i]?.toFixed(2)} 收:${kd.closes[i]?.toFixed(2)}`;
+                  }
+                  return '量: ' + (kd.volumes[i] || 0).toLocaleString();
+                }
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 8, maxRotation: 0 },
+                 grid: { display: false }, border: { display: false } },
+            y: { position: 'right', min: yMin, max: yMax,
+                 ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 6,
+                   callback: v => stock.market === 'US' ? '$' + v.toFixed(1) : v.toFixed(stock.market === 'JP' ? 0 : 1) },
+                 grid: { color: gridColor, drawTicks: false }, border: { display: false } },
+            y1: { position: 'left', ticks: { display: false }, grid: { display: false },
+                  beginAtZero: true, max: vMax * 4, border: { display: false } }
+          },
+          animation: false
+        }
+      });
+    }
+
+    // ── 累計報酬（1M / 3M / 6M / YTD / 1Y）──
+    async function loadReturns(stock) {
+      returnsLoading.value = true;
+      try {
+        const kd = await getDaily(stock);
+        if (!detailStock.value || cacheKey(detailStock.value) !== cacheKey(stock)) return;
+        returnStats.value = computeReturns(kd, stock.price);
+      } catch (e) {
+        console.warn('loadReturns failed', e);
+        returnStats.value = null;
+      } finally {
+        returnsLoading.value = false;
+      }
+    }
+
+    function computeReturns(kd, curPrice) {
+      const n = kd.closes.length;
+      if (!n) return null;
+      const last = curPrice != null ? curPrice : kd.closes[n - 1];
+      const lastT = kd.times[n - 1];
+
+      // 找出「目標日以前（含）最近一個交易日」的收盤價
+      function baseOnOrBefore(targetMs) {
+        for (let i = n - 1; i >= 0; i--) {
+          if (kd.times[i] <= targetMs) return kd.closes[i];
+        }
+        return null;
+      }
+      function monthsAgo(m) {
+        const d = new Date(lastT);
+        d.setMonth(d.getMonth() - m);
+        return d.getTime();
+      }
+      const ytdBase = (() => {
+        const jan1 = new Date(new Date(lastT).getFullYear(), 0, 1).getTime();
+        for (let i = n - 1; i >= 0; i--) {
+          if (kd.times[i] < jan1) return kd.closes[i];   // 去年最後一個交易日收盤
+        }
+        return null;
+      })();
+
+      const calc = base => (base != null && base > 0) ? (last / base - 1) * 100 : null;
+      return [
+        { label: '1M',  value: calc(baseOnOrBefore(monthsAgo(1))) },
+        { label: '3M',  value: calc(baseOnOrBefore(monthsAgo(3))) },
+        { label: '6M',  value: calc(baseOnOrBefore(monthsAgo(6))) },
+        { label: 'YTD', value: calc(ytdBase) },
+        { label: '1Y',  value: calc(baseOnOrBefore(monthsAgo(12))) }
+      ];
     }
     function switchDetailTab(tab) {
       detailTab.value = tab;
+      if (tab === 'chart') {
+        nextTick(() => setTimeout(() => setDetailFreq(detailFreq.value, true), 60));
+      }
       if (tab === 'chip' && !chipData.value && !chipLoading.value && detailStock.value) {
         loadChipData(detailStock.value.ticker);
       }
@@ -1502,7 +1804,9 @@ createApp({
       refreshing, statusText, editMode,
       showImportModal, importText, sortedNotes, tickerPlaceholder,
       dragIdx, dragOverIdx,
-      detailStock, detailTab, chipData, chipLoading, chipError,
+      detailStock, detailTab, detailFreq, freqOptions, klineLoading, klineError,
+      returnStats, returnsLoading, setDetailFreq,
+      chipData, chipLoading, chipError,
       brokerData, brokerLoading, brokerError, brokerSide, brokerSearch, filteredBrokers, brokerStats,
       selectSector, addSector, deleteSector,
       addStock, removeStock, fetchQuote,

@@ -92,27 +92,6 @@
   }
   .del-btn:hover { opacity: 1; color: var(--red); }
 
-  /* Watchlist quick bar */
-  .watchlist-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-  .wl-chip {
-    font-size: 11px; padding: 5px 12px; border-radius: 999px;
-    color: var(--text-muted); cursor: default; display: flex; align-items: center; gap: 4px;
-  }
-  .wl-chip .wl-price { font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; }
-  .wl-chip .wl-change.up { color: var(--red); }
-  .wl-chip .wl-change.down { color: var(--green); }
-
-  /* Stock events section */
-  .stock-events-section { margin-top: 22px; }
-  .stock-events-section h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
-  .stock-event-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-  .stock-event-card { border-radius: var(--radius); padding: 14px 16px; font-size: 12px; }
-  .stock-event-card .sec-ticker { font-weight: 750; font-size: 14px; }
-  .stock-event-card .sec-name { color: var(--text-muted); margin-left: 6px; }
-  .stock-event-card .sec-detail { margin-top: 6px; color: var(--text-muted); font-size: 11px; }
-  .stock-event-card .sec-price { font-size: 16px; font-weight: 750; margin-top: 4px; font-variant-numeric: tabular-nums; }
-  .sec-change.up { color: var(--red); }
-  .sec-change.down { color: var(--green); }
 </style>
 </head>
 <body>
@@ -134,18 +113,6 @@
     <div class="legend-item"><span class="legend-dot" style="background:#14b8a6"></span>除息 / 配息</div>
     <div class="legend-item"><span class="legend-dot" style="background:#f97316"></span>觀察標的</div>
     <div class="legend-item"><span class="legend-dot" style="background:#8b5cf6"></span>自訂事件</div>
-  </div>
-
-  <!-- Watchlist quick bar -->
-  <div v-if="watchlistStocks.length > 0" class="watchlist-bar">
-    <div v-for="s in watchlistStocks" :key="s.id" class="wl-chip glass">
-      <span>{{ s.market === 'TW' ? '🇹🇼' : '🇺🇸' }}</span>
-      <span style="font-weight:600">{{ s.ticker }}</span>
-      <span class="wl-price" v-if="s.price != null">{{ s.market === 'US' ? '$' : '' }}{{ s.price?.toFixed(2) }}</span>
-      <span class="wl-change" :class="s.change >= 0 ? 'up' : 'down'" v-if="s.changePct != null">
-        {{ s.changePct >= 0 ? '+' : '' }}{{ s.changePct?.toFixed(2) }}%
-      </span>
-    </div>
   </div>
 
   <div class="cal-grid glass">
@@ -208,31 +175,6 @@
     </div>
   </div>
 
-  <!-- Watchlist stock events section -->
-  <div v-if="watchlistStocks.length > 0" class="stock-events-section">
-    <h3>📊 觀察清單標的概況</h3>
-    <div class="stock-event-grid">
-      <div v-for="s in watchlistStocks" :key="s.id" class="stock-event-card glass">
-        <div>
-          <span class="sec-ticker">{{ s.ticker }}</span>
-          <span class="sec-name">{{ s.name }}</span>
-          <span style="font-size:10px;margin-left:4px;padding:2px 5px;border-radius:4px;background:var(--accent-light);color:var(--accent)">{{ s.market === 'TW' ? '台股' : '美股' }}</span>
-        </div>
-        <div class="sec-price" v-if="s.price != null">
-          {{ s.market === 'US' ? '$' : '' }}{{ s.price?.toFixed(2) }}
-          <span class="sec-change" :class="s.change >= 0 ? 'up' : 'down'" v-if="s.changePct != null" style="font-size:13px">
-            {{ s.changePct >= 0 ? '▲' : '▼' }} {{ Math.abs(s.changePct).toFixed(2) }}%
-          </span>
-        </div>
-        <div class="sec-detail" v-if="s.price != null">
-          開：{{ s.open?.toFixed(2) || '-' }} ｜ 高：{{ s.high?.toFixed(2) || '-' }} ｜ 低：{{ s.low?.toFixed(2) || '-' }} ｜ 量：{{ s.volume?.toLocaleString() || '-' }}
-        </div>
-        <div class="sec-detail" v-if="s.lastUpdate">
-          更新：{{ new Date(s.lastUpdate).toLocaleString('zh-TW', { hour12: false }) }}
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
 
 <script>
@@ -296,14 +238,6 @@ function getBuiltinEvents() {
   return events;
 }
 
-function loadWatchlist() {
-  try {
-    const raw = localStorage.getItem('pptools-watchlist');
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-  return [];
-}
-
 createApp({
   setup() {
     const today = new Date();
@@ -311,7 +245,6 @@ createApp({
     const viewMonth = ref(today.getMonth());
     const customEvents = ref([]);
     const builtinEvents = getBuiltinEvents();
-    const watchlistStocks = ref([]);
 
     const newEvent = ref({ date: '', title: '', type: 'custom', note: '' });
 
@@ -415,10 +348,6 @@ createApp({
       } catch(e) {}
     }
 
-    function refreshWatchlist() {
-      watchlistStocks.value = loadWatchlist();
-    }
-
     function formatShortDate(dateStr) {
       const parts = dateStr.split('-');
       return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
@@ -430,16 +359,11 @@ createApp({
 
     onMounted(() => {
       loadCustom();
-      refreshWatchlist();
-      window.addEventListener('storage', (e) => {
-        if (e.key === 'pptools-watchlist') refreshWatchlist();
-      });
     });
 
     return {
       viewYear, viewMonth, monthLabel, dayOfWeekLabels,
       calendarCells, upcomingEvents, customEvents, customEventsSorted,
-      watchlistStocks,
       newEvent, prevMonth, nextMonth, goToday, selectDate,
       addCustomEvent, removeCustomEvent, formatShortDate, typeColor
     };
