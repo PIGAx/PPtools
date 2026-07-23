@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>策略百科</title>
+<link rel="stylesheet" href="pp-ui.css">
+<script src="pp-theme.js"></script>
+<style>
+/* 策略百科 — 沿用 PP-UI 終端機設計系統（日夜模式跟隨全站） */
+:root {
+  --mono: 'SF Mono', 'Menlo', 'Cascadia Code', 'Consolas', monospace;
+}
+
+/* ── Header ── */
+.se-header {
+  background: var(--glass);
+  border-bottom: 1px solid var(--glass-border);
+  padding: 14px 22px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  position: sticky; top: 0; z-index: 100;
+}
+.se-header-left { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.se-logo { font-family: var(--mono); font-size:17px; font-weight:800; color:var(--accent); letter-spacing:-.3px; }
+.se-logo span { color:var(--text-muted); font-weight:500; }
+.stats-bar { display:flex; gap:18px; font-size:13px; color:var(--text-muted); }
+.stats-bar .stat-val { color:var(--text); font-family:var(--mono); font-weight:700; }
+.se-header-actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+/* ── Toolbar ── */
+.toolbar {
+  padding: 12px 22px;
+  display: flex; align-items:center; gap:12px; flex-wrap:wrap;
+  border-bottom:1px solid var(--stroke);
+  background: var(--glass);
+}
+.search-box {
+  flex:1; min-width:200px; max-width:400px;
+  background: var(--surface-alt); border:1px solid var(--stroke); border-radius:var(--radius-sm);
+  padding:8px 12px; color:var(--text); font-size:13px; font-family:inherit;
+  outline:none; transition:border-color .15s, box-shadow .15s;
+}
+.search-box:focus { border-color:var(--accent); box-shadow:var(--ring); }
+.search-box::placeholder { color:var(--text-muted); opacity:.75; }
+.filter-group { display:flex; gap:6px; flex-wrap:wrap; }
+.filter-chip {
+  font-size:12px; padding:5px 12px; border-radius:999px;
+  border:1px solid var(--stroke); background:transparent; color:var(--text-muted);
+  cursor:pointer; transition:all .15s; font-family:inherit;
+}
+.filter-chip:hover { border-color:var(--text-muted); color:var(--text); }
+.filter-chip.active { background:var(--accent-light); border-color:var(--accent); color:var(--accent); font-weight:600; }
+
+/* ── Strategy Grid ── */
+.main { padding:20px 22px 40px; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:14px; }
+
+/* ── Strategy Card ── */
+.card {
+  background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius);
+  padding:18px; cursor:pointer; transition:border-color .18s, background .18s, transform .18s; position:relative;
+}
+.card:hover { background:var(--surface-alt); border-color:var(--accent); transform:translateY(-1px); }
+.card-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; }
+.card-title { font-size:15px; font-weight:700; line-height:1.35; flex:1; }
+.card-market {
+  font-family:var(--mono); font-size:11px; font-weight:700; padding:2px 8px;
+  border-radius:var(--radius-sm); white-space:nowrap; margin-left:8px;
+}
+.market-tw { background:color-mix(in srgb, var(--red) 15%, transparent); color:var(--red); }
+.market-us { background:var(--accent-light); color:var(--accent); }
+.market-both { background:color-mix(in srgb, var(--purple) 15%, transparent); color:var(--purple); }
+
+.card-hypothesis { font-size:13px; color:var(--text-muted); line-height:1.55; margin-bottom:12px;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+
+.card-tags { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:12px; }
+.tag {
+  font-size:11px; padding:2px 8px; border-radius:var(--radius-sm);
+  background:var(--surface-alt); color:var(--text-muted); border:1px solid var(--stroke);
+}
+
+.card-footer { display:flex; justify-content:space-between; align-items:center; }
+.card-status { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text); }
+.status-dot { width:7px; height:7px; border-radius:50%; }
+.status-idea .status-dot { background:var(--text-muted); }
+.status-drafting .status-dot { background:var(--amber); }
+.status-backtesting .status-dot { background:var(--accent); }
+.status-verified .status-dot { background:var(--green); }
+.status-live .status-dot { background:var(--red); }
+.status-retired .status-dot { background:var(--stroke); }
+.card-date { font-size:11px; color:var(--text-muted); font-family:var(--mono); }
+
+/* ── Lifecycle bar ── */
+.lifecycle { display:flex; gap:2px; margin-top:12px; }
+.lifecycle-step { flex:1; height:3px; border-radius:2px; background:var(--stroke); }
+.lifecycle-step.done { background:var(--accent); }
+
+/* ── Modal ── */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:200;
+  display:none; justify-content:center; align-items:flex-start; padding:40px 20px;
+  overflow-y:auto;
+}
+.modal-overlay.show { display:flex; }
+.modal {
+  background:var(--bg-base); border:1px solid var(--glass-border); border-radius:var(--radius-lg);
+  width:100%; max-width:720px; position:relative; box-shadow:var(--shadow);
+}
+.modal-header {
+  padding:18px 24px; border-bottom:1px solid var(--stroke);
+  display:flex; justify-content:space-between; align-items:center;
+}
+.modal-header h2 { font-size:16px; font-weight:700; }
+.modal-close { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:20px; padding:4px; line-height:1; }
+.modal-close:hover { color:var(--text); }
+.modal-body { padding:24px; max-height:70vh; overflow-y:auto; }
+.modal-footer { padding:14px 24px; border-top:1px solid var(--stroke); display:flex; justify-content:flex-end; gap:8px; }
+
+/* ── Form ── */
+.form-row { margin-bottom:16px; }
+.form-row-inline { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.form-label { display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px; font-weight:600; }
+.form-input, .form-select, .form-textarea {
+  width:100%; background:var(--surface-alt); border:1px solid var(--stroke); border-radius:var(--radius-sm);
+  padding:9px 12px; color:var(--text); font-size:13px; font-family:inherit; outline:none;
+  transition:border-color .15s, box-shadow .15s;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color:var(--accent); box-shadow:var(--ring); }
+.form-textarea { resize:vertical; min-height:80px; line-height:1.6; }
+.form-select { cursor:pointer; -webkit-appearance:none; appearance:none; }
+.form-hint { font-size:11px; color:var(--text-muted); margin-top:4px; }
+
+/* ── Detail View ── */
+.detail-section { margin-bottom:20px; }
+.detail-section h3 {
+  font-size:12px; text-transform:uppercase; letter-spacing:.5px;
+  color:var(--text-muted); margin-bottom:8px; font-weight:700;
+}
+.detail-content {
+  font-size:14px; line-height:1.7; color:var(--text);
+  white-space:pre-wrap; word-break:break-word;
+}
+.detail-content:empty::after { content:'（尚未填寫）'; color:var(--text-muted); font-style:italic; }
+.detail-rules {
+  background:var(--surface-alt); border:1px solid var(--stroke); border-radius:var(--radius-sm);
+  padding:14px 16px; font-family:var(--mono); font-size:13px; line-height:1.8;
+  color:var(--text); white-space:pre-wrap; word-break:break-word;
+}
+.detail-rules:empty::after { content:'（尚未填寫）'; color:var(--text-muted); font-style:italic; font-family:inherit; }
+
+/* ── Empty state ── */
+.empty-state { text-align:center; padding:80px 20px; color:var(--text-muted); }
+.empty-state .empty-icon { font-size:48px; margin-bottom:16px; opacity:.35; }
+.empty-state p { font-size:14px; margin-bottom:20px; }
+
+/* ── Toast ── */
+.toast {
+  position:fixed; bottom:24px; right:24px; background:var(--glass); border:1px solid var(--glass-border);
+  border-radius:var(--radius); padding:12px 20px; font-size:13px; z-index:300; color:var(--text);
+  box-shadow:var(--shadow); transform:translateY(100px); opacity:0; transition:all .3s;
+}
+.toast.show { transform:translateY(0); opacity:1; }
+
+/* ── View Toggle ── */
+.view-toggle { display:flex; border:1px solid var(--stroke); border-radius:var(--radius-sm); overflow:hidden; }
+.view-toggle button {
+  background:transparent; border:none; color:var(--text-muted); padding:6px 12px;
+  cursor:pointer; font-size:13px; font-family:inherit;
+}
+.view-toggle button.active { background:var(--accent-light); color:var(--accent); }
+
+/* ── Table View ── */
+.table-view { display:none; }
+.table-view.active { display:block; overflow-x:auto; }
+.grid-view.active { display:grid; }
+table.strat-table { width:100%; border-collapse:collapse; font-size:13px; }
+.strat-table th {
+  text-align:left; padding:10px 12px; background:var(--surface-alt); color:var(--text-muted);
+  font-weight:600; border-bottom:1px solid var(--stroke); font-size:12px;
+  position:sticky; top:0;
+}
+.strat-table td { padding:10px 12px; border-bottom:1px solid var(--stroke); vertical-align:middle; }
+.strat-table tr { cursor:pointer; transition:background .1s; }
+.strat-table tbody tr:hover { background:var(--surface-alt); }
+
+/* ── Responsive ── */
+@media(max-width:640px) {
+  .se-header { flex-wrap:wrap; gap:10px; padding:12px 16px; }
+  .toolbar { padding:10px 16px; }
+  .main { padding:14px 16px 32px; }
+  .grid { grid-template-columns:1fr; }
+  .form-row-inline { grid-template-columns:1fr; }
+  .stats-bar { display:none; }
+  .modal-body { max-height:62vh; }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="se-header">
+  <div class="se-header-left">
+    <div class="se-logo">策略百科 <span>Encyclopedia</span></div>
+    <div class="stats-bar">
+      <span>共 <span class="stat-val" id="totalCount">0</span> 則</span>
+      <span>實戰中 <span class="stat-val" id="liveCount">0</span></span>
+      <span>待驗證 <span class="stat-val" id="pendingCount">0</span></span>
+    </div>
+  </div>
+  <div class="se-header-actions">
+    <button class="btn btn-sm" onclick="exportData()" title="匯出 JSON">⬇ 匯出</button>
+    <button class="btn btn-sm" onclick="document.getElementById('importFile').click()" title="匯入 JSON">⬆ 匯入</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+    <button class="btn btn-sm btn-primary" onclick="openEditor()">＋ 新策略</button>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <input class="search-box" id="searchInput" type="text" placeholder="搜尋策略名稱、假說、標籤…" oninput="renderAll()">
+  <div class="filter-group" id="marketFilters">
+    <button class="filter-chip active" data-filter="all" onclick="setFilter('market',this)">全部</button>
+    <button class="filter-chip" data-filter="TW" onclick="setFilter('market',this)">🇹🇼 台股</button>
+    <button class="filter-chip" data-filter="US" onclick="setFilter('market',this)">🇺🇸 美股</button>
+    <button class="filter-chip" data-filter="BOTH" onclick="setFilter('market',this)">🌐 雙市場</button>
+  </div>
+  <div class="filter-group" id="categoryFilters">
+    <button class="filter-chip active" data-filter="all" onclick="setFilter('category',this)">全部</button>
+    <button class="filter-chip" data-filter="seasonal" onclick="setFilter('category',this)">📅 日曆效應</button>
+    <button class="filter-chip" data-filter="chip" onclick="setFilter('category',this)">🏦 籌碼</button>
+    <button class="filter-chip" data-filter="technical" onclick="setFilter('category',this)">📈 技術</button>
+    <button class="filter-chip" data-filter="momentum" onclick="setFilter('category',this)">🚀 動能</button>
+    <button class="filter-chip" data-filter="event" onclick="setFilter('category',this)">⚡ 事件驅動</button>
+    <button class="filter-chip" data-filter="dividend" onclick="setFilter('category',this)">💰 除權息</button>
+    <button class="filter-chip" data-filter="structural" onclick="setFilter('category',this)">🏗 結構性</button>
+    <button class="filter-chip" data-filter="other" onclick="setFilter('category',this)">📌 其他</button>
+  </div>
+  <div class="filter-group" id="statusFilters">
+    <button class="filter-chip active" data-filter="all" onclick="setFilter('status',this)">全部</button>
+    <button class="filter-chip" data-filter="idea" onclick="setFilter('status',this)">💡 靈感</button>
+    <button class="filter-chip" data-filter="drafting" onclick="setFilter('status',this)">✏️ 草稿</button>
+    <button class="filter-chip" data-filter="backtesting" onclick="setFilter('status',this)">🔬 回測中</button>
+    <button class="filter-chip" data-filter="verified" onclick="setFilter('status',this)">✅ 已驗證</button>
+    <button class="filter-chip" data-filter="live" onclick="setFilter('status',this)">🔴 實戰中</button>
+    <button class="filter-chip" data-filter="retired" onclick="setFilter('status',this)">⏸ 已退役</button>
+  </div>
+  <div class="view-toggle">
+    <button class="active" onclick="setView('grid',this)">▦</button>
+    <button onclick="setView('table',this)">☰</button>
+  </div>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+  <div class="grid grid-view active" id="gridView"></div>
+  <div class="table-view" id="tableView"></div>
+  <div class="empty-state" id="emptyState" style="display:none">
+    <div class="empty-icon">📖</div>
+    <p>尚無策略。開始記錄你的第一個交易想法吧。</p>
+    <button class="btn btn-primary" onclick="openEditor()">＋ 新策略</button>
+  </div>
+</div>
+
+<!-- Editor Modal -->
+<div class="modal-overlay" id="editorModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="editorTitle">新增策略</h2>
+      <button class="modal-close" onclick="closeEditor()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label class="form-label">策略名稱 *</label>
+        <input class="form-input" id="f_name" placeholder="例：法人連續買超動能策略">
+      </div>
+      <div class="form-row form-row-inline">
+        <div>
+          <label class="form-label">市場</label>
+          <select class="form-select" id="f_market">
+            <option value="TW">🇹🇼 台股</option>
+            <option value="US">🇺🇸 美股</option>
+            <option value="BOTH">🌐 雙市場</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">分類</label>
+          <select class="form-select" id="f_category">
+            <option value="seasonal">📅 日曆效應</option>
+            <option value="chip">🏦 籌碼</option>
+            <option value="technical">📈 技術</option>
+            <option value="momentum">🚀 動能</option>
+            <option value="event">⚡ 事件驅動</option>
+            <option value="dividend">💰 除權息</option>
+            <option value="structural">🏗 結構性</option>
+            <option value="other">📌 其他</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row form-row-inline">
+        <div>
+          <label class="form-label">狀態</label>
+          <select class="form-select" id="f_status">
+            <option value="idea">💡 靈感</option>
+            <option value="drafting">✏️ 草稿</option>
+            <option value="backtesting">🔬 回測中</option>
+            <option value="verified">✅ 已驗證</option>
+            <option value="live">🔴 實戰中</option>
+            <option value="retired">⏸ 已退役</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">標籤（逗號分隔）</label>
+          <input class="form-input" id="f_tags" placeholder="例：三大法人,台股50,趨勢追蹤">
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="form-label">邏輯假說 — 為什麼這個策略會賺錢？</label>
+        <textarea class="form-textarea" id="f_hypothesis" rows="3"
+          placeholder="描述這個策略背後的邏輯。例：外資連買代表中長期看好，股價往往在連買結束後仍有慣性上漲…"></textarea>
+      </div>
+      <div class="form-row">
+        <label class="form-label">進場條件</label>
+        <textarea class="form-textarea" id="f_entry" rows="3"
+          placeholder="例：&#10;1. 外資連續買超 ≥ 3 天&#10;2. 成交量 > 20日均量 1.5倍&#10;3. 股價站上 MA20"></textarea>
+      </div>
+      <div class="form-row">
+        <label class="form-label">出場條件</label>
+        <textarea class="form-textarea" id="f_exit" rows="3"
+          placeholder="例：&#10;1. 外資轉賣超 → 次日收盤出場&#10;2. 跌破進場價 -5% 停損&#10;3. 最長持有 20 交易日"></textarea>
+      </div>
+      <div class="form-row">
+        <label class="form-label">回測參數與結果</label>
+        <textarea class="form-textarea" id="f_backtest" rows="3"
+          placeholder="例：回測期間 2020-2024，標的 0050&#10;勝率 62%，平均持有 8 天，年化報酬 18%，MDD -12%"></textarea>
+      </div>
+      <div class="form-row">
+        <label class="form-label">適用標的</label>
+        <input class="form-input" id="f_tickers" placeholder="例：2330, 2317, 0050, AAPL, QQQ">
+      </div>
+      <div class="form-row">
+        <label class="form-label">實戰筆記</label>
+        <textarea class="form-textarea" id="f_notes" rows="3"
+          placeholder="紀錄實際交易的觀察、遇到的問題、改進方向…"></textarea>
+      </div>
+      <div class="form-row">
+        <label class="form-label">參考資料 / 連結</label>
+        <textarea class="form-textarea" id="f_references" rows="2"
+          placeholder="論文連結、文章、TradingView 腳本網址…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeEditor()">取消</button>
+      <button class="btn btn-primary" onclick="saveStrategy()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="detailTitle"></h2>
+      <button class="modal-close" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="modal-body" id="detailBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="deleteStrategy()">刪除</button>
+      <button class="btn" onclick="duplicateStrategy()">複製</button>
+      <button class="btn btn-primary" onclick="editFromDetail()">編輯</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Data ──
+const STORAGE_KEY = 'strategy_encyclopedia';
+let strategies = [];
+let editingId = null;
+let viewingId = null;
+let filters = { market:'all', category:'all', status:'all' };
+let currentView = 'grid';
+
+const STATUS_LABELS = {
+  idea:'💡 靈感', drafting:'✏️ 草稿', backtesting:'🔬 回測中',
+  verified:'✅ 已驗證', live:'🔴 實戰中', retired:'⏸ 已退役'
+};
+const STATUS_ORDER = ['idea','drafting','backtesting','verified','live','retired'];
+const CAT_LABELS = {
+  seasonal:'📅 日曆效應', chip:'🏦 籌碼', technical:'📈 技術', momentum:'🚀 動能',
+  event:'⚡ 事件驅動', dividend:'💰 除權息', structural:'🏗 結構性', other:'📌 其他'
+};
+const MARKET_LABELS = { TW:'🇹🇼 台股', US:'🇺🇸 美股', BOTH:'🌐 雙市場' };
+
+// ── Storage ──
+function load() {
+  try {
+    const d = localStorage.getItem(STORAGE_KEY);
+    strategies = d ? JSON.parse(d) : [];
+  } catch(e) { strategies = []; }
+}
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(strategies)); } catch(e) {}
+}
+
+// ── Helpers ──
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function fmtDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+}
+function escHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+// ── Filtering ──
+function getFiltered() {
+  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  return strategies.filter(s => {
+    if (filters.market !== 'all' && s.market !== filters.market) return false;
+    if (filters.category !== 'all' && s.category !== filters.category) return false;
+    if (filters.status !== 'all' && s.status !== filters.status) return false;
+    if (q) {
+      const haystack = [s.name, s.hypothesis, s.entry, s.exit, s.notes, s.tickers, s.references,
+        ...(s.tags||[])].join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function setFilter(type, el) {
+  const group = el.parentElement;
+  group.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  filters[type] = el.dataset.filter;
+  renderAll();
+}
+
+function setView(view, el) {
+  currentView = view;
+  document.querySelectorAll('.view-toggle button').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  renderAll();
+}
+
+// ── Render ──
+function renderAll() {
+  const items = getFiltered();
+  // stats
+  document.getElementById('totalCount').textContent = strategies.length;
+  document.getElementById('liveCount').textContent = strategies.filter(s=>s.status==='live').length;
+  document.getElementById('pendingCount').textContent = strategies.filter(s=>['idea','drafting','backtesting'].includes(s.status)).length;
+
+  const empty = document.getElementById('emptyState');
+  const gridEl = document.getElementById('gridView');
+  const tableEl = document.getElementById('tableView');
+
+  if (strategies.length === 0) {
+    empty.style.display = 'block';
+    gridEl.style.display = 'none'; gridEl.classList.remove('active');
+    tableEl.style.display = 'none'; tableEl.classList.remove('active');
+    return;
+  }
+  empty.style.display = 'none';
+
+  if (currentView === 'grid') {
+    gridEl.style.display = 'grid'; gridEl.classList.add('active');
+    tableEl.style.display = 'none'; tableEl.classList.remove('active');
+    renderGrid(items);
+  } else {
+    gridEl.style.display = 'none'; gridEl.classList.remove('active');
+    tableEl.style.display = 'block'; tableEl.classList.add('active');
+    renderTable(items);
+  }
+}
+
+function lifecycleHtml(status) {
+  const idx = STATUS_ORDER.indexOf(status);
+  return `<div class="lifecycle">${STATUS_ORDER.slice(0,5).map((_,i)=>
+    `<div class="lifecycle-step${i<=idx?' done':''}"></div>`
+  ).join('')}</div>`;
+}
+
+function renderGrid(items) {
+  const el = document.getElementById('gridView');
+  if (items.length === 0) {
+    el.innerHTML = '<div class="empty-state"><p>沒有符合條件的策略</p></div>';
+    return;
+  }
+  el.innerHTML = items.map(s => `
+    <div class="card" onclick="openDetail('${s.id}')">
+      <div class="card-header">
+        <div class="card-title">${escHtml(s.name)}</div>
+        <span class="card-market market-${s.market.toLowerCase()}">${s.market}</span>
+      </div>
+      <div class="card-hypothesis">${escHtml(s.hypothesis||'')}</div>
+      <div class="card-tags">
+        <span class="tag">${CAT_LABELS[s.category]||s.category}</span>
+        ${(s.tags||[]).slice(0,3).map(t=>`<span class="tag">${escHtml(t)}</span>`).join('')}
+        ${(s.tags||[]).length>3?`<span class="tag">+${s.tags.length-3}</span>`:''}
+      </div>
+      <div class="card-footer">
+        <div class="card-status status-${s.status}">
+          <span class="status-dot"></span>
+          <span>${STATUS_LABELS[s.status]}</span>
+        </div>
+        <span class="card-date">${fmtDate(s.updatedAt||s.createdAt)}</span>
+      </div>
+      ${lifecycleHtml(s.status)}
+    </div>
+  `).join('');
+}
+
+function renderTable(items) {
+  const el = document.getElementById('tableView');
+  if (items.length === 0) {
+    el.innerHTML = '<div class="empty-state"><p>沒有符合條件的策略</p></div>';
+    return;
+  }
+  el.innerHTML = `<table class="strat-table">
+    <thead><tr>
+      <th>策略名稱</th><th>市場</th><th>分類</th><th>狀態</th><th>標的</th><th>更新日</th>
+    </tr></thead>
+    <tbody>${items.map(s=>`
+      <tr onclick="openDetail('${s.id}')">
+        <td style="font-weight:600">${escHtml(s.name)}</td>
+        <td><span class="card-market market-${s.market.toLowerCase()}">${s.market}</span></td>
+        <td>${CAT_LABELS[s.category]||s.category}</td>
+        <td class="status-${s.status}"><span class="status-dot" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>${STATUS_LABELS[s.status]}</td>
+        <td style="font-family:var(--mono);font-size:12px;color:var(--text-muted)">${escHtml(s.tickers||'')}</td>
+        <td style="font-family:var(--mono);font-size:12px;color:var(--text-muted)">${fmtDate(s.updatedAt||s.createdAt)}</td>
+      </tr>
+    `).join('')}</tbody></table>`;
+}
+
+// ── Editor ──
+function openEditor(id) {
+  editingId = id || null;
+  document.getElementById('editorTitle').textContent = id ? '編輯策略' : '新增策略';
+  const s = id ? strategies.find(x=>x.id===id) : null;
+  document.getElementById('f_name').value = s?.name || '';
+  document.getElementById('f_market').value = s?.market || 'TW';
+  document.getElementById('f_category').value = s?.category || 'momentum';
+  document.getElementById('f_status').value = s?.status || 'idea';
+  document.getElementById('f_tags').value = (s?.tags||[]).join(', ');
+  document.getElementById('f_hypothesis').value = s?.hypothesis || '';
+  document.getElementById('f_entry').value = s?.entry || '';
+  document.getElementById('f_exit').value = s?.exit || '';
+  document.getElementById('f_backtest').value = s?.backtest || '';
+  document.getElementById('f_tickers').value = s?.tickers || '';
+  document.getElementById('f_notes').value = s?.notes || '';
+  document.getElementById('f_references').value = s?.references || '';
+  document.getElementById('editorModal').classList.add('show');
+  setTimeout(()=>document.getElementById('f_name').focus(), 100);
+}
+function closeEditor() { document.getElementById('editorModal').classList.remove('show'); editingId=null; }
+
+function saveStrategy() {
+  const name = document.getElementById('f_name').value.trim();
+  if (!name) { toast('請輸入策略名稱'); return; }
+  const data = {
+    name,
+    market: document.getElementById('f_market').value,
+    category: document.getElementById('f_category').value,
+    status: document.getElementById('f_status').value,
+    tags: document.getElementById('f_tags').value.split(/[,，]/).map(t=>t.trim()).filter(Boolean),
+    hypothesis: document.getElementById('f_hypothesis').value.trim(),
+    entry: document.getElementById('f_entry').value.trim(),
+    exit: document.getElementById('f_exit').value.trim(),
+    backtest: document.getElementById('f_backtest').value.trim(),
+    tickers: document.getElementById('f_tickers').value.trim(),
+    notes: document.getElementById('f_notes').value.trim(),
+    references: document.getElementById('f_references').value.trim(),
+  };
+  if (editingId) {
+    const idx = strategies.findIndex(s=>s.id===editingId);
+    if (idx>=0) { strategies[idx] = {...strategies[idx], ...data, updatedAt:Date.now()}; }
+  } else {
+    strategies.unshift({ id:uid(), ...data, createdAt:Date.now(), updatedAt:Date.now() });
+  }
+  save(); closeEditor(); renderAll();
+  toast(editingId ? '策略已更新' : '策略已新增');
+}
+
+// ── Detail ──
+function openDetail(id) {
+  viewingId = id;
+  const s = strategies.find(x=>x.id===id);
+  if (!s) return;
+  document.getElementById('detailTitle').textContent = s.name;
+  const section = (title, content, mono) => `
+    <div class="detail-section">
+      <h3>${title}</h3>
+      <div class="${mono?'detail-rules':'detail-content'}">${escHtml(content||'')}</div>
+    </div>`;
+  document.getElementById('detailBody').innerHTML = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+      <span class="card-market market-${s.market.toLowerCase()}">${MARKET_LABELS[s.market]}</span>
+      <span class="tag">${CAT_LABELS[s.category]}</span>
+      <span class="card-status status-${s.status}"><span class="status-dot"></span> ${STATUS_LABELS[s.status]}</span>
+      ${(s.tags||[]).map(t=>`<span class="tag">${escHtml(t)}</span>`).join('')}
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px;font-family:var(--mono)">
+      建立 ${fmtDate(s.createdAt)} ｜ 更新 ${fmtDate(s.updatedAt)}
+      ${s.tickers ? ' ｜ 標的：'+escHtml(s.tickers) : ''}
+    </div>
+    ${lifecycleHtml(s.status)}
+    <div style="margin-bottom:20px"></div>
+    ${section('邏輯假說', s.hypothesis)}
+    ${section('進場條件', s.entry, true)}
+    ${section('出場條件', s.exit, true)}
+    ${section('回測參數與結果', s.backtest, true)}
+    ${section('實戰筆記', s.notes)}
+    ${section('參考資料', s.references)}
+  `;
+  document.getElementById('detailModal').classList.add('show');
+}
+function closeDetail() { document.getElementById('detailModal').classList.remove('show'); viewingId=null; }
+
+function editFromDetail() {
+  closeDetail();
+  setTimeout(()=>openEditor(viewingId), 200);
+}
+function deleteStrategy() {
+  if (!confirm('確定要刪除這則策略？')) return;
+  strategies = strategies.filter(s=>s.id!==viewingId);
+  save(); closeDetail(); renderAll(); toast('策略已刪除');
+}
+function duplicateStrategy() {
+  const src = strategies.find(s=>s.id===viewingId);
+  if (!src) return;
+  const dup = {...src, id:uid(), name:src.name+' (副本)', status:'idea', createdAt:Date.now(), updatedAt:Date.now()};
+  strategies.unshift(dup);
+  save(); closeDetail(); renderAll(); toast('已複製策略');
+}
+
+// ── Import / Export ──
+function exportData() {
+  const blob = new Blob([JSON.stringify(strategies, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `strategies_${new Date().toISOString().slice(0,10)}.json`;
+  a.click(); toast('已匯出 JSON');
+}
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!Array.isArray(data)) throw new Error();
+      // merge: skip duplicates by id
+      const existIds = new Set(strategies.map(s=>s.id));
+      let added = 0;
+      data.forEach(s => {
+        if (!existIds.has(s.id) && s.name) { strategies.unshift(s); added++; }
+      });
+      save(); renderAll(); toast(`已匯入 ${added} 則策略`);
+    } catch(err) { toast('檔案格式錯誤'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+// ── Keyboard ──
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('editorModal').classList.contains('show')) closeEditor();
+    else if (document.getElementById('detailModal').classList.contains('show')) closeDetail();
+  }
+  if (e.key === 'n' && (e.metaKey||e.ctrlKey)) { e.preventDefault(); openEditor(); }
+});
+
+// ── Seed demo data if empty ──
+function seedDemo() {
+  if (strategies.length > 0) return;
+  strategies = [
+    {
+      id:uid(), name:'外資連續買超動能', market:'TW', category:'chip', status:'backtesting',
+      tags:['三大法人','趨勢追蹤','台股50'],
+      hypothesis:'外資連續買超代表中長期資金進場，通常在停止買超後仍有 1-2 週的慣性上漲。利用這個動能慣性，在買超訊號結束前進場，捕捉尾段漲幅。',
+      entry:'1. 外資連續買超 ≥ 5 天\n2. 累積買超金額 > 5億\n3. 股價站上 MA20\n4. T+1 開盤進場',
+      exit:'1. 外資轉賣超 → 次日收盤出場\n2. 跌破進場價 -5% 停損\n3. 獲利達 +10% 停利\n4. 最長持有 20 交易日',
+      backtest:'回測期間：2020-01 ~ 2024-12\n標的：台股50成分股\n勝率：58%\n平均持有：9 天\n年化報酬：14.2%\nMDD：-11.8%',
+      tickers:'2330, 2317, 2454, 2881, 2882',
+      notes:'注意除權息期間外資避稅賣壓，6-8月勝率明顯下降。\n可考慮加入融資增減作為輔助確認。',
+      references:'', createdAt:Date.now()-86400000*30, updatedAt:Date.now()-86400000*3
+    },
+    {
+      id:uid(), name:'除權息填息率策略', market:'TW', category:'dividend', status:'idea',
+      tags:['除權息','填息','季節性'],
+      hypothesis:'高殖利率股在除權息後，若基本面良好且市場多頭，填息機率高。統計歷年填息率與填息天數，在除權息日買入，填息後出場。',
+      entry:'1. 殖利率 > 5%\n2. 近四季 EPS 正成長\n3. 除權息日收盤買入',
+      exit:'1. 完成填息 → 出場\n2. 60 交易日未填息 → 出場\n3. 跌破除權息參考價 -8% 停損',
+      backtest:'尚未回測',
+      tickers:'', notes:'需注意台股除權息集中在 6-8 月，資金需求高。\n可搭配融資融券資料篩選籌碼穩定標的。',
+      references:'', createdAt:Date.now()-86400000*10, updatedAt:Date.now()-86400000*10
+    },
+    {
+      id:uid(), name:'Earnings Momentum — 財報驚喜', market:'US', category:'event', status:'drafting',
+      tags:['財報季','Post-Earnings Drift','PEAD'],
+      hypothesis:'Post-Earnings Announcement Drift (PEAD) 是最經典的市場異象之一。財報公布後，若 EPS 顯著超越共識預期（SUE > 3%），股價在後續 60 天仍會持續漂移。',
+      entry:'1. 財報公布後 EPS Surprise > 3%\n2. 財報日成交量 > 20日均量 2倍\n3. 開盤跳空 > 3%\n4. 次一交易日開盤進場',
+      exit:'1. 持有 60 交易日出場\n2. 跌破進場價 -7% 停損\n3. 下一季財報前 5 日出場',
+      backtest:'', tickers:'AAPL, MSFT, NVDA, META, GOOGL',
+      notes:'考慮使用 Estimize 或 Whisper Number 替代 Consensus 提高驚喜判斷。',
+      references:'', createdAt:Date.now()-86400000*5, updatedAt:Date.now()-86400000*2
+    },
+    {
+      id:uid(), name:'月營收公布前動能', market:'TW', category:'seasonal', status:'idea',
+      tags:['月營收','日曆效應','資訊不對稱'],
+      hypothesis:'台灣上市櫃公司每月 10 日前公布上月營收。部分資金（如法人、內部人）可能提前佈局。觀察在營收公布前 5 日是否有異常買盤，若有則跟隨進場。',
+      entry:'1. 每月 5-10 日觀察\n2. 近 5 日外資 + 投信同步買超\n3. 量能溫和放大（> 10日均量 1.2倍）\n4. 第 6 日開盤進場',
+      exit:'1. 營收公布後第 2 日收盤出場\n2. 跌破 5 日低點停損',
+      backtest:'', tickers:'', notes:'這是利用資訊不對稱的短線策略，需要統計不同產業的歷史表現差異。',
+      references:'', createdAt:Date.now()-86400000*2, updatedAt:Date.now()-86400000*2
+    },
+    {
+      id:uid(), name:'Z-Score 量能突破', market:'BOTH', category:'momentum', status:'verified',
+      tags:['Z-Score','成交量','動能','Strategy Workbench'],
+      hypothesis:'當股價的 Z-Score 突破 +2 且伴隨成交量顯著放大時，代表價格脫離常態分佈，是趨勢啟動的訊號。與均值回歸相反，這裡將統計極端值視為動能確認而非反轉訊號。',
+      entry:'1. 收盤價 Z-Score (20日) > +2\n2. 當日成交量 > 20日均量 × 1.8\n3. T+1 開盤進場',
+      exit:'1. Z-Score 回歸零軸\n2. 成交量連續 3 日萎縮至均量以下\n3. Trailing Stop 2×ATR\n4. 最長持有 30 日',
+      backtest:'回測期間：2020-01 ~ 2024-12\n標的：2330.TW\n最佳出場：Volume Exhaustion\n勝率：55%\n年化報酬：22.1%\nMDD：-15.3%',
+      tickers:'2330, 0050, QQQ',
+      notes:'已在 Strategy Workbench 完成回測。\nVolume Exhaustion 出場直覺上最合理，回測結果也最好。\n注意大盤系統性下跌時此策略容易被掃停損。',
+      references:'Strategy Workbench - pptools', createdAt:Date.now()-86400000*60, updatedAt:Date.now()-86400000*1
+    }
+  ];
+  save();
+}
+
+// ── Init ──
+load();
+seedDemo();
+renderAll();
+</script>
+</body>
+</html>

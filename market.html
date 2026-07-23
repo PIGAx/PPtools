@@ -137,6 +137,7 @@
   <div class="page-header">
     <h1>📊 市場指標</h1>
     <div style="display:flex;gap:8px;align-items:center">
+      <span class="status-text" v-if="snapNote" :title="'每日排程於伺服器端抓好的官方快照，開頁即顯示，隨後再以即時資料更新'">{{ snapNote }}</span>
       <span class="status-text">{{ statusText }}</span>
       <button class="btn btn-sm" @click="refreshAll" :disabled="loading">
         {{ loading ? '更新中…' : '🔄 全部更新' }}
@@ -462,6 +463,8 @@ const GUIDE_KEY = 'pptools-market-guide-dismissed';
 const SNAP_KEY = 'pptools-market-snapshot';
 const STALE_MS = 10 * 60 * 1000; // 快取超過 10 分鐘自動重抓
 const SNAP_STALE_MS = 30 * 60 * 1000; // 全市場快照超過 30 分鐘才重抓
+// 每日排程（GitHub Actions）在伺服器端抓好的官方報價快照，開頁即用、免等即時抓取
+const SNAPSHOT_URL = 'data/quotes.json';
 
 /* 期交所 OpenAPI 端點（回傳最近一個交易日資料）。
    若期交所調整端點名稱，改這裡即可。 */
@@ -619,6 +622,7 @@ createApp({
   setup() {
     const loading = ref(false);
     const statusText = ref('');
+    const snapNote = ref(''); // 每日快照載入提示（開頁秒顯示官方數值）
     const guideDismissed = ref(false);
 
     /* 上排指數即時報價 + 日內/近一月序列 */
@@ -1502,6 +1506,35 @@ createApp({
       } catch (e) { return null; }
     }
 
+    /* ── 每日排程快照（data/quotes.json，同源靜態檔、免代理、秒開） ──
+       伺服器端每天抓好官方指數／匯率，開頁先填上這些數值，隨後 refreshAll
+       的即時資料成功時會覆蓋；即時失敗時則保留這份官方快照，不會變空白。 */
+    function applySnapKey(target, snap) {
+      if (!snap || snap.price == null) return false;
+      target.price = snap.price;
+      if (snap.change != null) target.change = snap.change;
+      if (snap.changePct != null) target.changePct = snap.changePct;
+      return true;
+    }
+    async function loadServerSnapshot() {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 5000);
+        const res = await fetch(SNAPSHOT_URL + '?t=' + Date.now(), { signal: ctrl.signal, cache: 'no-cache' });
+        clearTimeout(timer);
+        if (!res.ok) return;
+        const data = await res.json();
+        let applied = false;
+        applied = applySnapKey(q.twii, data?.indices?.TWII) || applied;
+        applied = applySnapKey(q.otc, data?.indices?.TWOII) || applied;
+        applied = applySnapKey(q.fx, data?.fx?.USDTWD) || applied;
+        if (applied) {
+          const d = data?.tw?.date || data?.indices?.TWII?.date || '';
+          snapNote.value = '每日快照' + (d ? ' ' + d : '') + ' ✓';
+        }
+      } catch (e) { /* 快照缺失或逾時 → 靜默略過，走原本即時抓取 */ }
+    }
+
     async function refreshAll() {
       if (loading.value) return;
       loading.value = true;
@@ -1565,18 +1598,19 @@ createApp({
     function sign(v, d) { return v == null ? '—' : (v >= 0 ? '+' : '') + fmt(v, d); }
     function pnClass(v) { return v == null ? 'flat' : (v > 0 ? 'up' : v < 0 ? 'down' : 'flat'); }
 
-    onMounted(() => {
+    onMounted(async () => {
       try { guideDismissed.value = localStorage.getItem(GUIDE_KEY) === '1'; } catch (e) {}
       const at = loadCache();
       loadNews();
       fetchMarketSnapshot(false); // 先用快取或背景重抓，不阻塞頁面其他區塊渲染
+      await loadServerSnapshot(); // 每日官方快照先填數值，開頁即見（不阻塞下方即時流程）
       renderCharts();
       if (!at || Date.now() - at > STALE_MS) refreshAll();
       window.addEventListener('pp-theme-change', renderCharts);
     });
 
     return {
-      loading, statusText, guideDismissed, dismissGuide,
+      loading, statusText, snapNote, guideDismissed, dismissGuide,
       q, chartCards, tabs, setTab,
       tx, fi, turnover, turnoverView, hasSeries, txPrice, txChange, txChangePct, txSource, basis,
       snapshot, snapshotErrors, snapshotLoading, fetchMarketSnapshot,
