@@ -264,7 +264,10 @@ async function fetchTwseInst(dateStr) {
   if (data.stat !== 'OK' || !Array.isArray(data.data) || !data.data.length) return null;
   const fields = data.fields || [];
   const iForeignExcl = fieldIdx(fields, [/外/, /買賣超/, /不含外資自營商/]);
-  const iForeignDealer = fieldIdx(fields, [/外資自營商/, /買賣超/]);
+  // 「外資自營商買賣超」欄位；務必排除「不含外資自營商」那欄（否則外資會被重複相加）
+  const iForeignDealer = fields.findIndex(
+    (f) => /外資自營商/.test(String(f)) && /買賣超/.test(String(f)) && !/不含/.test(String(f))
+  );
   const iTrust = fieldIdx(fields, [/投信/, /買賣超/]);
   const iDealerTotal = fields.findIndex((f) => /^自營商買賣超股數\s*$/.test(String(f)));
   const iDealerSelf = fieldIdx(fields, [/自營商/, /買賣超/, /自行/]);
@@ -274,7 +277,7 @@ async function fetchTwseInst(dateStr) {
   const map = {};
   for (const row of data.data) {
     const code = String(row[0]).trim();
-    if (!code) continue;
+    if (!/^\d{4,5}$/.test(code)) continue; // 只留個股與 ETF，排除權證/ETN（6 碼以上）
     const foreign =
       lots(row[iForeignExcl]) + (iForeignDealer >= 0 ? lots(row[iForeignDealer]) : 0);
     const trust = iTrust >= 0 ? lots(row[iTrust]) : 0;
@@ -303,14 +306,16 @@ async function fetchTpexInst(dateStr) {
     const fields = tbl?.fields || tbl?.title || [];
     if (Array.isArray(rows) && rows.length && Array.isArray(fields) && fields.length) {
       const iForeignExcl = fieldIdx(fields, [/外/, /不含外資自營商/]);
-      const iForeignDealer = fieldIdx(fields, [/外資自營商/]);
+      const iForeignDealer = fields.findIndex(
+        (f) => /外資自營商/.test(String(f)) && !/不含/.test(String(f))
+      );
       const iTrust = fieldIdx(fields, [/投信/, /買賣超|淨/]);
       const iDealerTotal = fields.findIndex((f) => /自營商.*買賣超|自營商.*淨/.test(String(f)) && !/自行|避險/.test(String(f)));
       const iTotal = fieldIdx(fields, [/三大法人/]);
       const map = {};
       for (const row of rows) {
         const code = String(row[0]).trim();
-        if (!code) continue;
+        if (!/^\d{4,5}$/.test(code)) continue;
         const foreign = lots(row[iForeignExcl]) + (iForeignDealer >= 0 ? lots(row[iForeignDealer]) : 0);
         const trust = iTrust >= 0 ? lots(row[iTrust]) : 0;
         const dealer = iDealerTotal >= 0 ? lots(row[iDealerTotal]) : 0;
@@ -330,7 +335,7 @@ async function fetchTpexInst(dateStr) {
       const map = {};
       for (const row of rows) {
         const code = String(row[0]).trim();
-        if (!code) continue;
+        if (!/^\d{4,5}$/.test(code)) continue;
         const foreign = lots(row[3]);
         const total = lots(row[row.length - 1]);
         map[code] = { f: foreign, t: 0, d: 0, s: total };
