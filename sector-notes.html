@@ -1710,6 +1710,34 @@ createApp({
       setTimeout(() => { statusText.value = ''; }, 4000);
     }
 
+    // 每日排程快照（data/quotes.json）：開頁先秒填官方收盤價，免等即時抓取
+    async function prefillFromSnapshot() {
+      try {
+        const res = await fetch('data/quotes.json?t=' + Date.now(), { cache: 'no-cache' });
+        if (!res.ok) return;
+        const d = await res.json();
+        let n = 0;
+        sectors.value.flatMap(sec => sec.stocks).forEach(s => {
+          const q = s.market === 'US'
+            ? (d.us && d.us[s.ticker])
+            : (d.tw && d.tw.stocks && d.tw.stocks[s.ticker]);
+          if (!q) return;
+          const price = q.close != null ? q.close : q.price;
+          if (price == null) return;
+          s.price = price;
+          if (q.change != null) s.change = q.change;
+          if (q.changePct != null) s.changePct = q.changePct;
+          s.lastUpdate = (d.tw && d.tw.date) || (d.generatedAt || '').slice(0, 10);
+          n++;
+        });
+        if (n) {
+          save();
+          statusText.value = '已載入每日快照（' + n + ' 檔）';
+          setTimeout(() => { statusText.value = ''; }, 4000);
+        }
+      } catch (e) { /* 快照缺失 → 靜默略過 */ }
+    }
+
     function addNote(sector) {
       sector.notes.push({ id: 'n' + Date.now(), content: '', createdAt: new Date().toISOString(), updatedAt: null });
       save();
@@ -1789,6 +1817,7 @@ createApp({
 
     onMounted(() => {
       load();
+      prefillFromSnapshot(); // 每日快照先秒填官方收盤，隨後可按更新抓即時
       setTimeout(() => {
         renderAllSparks();
         if (activeSector.value) {
