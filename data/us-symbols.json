@@ -1,0 +1,8 @@
+{
+  "_comment": "每天排程要抓報價的美股代碼清單。想追蹤哪些美股，直接在這裡增減即可（下次排程就會生效）。",
+  "symbols": [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN",
+    "META", "TSLA", "AVGO", "TSM", "QQQ",
+    "SPY", "VOO"
+  ]
+}
