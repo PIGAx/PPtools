@@ -305,33 +305,30 @@ async function fetchTpexInst(dateStr) {
     const rows = tbl?.data;
     const fields = tbl?.fields || tbl?.title || [];
     if (Array.isArray(rows) && rows.length && Array.isArray(fields) && fields.length) {
-      const iForeignExcl = fieldIdx(fields, [/外/, /不含外資自營商/]);
-      const iForeignDealer = fields.findIndex(
-        (f) => /外資自營商/.test(String(f)) && !/不含/.test(String(f))
-      );
-      const iTrust = fieldIdx(fields, [/投信/, /買賣超|淨/]);
-      const iDealerTotal = fields.findIndex((f) => /自營商.*買賣超|自營商.*淨/.test(String(f)) && !/自行|避險/.test(String(f)));
-      const iTotal = fieldIdx(fields, [/三大法人/]);
-      // 診斷：印出 TPEX 欄位名稱與偵測到的索引，供修正欄位比對用
-      console.error('  TPEX fields:', JSON.stringify(fields));
-      console.error('  TPEX idx:', JSON.stringify({ iForeignExcl, iForeignDealer, iTrust, iDealerTotal, iTotal }));
-      const canSplit = iForeignExcl >= 0 && iTrust >= 0 && iDealerTotal >= 0;
+      // TPEX EW（含外資自營商與自營商避險）欄位名稱皆為通用「買/賣/買賣超股數」，
+      // 無法用名稱定位，改用固定版面（0代號 1名稱 + 7 組買賣超 + 合計 = 24 欄）：
+      //   組別淨額索引 → 4 外陸資(不含自營)｜7 外資自營商｜10 外資合計｜13 投信
+      //                  16 自營(自行)｜19 自營(避險)｜22 自營合計｜23 三大法人合計
+      const n = fields.length;
+      const lastIsTotal = /三大法人/.test(String(fields[n - 1]));
+      const positional = n === 24 && lastIsTotal;
       const map = {};
       for (const row of rows) {
         const code = String(row[0]).trim();
         if (!/^\d{4,5}$/.test(code)) continue;
-        const total = iTotal >= 0 ? lots(row[iTotal]) : null;
-        if (canSplit) {
-          const foreign = lots(row[iForeignExcl]) + (iForeignDealer >= 0 ? lots(row[iForeignDealer]) : 0);
-          const trust = lots(row[iTrust]);
-          const dealer = lots(row[iDealerTotal]);
-          map[code] = { f: foreign, t: trust, d: dealer, s: total != null ? total : foreign + trust + dealer };
+        if (positional) {
+          const foreign = lots(row[10]); // 外資及陸資合計 淨（含外資自營商）
+          const trust = lots(row[13]);   // 投信 淨
+          const dealer = lots(row[22]);  // 自營商合計 淨
+          const total = lots(row[23]);   // 三大法人合計 淨
+          map[code] = { f: foreign, t: trust, d: dealer, s: total };
         } else {
-          // 找不到拆分欄位 → 只給合計，外資/投信/自營標記為 null（UI 視為無拆分資料）
+          const total = lastIsTotal ? lots(row[n - 1]) : null;
           map[code] = { f: null, t: null, d: null, s: total };
         }
       }
-      return { date: rocOrIsoDate(rocDate), map, partial: !canSplit };
+      if (!positional) console.error('  TPEX 版面非預期(欄位數 ' + n + ')，僅存合計；fields=' + JSON.stringify(fields));
+      return { date: rocOrIsoDate(rocDate), map, partial: !positional };
     }
   } catch (e) { /* 退回舊版 */ }
   // 舊版 API（aaData，欄位固定，只可靠取到外資與合計）
