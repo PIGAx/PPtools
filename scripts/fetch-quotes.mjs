@@ -312,17 +312,26 @@ async function fetchTpexInst(dateStr) {
       const iTrust = fieldIdx(fields, [/投信/, /買賣超|淨/]);
       const iDealerTotal = fields.findIndex((f) => /自營商.*買賣超|自營商.*淨/.test(String(f)) && !/自行|避險/.test(String(f)));
       const iTotal = fieldIdx(fields, [/三大法人/]);
+      // 診斷：印出 TPEX 欄位名稱與偵測到的索引，供修正欄位比對用
+      console.error('  TPEX fields:', JSON.stringify(fields));
+      console.error('  TPEX idx:', JSON.stringify({ iForeignExcl, iForeignDealer, iTrust, iDealerTotal, iTotal }));
+      const canSplit = iForeignExcl >= 0 && iTrust >= 0 && iDealerTotal >= 0;
       const map = {};
       for (const row of rows) {
         const code = String(row[0]).trim();
         if (!/^\d{4,5}$/.test(code)) continue;
-        const foreign = lots(row[iForeignExcl]) + (iForeignDealer >= 0 ? lots(row[iForeignDealer]) : 0);
-        const trust = iTrust >= 0 ? lots(row[iTrust]) : 0;
-        const dealer = iDealerTotal >= 0 ? lots(row[iDealerTotal]) : 0;
-        const total = iTotal >= 0 ? lots(row[iTotal]) : foreign + trust + dealer;
-        map[code] = { f: foreign, t: trust, d: dealer, s: total };
+        const total = iTotal >= 0 ? lots(row[iTotal]) : null;
+        if (canSplit) {
+          const foreign = lots(row[iForeignExcl]) + (iForeignDealer >= 0 ? lots(row[iForeignDealer]) : 0);
+          const trust = lots(row[iTrust]);
+          const dealer = lots(row[iDealerTotal]);
+          map[code] = { f: foreign, t: trust, d: dealer, s: total != null ? total : foreign + trust + dealer };
+        } else {
+          // 找不到拆分欄位 → 只給合計，外資/投信/自營標記為 null（UI 視為無拆分資料）
+          map[code] = { f: null, t: null, d: null, s: total };
+        }
       }
-      return { date: rocOrIsoDate(rocDate), map };
+      return { date: rocOrIsoDate(rocDate), map, partial: !canSplit };
     }
   } catch (e) { /* 退回舊版 */ }
   // 舊版 API（aaData，欄位固定，只可靠取到外資與合計）
@@ -338,7 +347,7 @@ async function fetchTpexInst(dateStr) {
         if (!/^\d{4,5}$/.test(code)) continue;
         const foreign = lots(row[3]);
         const total = lots(row[row.length - 1]);
-        map[code] = { f: foreign, t: 0, d: 0, s: total };
+        map[code] = { f: foreign, t: null, d: null, s: total };
       }
       return { date: rocOrIsoDate(rocDate), map, partial: true };
     }
