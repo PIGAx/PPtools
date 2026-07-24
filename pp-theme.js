@@ -13,6 +13,9 @@
   'use strict';
 
   var KEY = 'pptools-theme'; // 'system' | 'light' | 'dark'
+  var SCALE_KEY = 'pptools-fontscale'; // 'sm' | 'md' | 'lg' | 'xl'
+  var SCALES = { sm: 0.9, md: 1, lg: 1.15, xl: 1.3 };
+  var SCALE_ORDER = ['sm', 'md', 'lg', 'xl'];
   var mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
   var listeners = [];
 
@@ -40,12 +43,34 @@
     meta.content = isDark() ? '#000000' : '#ffffff';
   }
 
+  /* ── 字級（全站字體大小）──
+     shell（index.html）以 window.__PP_SHELL__ 標記；shell 只設 --pp-scale
+     供外殼 chrome 的 CSS 使用，不套 zoom（避免固定高度版面被放大溢出）。
+     模組頁（iframe 內或獨立開啟）則對 documentElement 套 zoom，整頁放大字級。 */
+  function storedScale() {
+    try {
+      var s = localStorage.getItem(SCALE_KEY);
+      return SCALES[s] ? s : 'md';
+    } catch (e) { return 'md'; }
+  }
+  function scaleValue() { return SCALES[storedScale()] || 1; }
+  function applyScale() {
+    var root = document.documentElement;
+    var v = scaleValue();
+    root.style.setProperty('--pp-scale', String(v));
+    if (!window.__PP_SHELL__) {
+      // 模組頁：整頁縮放（zoom 會連同 px 字級一起放大）
+      root.style.zoom = v === 1 ? '' : String(v);
+    }
+  }
+
   function apply() {
     var t = stored();
     var root = document.documentElement;
     if (t === 'system') root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', t);
     updateMetaColor();
+    applyScale();
   }
 
   function notify() {
@@ -68,6 +93,18 @@
     var order = ['system', 'light', 'dark'];
     var next = order[(order.indexOf(stored()) + 1) % 3];
     set(next);
+    return next;
+  }
+
+  function setScale(s) {
+    if (!SCALES[s]) s = 'md';
+    try { localStorage.setItem(SCALE_KEY, s); } catch (e) {}
+    applyScale();
+    notify();
+  }
+  function cycleScale() {
+    var next = SCALE_ORDER[(SCALE_ORDER.indexOf(storedScale()) + 1) % SCALE_ORDER.length];
+    setScale(next);
     return next;
   }
 
@@ -98,9 +135,14 @@
 
   window.PPTheme = {
     KEY: KEY,
+    SCALE_KEY: SCALE_KEY,
+    SCALES: SCALES,
     get: stored,
     set: set,
     cycle: cycle,
+    getScale: storedScale,
+    setScale: setScale,
+    cycleScale: cycleScale,
     isDark: isDark,
     chartColors: chartColors,
     onChange: function (cb) { listeners.push(cb); }

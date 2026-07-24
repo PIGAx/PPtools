@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PPtools — 個人投資工具平台</title>
 <link rel="stylesheet" href="pp-ui.css">
+<script>window.__PP_SHELL__ = true;</script>
 <script src="pp-theme.js"></script>
 <style>
   :root {
@@ -277,6 +278,16 @@
     .dashboard-grid { grid-template-columns: 1fr; }
     .dash-panel[data-span="2"] { grid-column: span 1; }
   }
+
+  /* ── 字級：外殼 chrome 依 --pp-scale 縮放字體（模組內容由各自 zoom 處理） ── */
+  .sidebar-brand h1 { font-size: calc(18px * var(--pp-scale, 1)); }
+  .sidebar-brand p  { font-size: calc(11px * var(--pp-scale, 1)); }
+  .nav-section      { font-size: calc(10px * var(--pp-scale, 1)); }
+  .nav-item         { font-size: calc(13.5px * var(--pp-scale, 1)); }
+  .nav-icon         { font-size: calc(16px * var(--pp-scale, 1)); }
+  .header-title     { font-size: calc(14.5px * var(--pp-scale, 1)); }
+  .dashboard-head h2 { font-size: calc(18px * var(--pp-scale, 1)); }
+  .dash-panel-header .dp-title { font-size: calc(11.5px * var(--pp-scale, 1)); }
 </style>
 </head>
 <body>
@@ -307,6 +318,7 @@
       <div class="header-right">
         <button class="btn btn-sm" onclick="openAddPanelFromHeader()" id="addPanelHeaderBtn" title="加入儀表板面板" style="display:none">＋ 面板</button>
         <button class="btn btn-sm" onclick="openDataHub()" id="syncBtn" title="資料中心">☁ 同步</button>
+        <button class="btn btn-sm" onclick="onFontClick()" id="fontBtn" title="字級大小（點擊切換：標準→大→特大→小）">🔤 標準</button>
         <button class="btn btn-sm" onclick="onThemeClick()" id="themeBtn">⚙ 系統</button>
       </div>
     </header>
@@ -672,6 +684,17 @@ function onThemeClick() {
   refreshThemeBtn();
 }
 
+// 字級（全站字體大小）— 切換後透過 pp-theme.js 同步到所有模組
+const FONT_LABEL = { sm: '🔤 小', md: '🔤 標準', lg: '🔤 大', xl: '🔤 特大' };
+function refreshFontBtn() {
+  const b = document.getElementById('fontBtn');
+  if (b) b.textContent = FONT_LABEL[PPTheme.getScale()] || FONT_LABEL.md;
+}
+function onFontClick() {
+  PPTheme.cycleScale();
+  refreshFontBtn();
+}
+
 // Data hub shortcut
 function openDataHub() {
   const mod = MODULES.find(m => m.id === 'datahub');
@@ -693,6 +716,7 @@ function refreshSyncHint() {
 buildNav();
 renderDashboard();
 refreshThemeBtn();
+refreshFontBtn();
 document.getElementById('addPanelHeaderBtn').style.display = currentModule ? 'none' : 'inline-flex';
 
 // PPStore — 自動備份引擎（只在 portal shell 運作）

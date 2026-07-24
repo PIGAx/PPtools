@@ -236,6 +236,151 @@ async function fetchTpexStocks() {
   return out;
 }
 
+/* ── 三大法人買賣超（外資／投信／自營商／合計），依日期回退找最近有資料的交易日 ──
+   台股 T86 / TPEX 欄位順序偶有變動，一律用回傳的 fields 名稱定位欄位，較保險。 */
+function twDateStr(offsetDays = 0) {
+  // 以台北時間（UTC+8）為準推算日期字串 YYYYMMDD
+  const d = new Date(Date.now() + 8 * 3600 * 1000 - offsetDays * 86400000);
+  return (
+    d.getUTCFullYear().toString() +
+    String(d.getUTCMonth() + 1).padStart(2, '0') +
+    String(d.getUTCDate()).padStart(2, '0')
+  );
+}
+
+/* 在 fields 陣列中找第一個「全部 matcher 皆命中」的欄位索引 */
+function fieldIdx(fields, matchers) {
+  return fields.findIndex((f) => {
+    const name = String(f);
+    return matchers.every((m) => (m instanceof RegExp ? m.test(name) : name.includes(m)));
+  });
+}
+
+/* 上市三大法人（TWSE T86，selectType=ALL）。回傳 { date, map } 或 null */
+async function fetchTwseInst(dateStr) {
+  const data = await fetchJson(
+    `https://www.twse.com.tw/rwd/zh/fund/T86?date=${dateStr}&selectType=ALL&response=json`
+  );
+  if (data.stat !== 'OK' || !Array.isArray(data.data) || !data.data.length) return null;
+  const fields = data.fields || [];
+  const iForeignExcl = fieldIdx(fields, [/外/, /買賣超/, /不含外資自營商/]);
+  // 「外資自營商買賣超」欄位；務必排除「不含外資自營商」那欄（否則外資會被重複相加）
+  const iForeignDealer = fields.findIndex(
+    (f) => /外資自營商/.test(String(f)) && /買賣超/.test(String(f)) && !/不含/.test(String(f))
+  );
+  const iTrust = fieldIdx(fields, [/投信/, /買賣超/]);
+  const iDealerTotal = fields.findIndex((f) => /^自營商買賣超股數\s*$/.test(String(f)));
+  const iDealerSelf = fieldIdx(fields, [/自營商/, /買賣超/, /自行/]);
+  const iDealerHedge = fieldIdx(fields, [/自營商/, /買賣超/, /避險/]);
+  const iTotal = fieldIdx(fields, [/三大法人/, /買賣超/]);
+  const lots = (v) => (num(v) == null ? 0 : Math.round(num(v) / 1000)); // 股 → 張
+  const map = {};
+  for (const row of data.data) {
+    const code = String(row[0]).trim();
+    if (!/^\d{4,5}$/.test(code)) continue; // 只留個股與 ETF，排除權證/ETN（6 碼以上）
+    const foreign =
+      lots(row[iForeignExcl]) + (iForeignDealer >= 0 ? lots(row[iForeignDealer]) : 0);
+    const trust = iTrust >= 0 ? lots(row[iTrust]) : 0;
+    const dealer =
+      iDealerTotal >= 0
+        ? lots(row[iDealerTotal])
+        : lots(row[iDealerSelf]) + lots(row[iDealerHedge]);
+    const total = iTotal >= 0 ? lots(row[iTotal]) : foreign + trust + dealer;
+    map[code] = { f: foreign, t: trust, d: dealer, s: total };
+  }
+  return { date: rocOrIsoDate(data.date) || null, map, fields, idx: { iForeignExcl, iForeignDealer, iTrust, iDealerTotal, iTotal } };
+}
+
+/* 上櫃三大法人（TPEX）。新版 dailyTrade 有 fields；舊版 aaData 無，退回只給合計 */
+async function fetchTpexInst(dateStr) {
+  const y = parseInt(dateStr.substring(0, 4), 10) - 1911;
+  const rocDate = `${y}/${dateStr.substring(4, 6)}/${dateStr.substring(6, 8)}`;
+  const lots = (v) => (num(v) == null ? 0 : Math.round(num(v) / 1000));
+  // 新版 API（含 fields）
+  try {
+    const data = await fetchJson(
+      `https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade?type=Daily&sect=EW&date=${rocDate}&id=&response=json`
+    );
+    const tbl = data?.tables?.[0];
+    const rows = tbl?.data;
+    const fields = tbl?.fields || tbl?.title || [];
+    if (Array.isArray(rows) && rows.length && Array.isArray(fields) && fields.length) {
+      // TPEX EW（含外資自營商與自營商避險）欄位名稱皆為通用「買/賣/買賣超股數」，
+      // 無法用名稱定位，改用固定版面（0代號 1名稱 + 7 組買賣超 + 合計 = 24 欄）：
+      //   組別淨額索引 → 4 外陸資(不含自營)｜7 外資自營商｜10 外資合計｜13 投信
+      //                  16 自營(自行)｜19 自營(避險)｜22 自營合計｜23 三大法人合計
+      const n = fields.length;
+      const lastIsTotal = /三大法人/.test(String(fields[n - 1]));
+      const positional = n === 24 && lastIsTotal;
+      const map = {};
+      for (const row of rows) {
+        const code = String(row[0]).trim();
+        if (!/^\d{4,5}$/.test(code)) continue;
+        if (positional) {
+          const foreign = lots(row[10]); // 外資及陸資合計 淨（含外資自營商）
+          const trust = lots(row[13]);   // 投信 淨
+          const dealer = lots(row[22]);  // 自營商合計 淨
+          const total = lots(row[23]);   // 三大法人合計 淨
+          map[code] = { f: foreign, t: trust, d: dealer, s: total };
+        } else {
+          const total = lastIsTotal ? lots(row[n - 1]) : null;
+          map[code] = { f: null, t: null, d: null, s: total };
+        }
+      }
+      if (!positional) console.error('  TPEX 版面非預期(欄位數 ' + n + ')，僅存合計；fields=' + JSON.stringify(fields));
+      return { date: rocOrIsoDate(rocDate), map, partial: !positional };
+    }
+  } catch (e) { /* 退回舊版 */ }
+  // 舊版 API（aaData，欄位固定，只可靠取到外資與合計）
+  try {
+    const data2 = await fetchJson(
+      `https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&se=EW&t=D&d=${rocDate}&o=json`
+    );
+    const rows = data2?.aaData;
+    if (Array.isArray(rows) && rows.length) {
+      const map = {};
+      for (const row of rows) {
+        const code = String(row[0]).trim();
+        if (!/^\d{4,5}$/.test(code)) continue;
+        const foreign = lots(row[3]);
+        const total = lots(row[row.length - 1]);
+        map[code] = { f: foreign, t: null, d: null, s: total };
+      }
+      return { date: rocOrIsoDate(rocDate), map, partial: true };
+    }
+  } catch (e) { /* 無資料 */ }
+  return null;
+}
+
+async function fetchTwInstitutions() {
+  // 由今天往回找最多 6 天，找到第一個有 T86 資料的交易日
+  let listed = null;
+  let usedDate = null;
+  for (let off = 0; off <= 6 && !listed; off++) {
+    try {
+      const r = await fetchTwseInst(twDateStr(off));
+      if (r && Object.keys(r.map).length) {
+        listed = r;
+        usedDate = twDateStr(off);
+      }
+    } catch (e) { /* 試下一天 */ }
+  }
+  if (!listed) return null;
+  if (listed.idx) {
+    console.error('  T86 欄位索引:', JSON.stringify(listed.idx), '| 樣本 2330:', JSON.stringify(listed.map['2330']));
+  }
+  const map = { ...listed.map };
+  // 上櫃用同一個交易日
+  try {
+    const otc = await fetchTpexInst(usedDate);
+    if (otc && otc.map) {
+      Object.assign(map, otc.map);
+      if (otc.partial) console.error('  TPEX 法人：舊版 API，僅外資/合計可靠');
+    }
+  } catch (e) { console.error('  TPEX 法人失敗:', e.message); }
+  return { date: listed.date, count: Object.keys(map).length, stocks: map };
+}
+
 async function loadExisting() {
   try {
     return JSON.parse(await readFile(OUT_PATH, 'utf8'));
@@ -261,6 +406,7 @@ async function main() {
     indices: { ...(prev.indices || {}) },
     fx: { ...(prev.fx || {}) },
     tw: prev.tw || null,
+    twInst: prev.twInst || null,
     us: { ...(prev.us || {}) },
     errors: [],
   };
@@ -332,6 +478,17 @@ async function main() {
     markStale(out.tw);
   }
 
+  /* 三大法人買賣超（外資／投信／自營商／合計） */
+  console.error('· 三大法人買賣超');
+  try {
+    const inst = await fetchTwInstitutions();
+    if (inst && inst.count > 0) out.twInst = inst;
+    else { fail('twInst', 'no data'); markStale(out.twInst); }
+  } catch (e) {
+    fail('twInst', e);
+    markStale(out.twInst);
+  }
+
   /* 美股觀察清單 */
   const usSymbols = await loadUsSymbols();
   if (usSymbols.length) {
@@ -362,7 +519,7 @@ async function main() {
   console.error(
     `✓ 已寫入 ${OUT_PATH}｜指數 ${Object.keys(out.indices).length}｜台股 ${
       out.tw?.count || 0
-    }｜美股 ${Object.keys(out.us).length}｜錯誤 ${out.errors.length}`
+    }｜法人 ${out.twInst?.count || 0}｜美股 ${Object.keys(out.us).length}｜錯誤 ${out.errors.length}`
   );
 }
 

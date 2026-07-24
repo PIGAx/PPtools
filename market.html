@@ -75,6 +75,33 @@
   .etf-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); cursor: pointer; white-space: nowrap; }
   .etf-toggle input { accent-color: var(--accent); cursor: pointer; }
 
+  /* 法人別 + 呈現方式子控制列 */
+  .inst-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .seg-sm .seg-btn { padding: 3px 10px; font-size: 11px; }
+
+  /* 金字塔：依買賣超金額由大到小的橫向長條 */
+  .pyramid { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+  .pyr-row {
+    display: grid; grid-template-columns: 26px 128px 1fr; align-items: center; gap: 10px;
+    padding: 5px 4px; border-radius: 6px; transition: background .15s;
+  }
+  .pyr-row:hover { background: var(--surface-alt); }
+  .pyr-rank { font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: center; font-variant-numeric: tabular-nums; }
+  .pyr-name { min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+  .pyr-title { font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pyr-code { font-size: 10.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pyr-barwrap { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .pyr-bar { height: 18px; border-radius: 0 4px 4px 0; flex-shrink: 0; transition: width .35s cubic-bezier(.32,.72,.28,1); min-width: 3px; }
+  .pyr-bar.buy { background: linear-gradient(90deg, color-mix(in srgb, var(--red) 55%, transparent), var(--red)); }
+  .pyr-bar.sell { background: linear-gradient(90deg, color-mix(in srgb, var(--green) 55%, transparent), var(--green)); }
+  .pyr-val { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text); }
+  .pyr-lots { font-size: 10.5px; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
+  @media (max-width: 640px) {
+    .pyr-row { grid-template-columns: 20px 92px 1fr; gap: 7px; }
+    .pyr-val { font-size: 11px; }
+    .pyr-lots { display: none; }
+  }
+
   /* 兩欄卡片（資金流向／類股漲跌） */
   .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
 
@@ -308,8 +335,21 @@
         <label class="etf-toggle"><input type="checkbox" v-model="rankExcludeETF"> 排除ETF</label>
       </div>
     </div>
+    <!-- 法人別 + 呈現方式（僅法人買賣超時顯示） -->
+    <div v-if="rankTab === 'instBuy' || rankTab === 'instSell'" class="inst-controls">
+      <div class="seg seg-sm">
+        <div class="seg-btn" :class="{ active: instType === 'total' }" @click="instType = 'total'">合計</div>
+        <div class="seg-btn" :class="{ active: instType === 'foreign' }" @click="instType = 'foreign'">外資</div>
+        <div class="seg-btn" :class="{ active: instType === 'trust' }" @click="instType = 'trust'">投信</div>
+        <div class="seg-btn" :class="{ active: instType === 'dealer' }" @click="instType = 'dealer'">自營商</div>
+      </div>
+      <div class="seg seg-sm">
+        <div class="seg-btn" :class="{ active: rankViewMode === 'pyramid' }" @click="rankViewMode = 'pyramid'">▰ 金字塔</div>
+        <div class="seg-btn" :class="{ active: rankViewMode === 'table' }" @click="rankViewMode = 'table'">☰ 表格</div>
+      </div>
+    </div>
     <div class="detail-sub" style="margin-top:8px">
-      {{ rankTab === 'value' ? '依成交金額排序' : rankTab === 'up' ? '依漲幅排序（已排除成交金額過低個股）' : rankTab === 'down' ? '依跌幅排序（已排除成交金額過低個股）' : rankTab === 'instBuy' ? '依三大法人合計買超張數排序' : '依三大法人合計賣超張數排序' }}
+      {{ rankTab === 'value' ? '依成交金額排序' : rankTab === 'up' ? '依漲幅排序（已排除成交金額過低個股）' : rankTab === 'down' ? '依跌幅排序（已排除成交金額過低個股）' : ('依' + instTypeLabel + (rankTab === 'instBuy' ? '買超' : '賣超') + '金額大小排列' + (instSnap.date ? '　·　' + instSnap.date : '')) }}
     </div>
 
     <div v-if="!snapshot.stocks.length" class="err-note">
@@ -319,13 +359,33 @@
       <div v-if="(rankTab === 'instBuy' || rankTab === 'instSell') && !hasInstData" class="err-note">
         ⚠ {{ snapshotErrors.inst || '法人籌碼資料暫時無法取得' }}
       </div>
+      <div v-else-if="(rankTab === 'instBuy' || rankTab === 'instSell') && !instTypeHasData" class="err-note">
+        ⚠ {{ instTypeLabel }}買賣超資料暫時無法取得（投信／自營商拆分需每日快照，尚未產生時請稍候或按「全部更新」）
+      </div>
+
+      <!-- 金字塔：依買賣超金額由大到小的橫向長條 -->
+      <div v-else-if="(rankTab === 'instBuy' || rankTab === 'instSell') && rankViewMode === 'pyramid' && rankRows.length" class="pyramid">
+        <div v-for="(s, i) in rankRows" :key="s.market + s.code" class="pyr-row">
+          <div class="pyr-rank">{{ i + 1 }}</div>
+          <div class="pyr-name">
+            <span class="pyr-title">{{ s.name }}</span>
+            <span class="pyr-code">{{ s.code }}・{{ s.industry }}</span>
+          </div>
+          <div class="pyr-barwrap">
+            <div class="pyr-bar" :class="rankTab === 'instBuy' ? 'buy' : 'sell'" :style="{ width: barPct(s.estAmount) + '%' }"></div>
+            <span class="pyr-val">{{ sign(s.estAmount, 2) }} 億<span class="pyr-lots">（{{ sign(s.netLots, 0) }} 張）</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 表格（成交金額/漲跌幅/跌幅，或法人買賣超的表格模式） -->
       <div v-else-if="rankRows.length" class="table-wrap">
         <table class="detail-table">
           <thead>
             <tr>
               <th>#</th><th>股票</th><th class="num">收盤</th><th class="num">漲跌幅</th>
               <th class="num" v-if="rankTab === 'value'">成交金額(億)</th>
-              <th class="num" v-if="rankTab === 'instBuy' || rankTab === 'instSell'">買賣超(張)</th>
+              <th class="num" v-if="rankTab === 'instBuy' || rankTab === 'instSell'">{{ instTypeLabel }}買賣超(張)</th>
               <th class="num" v-if="rankTab === 'instBuy' || rankTab === 'instSell'">估計金額(億)</th>
             </tr>
           </thead>
@@ -653,6 +713,9 @@ createApp({
     const fundFlowTab = ref('ALL'); // 'TWSE' | 'TPEX' | 'ALL'
     const excludeETF = ref(true);
     const rankTab = ref('value'); // 'value' | 'up' | 'down' | 'instBuy' | 'instSell'
+    const instType = ref('total'); // 法人別：'total'合計 | 'foreign'外資 | 'trust'投信 | 'dealer'自營商
+    const rankViewMode = ref('pyramid'); // 法人買賣超呈現：'pyramid'金字塔 | 'table'表格
+    const instSnap = ref({ date: '', stocks: {} }); // 每日快照的三大法人買賣超（張）
     const rankExcludeETF = ref(true);
     const selectedIndustry = ref(null);
 
@@ -1275,7 +1338,34 @@ createApp({
 
     /* ── 衍生視圖：資金流向 / 類股漲跌 / 市場寬度 / 排行，皆為 computed，切換分頁或排除ETF不需重抓 ── */
     const hasTpexData = computed(() => (snapshot.value.stocks || []).some(s => s.market === 'TPEX'));
-    const hasInstData = computed(() => Object.keys(snapshot.value.inst || {}).length > 0);
+    const hasInstData = computed(() =>
+      Object.keys(snapshot.value.inst || {}).length > 0 ||
+      Object.keys(instSnap.value.stocks || {}).length > 0
+    );
+    // 依選定法人別取某檔的買賣超張數（優先用每日快照，退回即時 snapshot.inst）
+    const INST_KEY = { total: 's', foreign: 'f', trust: 't', dealer: 'd' };
+    function instLotsFor(code) {
+      const snapS = instSnap.value.stocks && instSnap.value.stocks[code];
+      if (snapS) {
+        const v = snapS[INST_KEY[instType.value]];
+        return v == null ? null : v; // 張
+      }
+      const live = snapshot.value.inst && snapshot.value.inst[code];
+      if (live) {
+        if (instType.value === 'total') return (live.totalNet || 0) / 1000;
+        if (instType.value === 'foreign') return (live.foreignNet || 0) / 1000;
+        return null; // 投信／自營商即時來源沒有，需每日快照
+      }
+      return null;
+    }
+    const INST_LABEL = { total: '三大法人合計', foreign: '外資', trust: '投信', dealer: '自營商' };
+    const instTypeLabel = computed(() => INST_LABEL[instType.value] || '三大法人');
+    // 目前法人別是否真的有資料（例如投信/自營商需要每日快照）
+    const instTypeHasData = computed(() => {
+      const rows = rankFiltered.value;
+      for (const s of rows) { if (instLotsFor(s.code) != null) return true; }
+      return false;
+    });
 
     const filteredStocks = computed(() => {
       let list = snapshot.value.stocks || [];
@@ -1376,17 +1466,29 @@ createApp({
           .sort((a, b) => a.changePct - b.changePct).slice(0, 20);
       }
       if (rankTab.value === 'instBuy' || rankTab.value === 'instSell') {
-        const inst = snapshot.value.inst || {};
+        const buy = rankTab.value === 'instBuy';
         const withInst = list.map(s => {
-          const i = inst[s.code];
-          if (!i) return null;
-          return { ...s, netShares: i.totalNet, netLots: i.totalNet / 1000, estAmount: (i.totalNet * (s.close || 0)) / 1e8 };
+          const lots = instLotsFor(s.code);
+          if (lots == null || lots === 0) return null;
+          // estAmount(億) = 張 × 1000股 × 收盤 / 1e8 = 張 × 收盤 / 1e5
+          return { ...s, netLots: lots, netShares: lots * 1000, estAmount: (lots * (s.close || 0)) / 1e5 };
         }).filter(Boolean);
-        if (rankTab.value === 'instBuy') return withInst.sort((a, b) => b.netShares - a.netShares).slice(0, 20);
-        return withInst.sort((a, b) => a.netShares - b.netShares).slice(0, 20);
+        const filtered = withInst.filter(s => buy ? s.netLots > 0 : s.netLots < 0);
+        filtered.sort((a, b) => buy ? b.netLots - a.netLots : a.netLots - b.netLots);
+        return filtered.slice(0, 20);
       }
       return [];
     });
+
+    // 金字塔長條的最大金額（億），用來換算每列長條寬度
+    const rankMaxAmount = computed(() => {
+      let m = 0;
+      for (const s of rankRows.value) { const a = Math.abs(s.estAmount || 0); if (a > m) m = a; }
+      return m || 1;
+    });
+    function barPct(amount) {
+      return Math.max(2, Math.round((Math.abs(amount || 0) / rankMaxAmount.value) * 100));
+    }
 
     function saveNews() {
       try { localStorage.setItem(NEWS_KEY, JSON.stringify(news.value)); } catch (e) {}
@@ -1528,6 +1630,10 @@ createApp({
         applied = applySnapKey(q.twii, data?.indices?.TWII) || applied;
         applied = applySnapKey(q.otc, data?.indices?.TWOII) || applied;
         applied = applySnapKey(q.fx, data?.fx?.USDTWD) || applied;
+        // 三大法人買賣超（外資/投信/自營商/合計）快照，供排行金字塔使用
+        if (data?.twInst?.stocks && Object.keys(data.twInst.stocks).length) {
+          instSnap.value = { date: data.twInst.date || (data?.tw?.date) || '', stocks: data.twInst.stocks };
+        }
         if (applied) {
           const d = data?.tw?.date || data?.indices?.TWII?.date || '';
           snapNote.value = '每日快照' + (d ? ' ' + d : '') + ' ✓';
@@ -1615,6 +1721,7 @@ createApp({
       tx, fi, turnover, turnoverView, hasSeries, txPrice, txChange, txChangePct, txSource, basis,
       snapshot, snapshotErrors, snapshotLoading, fetchMarketSnapshot,
       fundFlowTab, excludeETF, rankTab, rankExcludeETF,
+      instType, rankViewMode, instSnap, instTypeLabel, instTypeHasData, barPct,
       hasTpexData, hasInstData, topIndustriesForFlow, sectorTable, marketBreadth, rankRows,
       selectedIndustry, industryStocks, industryModalTotal, openIndustry, closeIndustry,
       news, newsPresets, newsVideoId, setNewsPreset, saveNews,
