@@ -102,6 +102,32 @@
     .pyr-lots { display: none; }
   }
 
+  /* 買賣超合併金字塔：中央軸線，買超（紅）向右、賣超（綠）向左 */
+  .pyr-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; justify-content: center; font-size: 11.5px; color: var(--text-muted); padding: 2px 0 8px; }
+  .pyr-legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .pyr-legend .dot.buy { background: var(--red); }
+  .pyr-legend .dot.sell { background: var(--green); }
+  .pyr-legend-note { opacity: .75; }
+  .pyr-row2 {
+    display: grid; grid-template-columns: 24px 130px auto minmax(24px, 1fr) 1px minmax(24px, 1fr) auto;
+    align-items: center; gap: 6px; padding: 4px 2px; border-radius: 6px; transition: background .15s;
+  }
+  .pyr-row2:hover { background: var(--surface-alt); }
+  .pyr-lbl { display: flex; align-items: baseline; gap: 5px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pyr-lbl.sellside { justify-content: flex-end; text-align: right; }
+  .pyr-lbl.buyside { justify-content: flex-start; }
+  .pyr-lbl .chg { font-size: 10.5px; font-weight: 600; }
+  .pyr-track { position: relative; height: 17px; }
+  .pyr-b { position: absolute; top: 0; height: 100%; min-width: 2px; transition: width .35s cubic-bezier(.32, .72, .28, 1); }
+  .pyr-b.buy { left: 0; border-radius: 0 4px 4px 0; background: linear-gradient(90deg, color-mix(in srgb, var(--red) 55%, transparent), var(--red)); }
+  .pyr-b.sell { right: 0; border-radius: 4px 0 0 4px; background: linear-gradient(270deg, color-mix(in srgb, var(--green) 55%, transparent), var(--green)); }
+  .pyr-axis { width: 1px; align-self: stretch; min-height: 17px; background: var(--stroke); }
+  @media (max-width: 640px) {
+    .pyr-row2 { grid-template-columns: 18px 78px auto minmax(16px, 1fr) 1px minmax(16px, 1fr) auto; gap: 4px; }
+    .pyr-lbl { font-size: 11px; }
+    .pyr-lbl .chg { display: none; }
+  }
+
   /* 兩欄卡片（資金流向／類股漲跌） */
   .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
 
@@ -329,14 +355,13 @@
           <div class="seg-btn" :class="{ active: rankTab === 'value' }" @click="rankTab = 'value'">成交金額</div>
           <div class="seg-btn" :class="{ active: rankTab === 'up' }" @click="rankTab = 'up'">漲幅</div>
           <div class="seg-btn" :class="{ active: rankTab === 'down' }" @click="rankTab = 'down'">跌幅</div>
-          <div class="seg-btn" :class="{ active: rankTab === 'instBuy' }" @click="rankTab = 'instBuy'">法人買超</div>
-          <div class="seg-btn" :class="{ active: rankTab === 'instSell' }" @click="rankTab = 'instSell'">法人賣超</div>
+          <div class="seg-btn" :class="{ active: rankTab === 'inst' }" @click="rankTab = 'inst'">法人買賣超</div>
         </div>
         <label class="etf-toggle"><input type="checkbox" v-model="rankExcludeETF"> 排除ETF</label>
       </div>
     </div>
     <!-- 法人別 + 呈現方式（僅法人買賣超時顯示） -->
-    <div v-if="rankTab === 'instBuy' || rankTab === 'instSell'" class="inst-controls">
+    <div v-if="rankTab === 'inst'" class="inst-controls">
       <div class="seg seg-sm">
         <div class="seg-btn" :class="{ active: instType === 'total' }" @click="instType = 'total'">合計</div>
         <div class="seg-btn" :class="{ active: instType === 'foreign' }" @click="instType = 'foreign'">外資</div>
@@ -349,32 +374,51 @@
       </div>
     </div>
     <div class="detail-sub" style="margin-top:8px">
-      {{ rankTab === 'value' ? '依成交金額排序' : rankTab === 'up' ? '依漲幅排序（已排除成交金額過低個股）' : rankTab === 'down' ? '依跌幅排序（已排除成交金額過低個股）' : ('依' + instTypeLabel + (rankTab === 'instBuy' ? '買超' : '賣超') + '金額大小排列' + (instSnap.date ? '　·　' + instSnap.date : '')) }}
+      {{ rankTab === 'value' ? '依成交金額排序' : rankTab === 'up' ? '依漲幅排序（已排除成交金額過低個股）' : rankTab === 'down' ? '依跌幅排序（已排除成交金額過低個股）' : ('依' + instTypeLabel + '買賣超金額大小排列，買超（紅）與賣超（綠）合併呈現' + (instSnap.date ? '　·　' + instSnap.date : '')) }}
     </div>
 
     <div v-if="!snapshot.stocks.length" class="err-note">
       ⚠ {{ snapshotErrors.stocks || '全市場資料尚未取得，請按「全部更新」' }}
     </div>
     <template v-else>
-      <div v-if="(rankTab === 'instBuy' || rankTab === 'instSell') && !hasInstData" class="err-note">
+      <div v-if="rankTab === 'inst' && !hasInstData" class="err-note">
         ⚠ {{ snapshotErrors.inst || '法人籌碼資料暫時無法取得' }}
       </div>
-      <div v-else-if="(rankTab === 'instBuy' || rankTab === 'instSell') && !instTypeHasData" class="err-note">
+      <div v-else-if="rankTab === 'inst' && !instTypeHasData" class="err-note">
         ⚠ {{ instTypeLabel }}買賣超資料暫時無法取得（投信／自營商拆分需每日快照，尚未產生時請稍候或按「全部更新」）
       </div>
 
-      <!-- 金字塔：依買賣超金額由大到小的橫向長條 -->
-      <div v-else-if="(rankTab === 'instBuy' || rankTab === 'instSell') && rankViewMode === 'pyramid' && rankRows.length" class="pyramid">
-        <div v-for="(s, i) in rankRows" :key="s.market + s.code" class="pyr-row">
+      <!-- 金字塔：買超（紅，向右）與賣超（綠，向左）以中央軸線合併呈現，含當日漲跌幅 -->
+      <div v-else-if="rankTab === 'inst' && rankViewMode === 'pyramid' && rankRows.length" class="pyramid">
+        <div class="pyr-legend">
+          <span><i class="dot buy"></i>買超</span>
+          <span><i class="dot sell"></i>賣超</span>
+          <span class="pyr-legend-note">數字為估計金額（億）· 百分比為當日漲跌幅</span>
+        </div>
+        <div v-for="(s, i) in rankRows" :key="s.market + s.code" class="pyr-row2">
           <div class="pyr-rank">{{ i + 1 }}</div>
           <div class="pyr-name">
             <span class="pyr-title">{{ s.name }}</span>
             <span class="pyr-code">{{ s.code }}・{{ s.industry }}</span>
           </div>
-          <div class="pyr-barwrap">
-            <div class="pyr-bar" :class="rankTab === 'instBuy' ? 'buy' : 'sell'" :style="{ width: barPct(s.estAmount) + '%' }"></div>
-            <span class="pyr-val">{{ sign(s.estAmount, 2) }} 億<span class="pyr-lots">（{{ sign(s.netLots, 0) }} 張）</span></span>
+          <!-- 賣超側標籤 -->
+          <div class="pyr-lbl sellside" v-if="s.netLots < 0">
+            <span class="down">{{ sign(s.estAmount, 2) }}</span>
+            <span class="chg" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</span>
           </div>
+          <div v-else></div>
+          <!-- 賣超軌道 -->
+          <div class="pyr-track"><div v-if="s.netLots < 0" class="pyr-b sell" :style="{ width: barPct(s.estAmount) + '%' }"></div></div>
+          <!-- 中央軸 -->
+          <div class="pyr-axis"></div>
+          <!-- 買超軌道 -->
+          <div class="pyr-track"><div v-if="s.netLots > 0" class="pyr-b buy" :style="{ width: barPct(s.estAmount) + '%' }"></div></div>
+          <!-- 買超側標籤 -->
+          <div class="pyr-lbl buyside" v-if="s.netLots > 0">
+            <span class="chg" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</span>
+            <span class="up">{{ sign(s.estAmount, 2) }}</span>
+          </div>
+          <div v-else></div>
         </div>
       </div>
 
@@ -385,8 +429,8 @@
             <tr>
               <th>#</th><th>股票</th><th class="num">收盤</th><th class="num">漲跌幅</th>
               <th class="num" v-if="rankTab === 'value'">成交金額(億)</th>
-              <th class="num" v-if="rankTab === 'instBuy' || rankTab === 'instSell'">{{ instTypeLabel }}買賣超(張)</th>
-              <th class="num" v-if="rankTab === 'instBuy' || rankTab === 'instSell'">估計金額(億)</th>
+              <th class="num" v-if="rankTab === 'inst'">{{ instTypeLabel }}買賣超(張)</th>
+              <th class="num" v-if="rankTab === 'inst'">估計金額(億)</th>
             </tr>
           </thead>
           <tbody>
@@ -396,8 +440,8 @@
               <td class="num">{{ fmt(s.close, 2) }}</td>
               <td class="num" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</td>
               <td class="num" v-if="rankTab === 'value'">{{ fmt((s.value || 0) / 1e8, 1) }}</td>
-              <td class="num" v-if="rankTab === 'instBuy' || rankTab === 'instSell'" :class="pnClass(s.netShares)">{{ sign(s.netLots, 0) }}</td>
-              <td class="num" v-if="rankTab === 'instBuy' || rankTab === 'instSell'" :class="pnClass(s.netShares)">{{ sign(s.estAmount, 2) }}</td>
+              <td class="num" v-if="rankTab === 'inst'" :class="pnClass(s.netShares)">{{ sign(s.netLots, 0) }}</td>
+              <td class="num" v-if="rankTab === 'inst'" :class="pnClass(s.netShares)">{{ sign(s.estAmount, 2) }}</td>
             </tr>
           </tbody>
         </table>
@@ -712,7 +756,7 @@ createApp({
 
     const fundFlowTab = ref('ALL'); // 'TWSE' | 'TPEX' | 'ALL'
     const excludeETF = ref(true);
-    const rankTab = ref('value'); // 'value' | 'up' | 'down' | 'instBuy' | 'instSell'
+    const rankTab = ref('value'); // 'value' | 'up' | 'down' | 'inst'（法人買賣超合併）
     const instType = ref('total'); // 法人別：'total'合計 | 'foreign'外資 | 'trust'投信 | 'dealer'自營商
     const rankViewMode = ref('pyramid'); // 法人買賣超呈現：'pyramid'金字塔 | 'table'表格
     const instSnap = ref({ date: '', stocks: {} }); // 每日快照的三大法人買賣超（張）
@@ -787,14 +831,16 @@ createApp({
         fetchYahoo(symbol, '1mo', '1d')
       ]);
       const out = { ...q[key], error: null };
+      // 只有拿到「非全空」的序列才覆蓋，避免即時回傳空序列時把每日快照畫好的走勢洗掉
+      const hasCloses = s => s && Array.isArray(s.closes) && s.closes.some(v => v != null);
       if (ir.status === 'fulfilled') {
         out.price = ir.value.price;
         out.change = ir.value.change;
         out.changePct = ir.value.changePct;
-        out.intra = { labels: ir.value.labels, closes: ir.value.closes, prevClose: ir.value.prevClose };
+        if (hasCloses(ir.value)) out.intra = { labels: ir.value.labels, closes: ir.value.closes, prevClose: ir.value.prevClose };
       }
       if (mr.status === 'fulfilled') {
-        out.month = { labels: mr.value.labels, closes: mr.value.closes };
+        if (hasCloses(mr.value)) out.month = { labels: mr.value.labels, closes: mr.value.closes };
         if (ir.status !== 'fulfilled') {
           out.price = mr.value.price;
           out.change = mr.value.change;
@@ -1465,17 +1511,17 @@ createApp({
         return [...list].filter(s => s.close > 0 && (s.value || 0) > 1e7 && s.changePct != null)
           .sort((a, b) => a.changePct - b.changePct).slice(0, 20);
       }
-      if (rankTab.value === 'instBuy' || rankTab.value === 'instSell') {
-        const buy = rankTab.value === 'instBuy';
+      if (rankTab.value === 'inst') {
         const withInst = list.map(s => {
           const lots = instLotsFor(s.code);
           if (lots == null || lots === 0) return null;
           // estAmount(億) = 張 × 1000股 × 收盤 / 1e8 = 張 × 收盤 / 1e5
           return { ...s, netLots: lots, netShares: lots * 1000, estAmount: (lots * (s.close || 0)) / 1e5 };
         }).filter(Boolean);
-        const filtered = withInst.filter(s => buy ? s.netLots > 0 : s.netLots < 0);
-        filtered.sort((a, b) => buy ? b.netLots - a.netLots : a.netLots - b.netLots);
-        return filtered.slice(0, 20);
+        // 買超與賣超合併呈現：買超由大到小在上，賣超由小到大在下，中間最窄形成金字塔
+        const buys = withInst.filter(s => s.netLots > 0).sort((a, b) => b.netLots - a.netLots).slice(0, 15);
+        const sells = withInst.filter(s => s.netLots < 0).sort((a, b) => a.netLots - b.netLots).slice(0, 15).reverse();
+        return [...buys, ...sells];
       }
       return [];
     });
@@ -1618,6 +1664,13 @@ createApp({
       if (snap.changePct != null) target.changePct = snap.changePct;
       return true;
     }
+    /* 套用每日快照的走勢序列：^TWOII（櫃買）與 WTX&（台指期）瀏覽器端常抓不到序列，
+       改用伺服器端抓好的快照序列先畫圖；稍後 refreshAll 的即時資料若成功會覆蓋。 */
+    function applySnapSeries(target, s) {
+      if (!s) return;
+      if (s.intra && Array.isArray(s.intra.closes) && s.intra.closes.some(v => v != null)) target.intra = s.intra;
+      if (s.month && Array.isArray(s.month.closes) && s.month.closes.some(v => v != null)) target.month = s.month;
+    }
     async function loadServerSnapshot() {
       try {
         const ctrl = new AbortController();
@@ -1630,6 +1683,20 @@ createApp({
         applied = applySnapKey(q.twii, data?.indices?.TWII) || applied;
         applied = applySnapKey(q.otc, data?.indices?.TWOII) || applied;
         applied = applySnapKey(q.fx, data?.fx?.USDTWD) || applied;
+        // 台指期近月快照（真台指期 TX，可用於期現價差）：即時來源失敗時的備援
+        if (data?.indices?.TXF && data.indices.TXF.price != null) {
+          q.txf.price = data.indices.TXF.price;
+          if (data.indices.TXF.change != null) q.txf.change = data.indices.TXF.change;
+          if (data.indices.TXF.changePct != null) q.txf.changePct = data.indices.TXF.changePct;
+          q.txf.source = '每日快照 · Yahoo WTX&';
+          q.txf.isTaifex = true;
+          applied = true;
+        }
+        // 走勢圖序列（櫃買／台指期瀏覽器端常抓不到，先用快照畫圖）
+        applySnapSeries(q.twii, data?.series?.TWII);
+        applySnapSeries(q.otc, data?.series?.TWOII);
+        applySnapSeries(q.fx, data?.series?.USDTWD);
+        applySnapSeries(q.txf, data?.series?.TXF);
         // 三大法人買賣超（外資/投信/自營商/合計）快照，供排行金字塔使用
         if (data?.twInst?.stocks && Object.keys(data.twInst.stocks).length) {
           instSnap.value = { date: data.twInst.date || (data?.tw?.date) || '', stocks: data.twInst.stocks };

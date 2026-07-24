@@ -97,6 +97,60 @@ async function fetchYahooQuote(symbol) {
   };
 }
 
+/* Yahoo v8 chart 走勢序列：回傳 { intra:{labels,closes,prevClose}, month:{labels,closes}, price, change, changePct }
+   給網站的走勢圖用。瀏覽器端直抓 ^TWOII / WTX&（台指期）常被 CORS／代理擋掉，
+   改由伺服器端（美國 IP、可直連 Yahoo）抓好存進快照，網站讀同源靜態檔即可畫圖。 */
+async function fetchYahooSeries(symbol) {
+  async function one(range, interval) {
+    const url =
+      'https://query1.finance.yahoo.com/v8/finance/chart/' +
+      encodeURIComponent(symbol) +
+      `?range=${range}&interval=${interval}&includePrePost=false`;
+    const data = await fetchJson(url);
+    const result = data?.chart?.result?.[0];
+    if (!result) throw new Error('no data for ' + symbol);
+    const meta = result.meta || {};
+    const closes = (result.indicators?.quote?.[0]?.close || []).map((v) => (v == null ? null : num(v)));
+    const timestamps = result.timestamp || [];
+    const intraday = /m$/.test(interval);
+    const labels = timestamps.map((t) => {
+      const d = new Date(t * 1000 + 8 * 3600 * 1000); // 以台北時間標記時間軸
+      return intraday
+        ? `${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2, '0')}`
+        : `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+    });
+    const valid = closes.filter((v) => v != null);
+    const lastClose = valid.length ? valid[valid.length - 1] : null;
+    const price = num(meta.regularMarketPrice) ?? lastClose ?? null;
+    const prev = num(meta.chartPreviousClose ?? meta.previousClose) ?? null;
+    return { labels, closes, price, prev };
+  }
+  const [ir, mr] = await Promise.allSettled([one('1d', '5m'), one('1mo', '1d')]);
+  if (ir.status !== 'fulfilled' && mr.status !== 'fulfilled') {
+    throw ir.reason || mr.reason || new Error('series empty for ' + symbol);
+  }
+  const out = { intra: null, month: null, price: null, change: null, changePct: null };
+  if (ir.status === 'fulfilled') {
+    out.intra = { labels: ir.value.labels, closes: ir.value.closes, prevClose: ir.value.prev };
+    out.price = ir.value.price;
+    if (ir.value.price != null && ir.value.prev != null) {
+      out.change = +(ir.value.price - ir.value.prev).toFixed(4);
+      out.changePct = ir.value.prev ? +(((ir.value.price - ir.value.prev) / ir.value.prev) * 100).toFixed(4) : null;
+    }
+  }
+  if (mr.status === 'fulfilled') {
+    out.month = { labels: mr.value.labels, closes: mr.value.closes };
+    if (out.price == null) {
+      out.price = mr.value.price;
+      if (mr.value.price != null && mr.value.prev != null) {
+        out.change = +(mr.value.price - mr.value.prev).toFixed(4);
+        out.changePct = mr.value.prev ? +(((mr.value.price - mr.value.prev) / mr.value.prev) * 100).toFixed(4) : null;
+      }
+    }
+  }
+  return out;
+}
+
 /* ── 台股加權指數（TWSE FMTQIK，官方、取最後一筆） ── */
 async function fetchTaiex() {
   const rows = await fetchJson('https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK');
@@ -405,6 +459,7 @@ async function main() {
     generatedAt: nowIso(),
     indices: { ...(prev.indices || {}) },
     fx: { ...(prev.fx || {}) },
+    series: { ...(prev.series || {}) }, // 走勢圖序列（TWII / TWOII / USDTWD / TXF）供網站免 CORS 直接畫圖
     tw: prev.tw || null,
     twInst: prev.twInst || null,
     us: { ...(prev.us || {}) },
@@ -433,6 +488,45 @@ async function main() {
   } catch (e) {
     fail('TWOII', e);
     markStale(out.indices.TWOII);
+  }
+
+  /* 台指期近月（Yahoo WTX&，真台指期 TX）— 磚面數值 + 走勢序列。
+     瀏覽器端抓 WTX& 常被擋，這裡先抓好當備援；網站有即時來源時仍以即時為主。 */
+  console.error('· 台指期近月');
+  try {
+    const txf = await fetchYahooSeries('WTX&');
+    if (txf && (txf.price != null || txf.intra || txf.month)) {
+      out.indices.TXF = {
+        name: '台指期近月',
+        price: txf.price,
+        change: txf.change,
+        changePct: txf.changePct,
+        date: out.indices.TWII?.date || null,
+        asOf: nowIso(),
+        source: 'Yahoo WTX&',
+      };
+    }
+  } catch (e) {
+    fail('TXF', e);
+    markStale(out.indices.TXF);
+  }
+
+  /* 走勢圖序列：加權指數 / 櫃買指數 / 美元台幣 / 台指期，供網站畫日內＋近一月線圖 */
+  console.error('· 走勢圖序列');
+  const seriesTargets = [
+    ['TWII', '^TWII'],
+    ['TWOII', '^TWOII'],
+    ['USDTWD', 'TWD=X'],
+    ['TXF', 'WTX&'],
+  ];
+  for (const [key, sym] of seriesTargets) {
+    try {
+      const s = await fetchYahooSeries(sym);
+      out.series[key] = { intra: s.intra, month: s.month, asOf: nowIso() };
+    } catch (e) {
+      fail('series ' + key, e);
+      markStale(out.series[key]);
+    }
   }
 
   /* 匯率 + 美股指數 — Yahoo */
