@@ -108,9 +108,11 @@
     return next;
   }
 
-  /* 外殼寫入 localStorage 時，同分頁的 iframe 會收到 storage 事件 */
+  /* 外殼寫入 localStorage 時，同分頁的 iframe 會收到 storage 事件。
+     主題（KEY）與字級（SCALE_KEY）都要同步：早期只聽 KEY，導致外殼切字級時
+     iframe 內模組不會即時 zoom（要重新整理才生效），內容看起來還是很擠很小。 */
   window.addEventListener('storage', function (e) {
-    if (e.key === KEY || e.key === null) { apply(); notify(); }
+    if (e.key === KEY || e.key === SCALE_KEY || e.key === null) { apply(); notify(); }
   });
 
   /* 「系統」模式下，跟隨作業系統即時切換 */
