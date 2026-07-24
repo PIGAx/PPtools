@@ -1462,10 +1462,28 @@ createApp({
       };
     });
 
-    /* 走勢圖卡是否有可畫的序列（依當前日內/近一月分頁判斷） */
-    function hasSeries(key) {
-      const s = tabs[key] === 'intra' ? q[key].intra : q[key].month;
+    /* 某分頁（日內／近一月）是否有可畫的序列 */
+    function hasSeriesMode(key, mode) {
+      const s = mode === 'intra' ? q[key].intra : q[key].month;
       return !!(s && s.closes && s.closes.some(v => v != null));
+    }
+    /* 走勢圖卡是否有可畫的序列（依當前分頁判斷） */
+    function hasSeries(key) {
+      return hasSeriesMode(key, tabs[key]);
+    }
+    /* 該卡最適合預設顯示的分頁：優先日內，日內無資料時退回近一月。
+       解決櫃買（^TWOII 常只有近一月）／台指期即時序列抓不到時，卡片預設停在空白日內頁的問題。 */
+    function bestTab(key) {
+      if (hasSeriesMode(key, 'intra')) return 'intra';
+      if (hasSeriesMode(key, 'month')) return 'month';
+      return 'intra';
+    }
+    /* 使用者手動點過分頁的卡片不再自動切換；其餘卡片依資料自動挑最適合的分頁 */
+    const userTabbed = reactive({});
+    function autoPickTabs() {
+      chartCards.forEach(c => {
+        if (!userTabbed[c.key]) tabs[c.key] = bestTab(c.key);
+      });
     }
 
     const marketBreadth = computed(() => {
@@ -1608,16 +1626,24 @@ createApp({
       const card = chartCards.find(c => c.key === key);
       const mode = tabs[key];
       const series = mode === 'intra' ? q[key].intra : q[key].month;
-      renderLine('chart-' + key, series, card.color, mode === 'intra' ? (q[key].intra?.prevClose ?? null) : null);
+      const canvasId = 'chart-' + key;
+      // 選到的分頁沒有序列時，清掉舊圖，避免殘留前一分頁的線（搭配下方「暫無序列」提示）
+      if (!series || !series.closes || !series.closes.some(v => v != null)) {
+        if (charts[canvasId]) { charts[canvasId].destroy(); delete charts[canvasId]; }
+        return;
+      }
+      renderLine(canvasId, series, card.color, mode === 'intra' ? (q[key].intra?.prevClose ?? null) : null);
     }
 
     function renderCharts() {
+      autoPickTabs(); // 依目前資料自動挑每張卡最適合的分頁（使用者手動切換過的卡除外）
       nextTick(() => {
         chartCards.forEach(c => renderIndexChart(c.key));
       });
     }
 
     function setTab(key, mode) {
+      userTabbed[key] = true; // 記住使用者選擇，之後不再自動覆蓋
       tabs[key] = mode;
       saveCache();
       nextTick(() => renderIndexChart(key));
