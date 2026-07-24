@@ -490,34 +490,45 @@ async function main() {
     markStale(out.indices.TWOII);
   }
 
-  /* 台指期近月（Yahoo WTX&，真台指期 TX）— 磚面數值 + 走勢序列。
-     瀏覽器端抓 WTX& 常被擋，這裡先抓好當備援；網站有即時來源時仍以即時為主。 */
+  /* 台指期近月 — 磚面數值 + 走勢序列。
+     Yahoo 對台灣期交所 TX 沒有穩定代碼（WTX& 常回空），逐一嘗試多個候選代碼，
+     並用「價位須與加權指數同量級」把量級不符的來源（如 SGX 富時台灣期貨）排除，
+     取第一個合理的。全部失敗則 TXF 留空，網站前端會退回近一月／即時報價。 */
   console.error('· 台指期近月');
-  try {
-    const txf = await fetchYahooSeries('WTX&');
-    if (txf && (txf.price != null || txf.intra || txf.month)) {
-      out.indices.TXF = {
-        name: '台指期近月',
-        price: txf.price,
-        change: txf.change,
-        changePct: txf.changePct,
-        date: out.indices.TWII?.date || null,
-        asOf: nowIso(),
-        source: 'Yahoo WTX&',
-      };
-    }
-  } catch (e) {
-    fail('TXF', e);
+  const twiiRef = out.indices.TWII?.price ?? null;
+  const sane = (p) => p != null && (twiiRef == null || (p > twiiRef * 0.7 && p < twiiRef * 1.3));
+  const TXF_SYMBOLS = ['WTX&', 'WTX=F', 'TXF=F', '^TWIIF'];
+  let txf = null, txfSym = null;
+  for (const sym of TXF_SYMBOLS) {
+    try {
+      const s = await fetchYahooSeries(sym);
+      const seriesPrice = s.price ?? (s.intra?.closes || s.month?.closes || []).filter((v) => v != null).slice(-1)[0] ?? null;
+      if (sane(seriesPrice)) { txf = s; txfSym = sym; break; }
+    } catch (e) { /* 試下一個候選代碼 */ }
+  }
+  if (txf) {
+    out.indices.TXF = {
+      name: '台指期近月',
+      price: txf.price,
+      change: txf.change,
+      changePct: txf.changePct,
+      date: out.indices.TWII?.date || null,
+      asOf: nowIso(),
+      source: 'Yahoo ' + txfSym,
+    };
+    out.series.TXF = { intra: txf.intra, month: txf.month, asOf: nowIso() };
+  } else {
+    fail('TXF', '所有候選代碼皆無合理報價（' + TXF_SYMBOLS.join('／') + '）');
     markStale(out.indices.TXF);
+    markStale(out.series.TXF);
   }
 
-  /* 走勢圖序列：加權指數 / 櫃買指數 / 美元台幣 / 台指期，供網站畫日內＋近一月線圖 */
+  /* 走勢圖序列：加權指數 / 櫃買指數 / 美元台幣，供網站畫日內＋近一月線圖 */
   console.error('· 走勢圖序列');
   const seriesTargets = [
     ['TWII', '^TWII'],
     ['TWOII', '^TWOII'],
     ['USDTWD', 'TWD=X'],
-    ['TXF', 'WTX&'],
   ];
   for (const [key, sym] of seriesTargets) {
     try {
