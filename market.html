@@ -156,7 +156,23 @@
   .detail-table th.num { text-align: right; }
   .detail-table tbody tr[data-clickable] { cursor: pointer; transition: background .15s; }
   .detail-table tbody tr[data-clickable]:hover { background: var(--surface-alt); }
-  .table-wrap { overflow-x: auto; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* 可排序表頭 */
+  .detail-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; transition: color .15s; }
+  .detail-table th.sortable:hover { color: var(--text); }
+  .detail-table th.sort-active { color: var(--accent); }
+  /* 排行表格：股票名稱／代號產業 */
+  .rk-name { font-weight: 650; }
+  .rk-meta { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+  .rank-inst-table th, .rank-inst-table td { padding: 7px 9px; }
+  .rank-inst-table tbody tr:hover { background: var(--surface-alt); }
+  @media (max-width: 640px) {
+    /* 手機：股票代號／產業改放名稱下一行，收斂欄寬避免整列過寬 */
+    .rk-meta { display: block; font-size: 10px; margin-top: 1px; }
+    .rank-inst-table { font-size: 12px; }
+    .rank-inst-table th, .rank-inst-table td { padding: 6px 7px; }
+  }
 
   .card-head-row { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
   .card-head-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -183,6 +199,16 @@
   .video-box iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
   .custom-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .custom-bar input { flex: 1; min-width: 200px; }
+
+  /* ── 手機版版面收斂（放在最後，確保覆蓋前面桌機基準的欄數設定） ── */
+  @media (max-width: 760px) {
+    .two-col-grid { grid-template-columns: 1fr; }  /* 資金流向／類股漲跌改單欄，避免擠成兩欄溢出 */
+    .chart-grid { grid-template-columns: 1fr; }
+    .detail-card { padding: 14px; }
+    /* 排行的雙層控制列在窄螢幕自動換行，並讓分段控制器可橫向捲動不撐版 */
+    .card-head-controls { width: 100%; }
+    .card-head-controls .seg { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -374,7 +400,7 @@
       </div>
     </div>
     <div class="detail-sub" style="margin-top:8px">
-      {{ rankTab === 'value' ? '依成交金額排序' : rankTab === 'up' ? '依漲幅排序（已排除成交金額過低個股）' : rankTab === 'down' ? '依跌幅排序（已排除成交金額過低個股）' : ('依' + instTypeLabel + '買賣超金額大小排列，買超（紅）與賣超（綠）合併呈現' + (instSnap.date ? '　·　' + instSnap.date : '')) }}
+      {{ rankTab === 'value' ? '依成交金額排序' : rankTab === 'up' ? '依漲幅排序（已排除成交金額過低個股）' : rankTab === 'down' ? '依跌幅排序（已排除成交金額過低個股）' : (instTypeLabel + '買賣超，買超（紅）與賣超（綠）合併呈現' + (rankViewMode === 'table' ? '，點表頭可切換排序' : '') + (instSnap.date ? '　·　' + instSnap.date : '')) }}
     </div>
 
     <div v-if="!snapshot.stocks.length" class="err-note">
@@ -422,26 +448,47 @@
         </div>
       </div>
 
-      <!-- 表格（成交金額/漲跌幅/跌幅，或法人買賣超的表格模式） -->
+      <!-- 法人買賣超表格模式：可點表頭切換排序（金額／張數／漲跌幅／收盤） -->
+      <div v-else-if="rankTab === 'inst' && instTableRows.length" class="table-wrap">
+        <table class="detail-table rank-inst-table">
+          <thead>
+            <tr>
+              <th>#</th><th>股票</th>
+              <th class="num sortable" :class="{ 'sort-active': rankSortKey === 'close' }" @click="sortInst('close')">收盤{{ sortArrow('close') }}</th>
+              <th class="num sortable" :class="{ 'sort-active': rankSortKey === 'changePct' }" @click="sortInst('changePct')">漲跌幅{{ sortArrow('changePct') }}</th>
+              <th class="num sortable" :class="{ 'sort-active': rankSortKey === 'netLots' }" @click="sortInst('netLots')">{{ instTypeLabel }}買賣超(張){{ sortArrow('netLots') }}</th>
+              <th class="num sortable" :class="{ 'sort-active': rankSortKey === 'estAmount' }" @click="sortInst('estAmount')">估計金額(億){{ sortArrow('estAmount') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(s, i) in instTableRows" :key="s.market + s.code">
+              <td>{{ i + 1 }}</td>
+              <td><span class="rk-name">{{ s.name }}</span> <span class="rk-meta">{{ s.code }}・{{ s.industry }}</span></td>
+              <td class="num">{{ fmt(s.close, 2) }}</td>
+              <td class="num" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</td>
+              <td class="num" :class="pnClass(s.netShares)">{{ sign(s.netLots, 0) }}</td>
+              <td class="num" :class="pnClass(s.netShares)">{{ sign(s.estAmount, 2) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 表格（成交金額／漲幅／跌幅） -->
       <div v-else-if="rankRows.length" class="table-wrap">
         <table class="detail-table">
           <thead>
             <tr>
               <th>#</th><th>股票</th><th class="num">收盤</th><th class="num">漲跌幅</th>
               <th class="num" v-if="rankTab === 'value'">成交金額(億)</th>
-              <th class="num" v-if="rankTab === 'inst'">{{ instTypeLabel }}買賣超(張)</th>
-              <th class="num" v-if="rankTab === 'inst'">估計金額(億)</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(s, i) in rankRows" :key="s.market + s.code">
               <td>{{ i + 1 }}</td>
-              <td>{{ s.name }} <span style="color:var(--text-muted);font-size:11px">{{ s.code }}・{{ s.industry }}</span></td>
+              <td><span class="rk-name">{{ s.name }}</span> <span class="rk-meta">{{ s.code }}・{{ s.industry }}</span></td>
               <td class="num">{{ fmt(s.close, 2) }}</td>
               <td class="num" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</td>
               <td class="num" v-if="rankTab === 'value'">{{ fmt((s.value || 0) / 1e8, 1) }}</td>
-              <td class="num" v-if="rankTab === 'inst'" :class="pnClass(s.netShares)">{{ sign(s.netLots, 0) }}</td>
-              <td class="num" v-if="rankTab === 'inst'" :class="pnClass(s.netShares)">{{ sign(s.estAmount, 2) }}</td>
             </tr>
           </tbody>
         </table>
@@ -759,6 +806,8 @@ createApp({
     const rankTab = ref('value'); // 'value' | 'up' | 'down' | 'inst'（法人買賣超合併）
     const instType = ref('total'); // 法人別：'total'合計 | 'foreign'外資 | 'trust'投信 | 'dealer'自營商
     const rankViewMode = ref('pyramid'); // 法人買賣超呈現：'pyramid'金字塔 | 'table'表格
+    const rankSortKey = ref('estAmount'); // 法人買賣超表格排序欄位：'estAmount'金額 | 'netLots'張數 | 'changePct'漲跌幅 | 'close'收盤
+    const rankSortDir = ref('desc'); // 'desc' | 'asc'
     const instSnap = ref({ date: '', stocks: {} }); // 每日快照的三大法人買賣超（張）
     const rankExcludeETF = ref(true);
     const selectedIndustry = ref(null);
@@ -1530,19 +1579,48 @@ createApp({
           .sort((a, b) => a.changePct - b.changePct).slice(0, 20);
       }
       if (rankTab.value === 'inst') {
-        const withInst = list.map(s => {
-          const lots = instLotsFor(s.code);
-          if (lots == null || lots === 0) return null;
-          // estAmount(億) = 張 × 1000股 × 收盤 / 1e8 = 張 × 收盤 / 1e5
-          return { ...s, netLots: lots, netShares: lots * 1000, estAmount: (lots * (s.close || 0)) / 1e5 };
-        }).filter(Boolean);
+        const w = instWith.value;
         // 買超與賣超合併呈現：買超由大到小在上，賣超由小到大在下，中間最窄形成金字塔
-        const buys = withInst.filter(s => s.netLots > 0).sort((a, b) => b.netLots - a.netLots).slice(0, 15);
-        const sells = withInst.filter(s => s.netLots < 0).sort((a, b) => a.netLots - b.netLots).slice(0, 15).reverse();
+        const buys = w.filter(s => s.netLots > 0).sort((a, b) => b.netLots - a.netLots).slice(0, 15);
+        const sells = w.filter(s => s.netLots < 0).sort((a, b) => a.netLots - b.netLots).slice(0, 15).reverse();
         return [...buys, ...sells];
       }
       return [];
     });
+
+    // 法人買賣超基礎資料：全市場個股帶入買賣超張數與估計金額（估算：張 × 收盤 / 1e5 = 億）
+    const instWith = computed(() =>
+      rankFiltered.value.map(s => {
+        const lots = instLotsFor(s.code);
+        if (lots == null || lots === 0) return null;
+        return { ...s, netLots: lots, netShares: lots * 1000, estAmount: (lots * (s.close || 0)) / 1e5 };
+      }).filter(Boolean)
+    );
+
+    // 法人買賣超「表格模式」：買超前 20 + 賣超前 20，依點選的表頭欄位排序
+    const instTableRows = computed(() => {
+      const w = instWith.value;
+      const buys = w.filter(s => s.netLots > 0).sort((a, b) => b.netLots - a.netLots).slice(0, 20);
+      const sells = w.filter(s => s.netLots < 0).sort((a, b) => a.netLots - b.netLots).slice(0, 20);
+      const pool = [...buys, ...sells];
+      const key = rankSortKey.value;
+      const dir = rankSortDir.value === 'asc' ? 1 : -1;
+      const val = s => {
+        const v = key === 'netLots' ? s.netLots
+          : key === 'changePct' ? s.changePct
+          : key === 'close' ? s.close
+          : s.estAmount;
+        return v == null ? -Infinity : v;
+      };
+      return [...pool].sort((a, b) => (val(a) - val(b)) * dir);
+    });
+    function sortInst(key) {
+      if (rankSortKey.value === key) rankSortDir.value = rankSortDir.value === 'desc' ? 'asc' : 'desc';
+      else { rankSortKey.value = key; rankSortDir.value = 'desc'; }
+    }
+    function sortArrow(key) {
+      return rankSortKey.value === key ? (rankSortDir.value === 'desc' ? ' ▼' : ' ▲') : '';
+    }
 
     // 金字塔長條的最大金額（億），用來換算每列長條寬度
     const rankMaxAmount = computed(() => {
@@ -1815,6 +1893,7 @@ createApp({
       snapshot, snapshotErrors, snapshotLoading, fetchMarketSnapshot,
       fundFlowTab, excludeETF, rankTab, rankExcludeETF,
       instType, rankViewMode, instSnap, instTypeLabel, instTypeHasData, barPct,
+      rankSortKey, rankSortDir, instTableRows, sortInst, sortArrow,
       hasTpexData, hasInstData, topIndustriesForFlow, sectorTable, marketBreadth, rankRows,
       selectedIndustry, industryStocks, industryModalTotal, openIndustry, closeIndustry,
       news, newsPresets, newsVideoId, setNewsPreset, saveNews,

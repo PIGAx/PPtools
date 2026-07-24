@@ -6,7 +6,10 @@
    主題規則：
      - 預設跟隨系統（prefers-color-scheme）
      - html[data-theme="dark" / "light"] 由 pp-theme.js 強制覆寫
+   字體：Latin 用 Inter、中文用 Noto Sans TC（跨系統一致的乾淨字面），
+   下載失敗時退回系統字體。display=swap 先以系統字顯示、字體到位再替換。
    ════════════════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
 
 :root {
   /* 色彩 — 淺色（純白桌面） */
@@ -101,7 +104,7 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro TC', 'Segoe UI', system-ui, 'PingFang TC', 'Noto Sans TC', sans-serif;
+  font-family: 'Inter', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, 'SF Pro TC', 'Segoe UI', system-ui, 'PingFang TC', sans-serif;
   background: var(--bg-base);
   color: var(--text);
   line-height: 1.55;
