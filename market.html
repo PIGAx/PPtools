@@ -102,30 +102,25 @@
     .pyr-lots { display: none; }
   }
 
-  /* 買賣超合併金字塔：中央軸線，買超（紅）向右、賣超（綠）向左 */
-  .pyr-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; justify-content: center; font-size: 11.5px; color: var(--text-muted); padding: 2px 0 8px; }
-  .pyr-legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
-  .pyr-legend .dot.buy { background: var(--red); }
-  .pyr-legend .dot.sell { background: var(--green); }
-  .pyr-legend-note { opacity: .75; }
-  .pyr-row2 {
-    display: grid; grid-template-columns: 24px 130px auto minmax(24px, 1fr) 1px minmax(24px, 1fr) auto;
-    align-items: center; gap: 6px; padding: 4px 2px; border-radius: 6px; transition: background .15s;
-  }
-  .pyr-row2:hover { background: var(--surface-alt); }
-  .pyr-lbl { display: flex; align-items: baseline; gap: 5px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .pyr-lbl.sellside { justify-content: flex-end; text-align: right; }
-  .pyr-lbl.buyside { justify-content: flex-start; }
-  .pyr-lbl .chg { font-size: 10.5px; font-weight: 600; }
-  .pyr-track { position: relative; height: 17px; }
-  .pyr-b { position: absolute; top: 0; height: 100%; min-width: 2px; transition: width .35s cubic-bezier(.32, .72, .28, 1); }
-  .pyr-b.buy { left: 0; border-radius: 0 4px 4px 0; background: linear-gradient(90deg, color-mix(in srgb, var(--red) 55%, transparent), var(--red)); }
-  .pyr-b.sell { right: 0; border-radius: 4px 0 0 4px; background: linear-gradient(270deg, color-mix(in srgb, var(--green) 55%, transparent), var(--green)); }
-  .pyr-axis { width: 1px; align-self: stretch; min-height: 17px; background: var(--stroke); }
-  @media (max-width: 640px) {
-    .pyr-row2 { grid-template-columns: 18px 78px auto minmax(16px, 1fr) 1px minmax(16px, 1fr) auto; gap: 4px; }
-    .pyr-lbl { font-size: 11px; }
-    .pyr-lbl .chg { display: none; }
+  /* 買賣超金字塔：買超前15、賣超前15 左右兩欄併排，各自一列一條橫向長條 */
+  .pyr-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 4px; }
+  .pyr-col { min-width: 0; }
+  .pyr-col-head { font-size: 12px; font-weight: 700; color: var(--text-muted); padding: 2px 2px 8px; display: flex; align-items: center; border-bottom: 1px solid var(--stroke); margin-bottom: 4px; }
+  .pyr-col-head .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+  .pyr-col-head .dot.buy { background: var(--red); }
+  .pyr-col-head .dot.sell { background: var(--green); }
+  .qrow { display: grid; grid-template-columns: 22px minmax(78px, 30%) 1fr auto; align-items: center; gap: 8px; padding: 4px 2px; border-radius: 6px; transition: background .15s; }
+  .qrow:hover { background: var(--surface-alt); }
+  .qtrack { position: relative; height: 16px; min-width: 0; }
+  .qbar { position: absolute; left: 0; top: 0; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; transition: width .35s cubic-bezier(.32, .72, .28, 1); }
+  .qbar.buy { background: linear-gradient(90deg, color-mix(in srgb, var(--red) 55%, transparent), var(--red)); }
+  .qbar.sell { background: linear-gradient(90deg, color-mix(in srgb, var(--green) 55%, transparent), var(--green)); }
+  .qlbl { display: flex; align-items: baseline; gap: 6px; justify-content: flex-end; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .qlbl .chg { font-size: 10.5px; font-weight: 600; }
+  @media (max-width: 760px) {
+    .pyr-cols { grid-template-columns: 1fr; gap: 8px; }
+    .qrow { grid-template-columns: 20px minmax(70px, 34%) 1fr auto; gap: 6px; }
+    .qlbl .chg { display: none; }
   }
 
   /* 兩欄卡片（資金流向／類股漲跌） */
@@ -414,37 +409,39 @@
         ⚠ {{ instTypeLabel }}買賣超資料暫時無法取得（投信／自營商拆分需每日快照，尚未產生時請稍候或按「全部更新」）
       </div>
 
-      <!-- 金字塔：買超（紅，向右）與賣超（綠，向左）以中央軸線合併呈現，含當日漲跌幅 -->
-      <div v-else-if="rankTab === 'inst' && rankViewMode === 'pyramid' && rankRows.length" class="pyramid">
-        <div class="pyr-legend">
-          <span><i class="dot buy"></i>買超</span>
-          <span><i class="dot sell"></i>賣超</span>
-          <span class="pyr-legend-note">數字為估計金額（億）· 百分比為當日漲跌幅</span>
+      <!-- 金字塔：買超（前15）與賣超（前15）左右兩欄併排，長條依估計金額、右側附漲跌幅與金額 -->
+      <div v-else-if="rankTab === 'inst' && (instBuys.length || instSells.length)" class="pyr-cols">
+        <div class="pyr-col">
+          <div class="pyr-col-head"><i class="dot buy"></i>買超 前 {{ instBuys.length }}</div>
+          <div v-for="(s, i) in instBuys" :key="s.market + s.code" class="qrow">
+            <div class="pyr-rank">{{ i + 1 }}</div>
+            <div class="pyr-name">
+              <span class="pyr-title">{{ s.name }}</span>
+              <span class="pyr-code">{{ s.code }}・{{ s.industry }}</span>
+            </div>
+            <div class="qtrack"><div class="qbar buy" :style="{ width: barPct(s.estAmount) + '%' }"></div></div>
+            <div class="qlbl">
+              <span class="chg" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</span>
+              <span class="up">{{ sign(s.estAmount, 2) }}</span>
+            </div>
+          </div>
+          <div v-if="!instBuys.length" class="empty-note">目前無買超資料</div>
         </div>
-        <div v-for="(s, i) in rankRows" :key="s.market + s.code" class="pyr-row2">
-          <div class="pyr-rank">{{ i + 1 }}</div>
-          <div class="pyr-name">
-            <span class="pyr-title">{{ s.name }}</span>
-            <span class="pyr-code">{{ s.code }}・{{ s.industry }}</span>
+        <div class="pyr-col">
+          <div class="pyr-col-head"><i class="dot sell"></i>賣超 前 {{ instSells.length }}</div>
+          <div v-for="(s, i) in instSells" :key="s.market + s.code" class="qrow">
+            <div class="pyr-rank">{{ i + 1 }}</div>
+            <div class="pyr-name">
+              <span class="pyr-title">{{ s.name }}</span>
+              <span class="pyr-code">{{ s.code }}・{{ s.industry }}</span>
+            </div>
+            <div class="qtrack"><div class="qbar sell" :style="{ width: barPct(s.estAmount) + '%' }"></div></div>
+            <div class="qlbl">
+              <span class="chg" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</span>
+              <span class="down">{{ sign(s.estAmount, 2) }}</span>
+            </div>
           </div>
-          <!-- 賣超側標籤 -->
-          <div class="pyr-lbl sellside" v-if="s.netLots < 0">
-            <span class="down">{{ sign(s.estAmount, 2) }}</span>
-            <span class="chg" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</span>
-          </div>
-          <div v-else></div>
-          <!-- 賣超軌道 -->
-          <div class="pyr-track"><div v-if="s.netLots < 0" class="pyr-b sell" :style="{ width: barPct(s.estAmount) + '%' }"></div></div>
-          <!-- 中央軸 -->
-          <div class="pyr-axis"></div>
-          <!-- 買超軌道 -->
-          <div class="pyr-track"><div v-if="s.netLots > 0" class="pyr-b buy" :style="{ width: barPct(s.estAmount) + '%' }"></div></div>
-          <!-- 買超側標籤 -->
-          <div class="pyr-lbl buyside" v-if="s.netLots > 0">
-            <span class="chg" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</span>
-            <span class="up">{{ sign(s.estAmount, 2) }}</span>
-          </div>
-          <div v-else></div>
+          <div v-if="!instSells.length" class="empty-note">目前無賣超資料</div>
         </div>
       </div>
 
@@ -1597,6 +1594,10 @@ createApp({
       }).filter(Boolean)
     );
 
+    // 金字塔（併排兩欄）：買超前 15、賣超前 15，皆依買賣超張數大小排序
+    const instBuys = computed(() => instWith.value.filter(s => s.netLots > 0).sort((a, b) => b.netLots - a.netLots).slice(0, 15));
+    const instSells = computed(() => instWith.value.filter(s => s.netLots < 0).sort((a, b) => a.netLots - b.netLots).slice(0, 15));
+
     // 法人買賣超「表格模式」：買超前 20 + 賣超前 20，依點選的表頭欄位排序
     const instTableRows = computed(() => {
       const w = instWith.value;
@@ -1622,10 +1623,10 @@ createApp({
       return rankSortKey.value === key ? (rankSortDir.value === 'desc' ? ' ▼' : ' ▲') : '';
     }
 
-    // 金字塔長條的最大金額（億），用來換算每列長條寬度
+    // 金字塔長條的最大金額（億），用來換算每列長條寬度（買賣兩欄共用同一尺度，方便互相比較）
     const rankMaxAmount = computed(() => {
       let m = 0;
-      for (const s of rankRows.value) { const a = Math.abs(s.estAmount || 0); if (a > m) m = a; }
+      for (const s of [...instBuys.value, ...instSells.value]) { const a = Math.abs(s.estAmount || 0); if (a > m) m = a; }
       return m || 1;
     });
     function barPct(amount) {
@@ -1893,7 +1894,7 @@ createApp({
       snapshot, snapshotErrors, snapshotLoading, fetchMarketSnapshot,
       fundFlowTab, excludeETF, rankTab, rankExcludeETF,
       instType, rankViewMode, instSnap, instTypeLabel, instTypeHasData, barPct,
-      rankSortKey, rankSortDir, instTableRows, sortInst, sortArrow,
+      rankSortKey, rankSortDir, instTableRows, instBuys, instSells, sortInst, sortArrow,
       hasTpexData, hasInstData, topIndustriesForFlow, sectorTable, marketBreadth, rankRows,
       selectedIndustry, industryStocks, industryModalTotal, openIndustry, closeIndustry,
       news, newsPresets, newsVideoId, setNewsPreset, saveNews,
