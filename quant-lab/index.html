@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>量化策略實驗室 Quant Strategy Lab</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0d131f;
+  --panel:#151d2d;
+  --panel2:#1b2537;
+  --line:#28344a;
+  --ink:#e6ecf6;
+  --ink-dim:#8b98ad;
+  --amber:#e8b04b;        /* 行情紙帶琥珀色 - 主強調色 */
+  --tw-up:#e5484d;        /* 台股慣例:紅漲 */
+  --tw-down:#2fa66c;      /* 台股慣例:綠跌 */
+  --blue:#5b8def;
+  --radius:10px;
+  --mono:"SF Mono","Cascadia Code","JetBrains Mono",Consolas,"Courier New",monospace;
+  --sans:"PingFang TC","Microsoft JhengHei","Noto Sans TC",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.6}
+
+/* ── 頂部行情紙帶 ── */
+.tape{background:#0a0f18;border-bottom:1px solid var(--line);overflow:hidden;white-space:nowrap;font-family:var(--mono);font-size:12px;padding:6px 0;color:var(--ink-dim)}
+.tape span{margin-right:34px}
+.tape b{color:var(--amber);font-weight:600}
+.tape .up{color:var(--tw-up)} .tape .dn{color:var(--tw-down)}
+
+header{padding:22px 28px 14px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+header h1{font-size:21px;letter-spacing:.06em;font-weight:700}
+header h1 em{color:var(--amber);font-style:normal;font-family:var(--mono);font-size:14px;margin-left:8px;letter-spacing:.12em}
+header .save-state{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-dim)}
+header .save-state.ok::before{content:"●";color:var(--tw-down);margin-right:5px}
+header .save-state.mem::before{content:"○";color:var(--amber);margin-right:5px}
+
+/* ── 頁籤 ── */
+nav{display:flex;gap:4px;padding:0 28px;border-bottom:1px solid var(--line)}
+nav button{background:none;border:none;color:var(--ink-dim);padding:10px 16px;font-size:14px;cursor:pointer;border-bottom:2px solid transparent;font-family:var(--sans)}
+nav button.active{color:var(--amber);border-bottom-color:var(--amber);font-weight:600}
+nav button:hover{color:var(--ink)}
+
+main{padding:22px 28px 60px;max-width:1180px;margin:0 auto}
+.tab{display:none}.tab.show{display:block}
+
+/* ── 通用元件 ── */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:16px}
+.card h3{font-size:15px;margin-bottom:12px;color:var(--amber);letter-spacing:.04em}
+label{display:block;font-size:12px;color:var(--ink-dim);margin:10px 0 4px}
+input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--ink);padding:8px 10px;font-size:13px;font-family:var(--sans)}
+textarea{font-family:var(--mono);font-size:12px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:-1px}
+button.btn{background:var(--amber);color:#1a1200;border:none;border-radius:6px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans)}
+button.btn:hover{filter:brightness(1.1)}
+button.btn.ghost{background:transparent;color:var(--ink-dim);border:1px solid var(--line)}
+button.btn.ghost:hover{color:var(--ink);border-color:var(--ink-dim)}
+button.btn.danger{background:transparent;color:var(--tw-up);border:1px solid var(--tw-up)}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.row3{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+
+/* ── 策略卡片 ── */
+.strat{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:border-color .15s}
+.strat:hover{border-color:var(--amber)}
+.strat .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.strat .name{font-weight:700;font-size:15px}
+.strat .meta{font-size:12px;color:var(--ink-dim);margin-top:4px}
+.pill{font-size:11px;padding:2px 9px;border-radius:99px;border:1px solid var(--line);color:var(--ink-dim);font-family:var(--mono)}
+.pill.cat{color:var(--blue);border-color:var(--blue)}
+.pill.s-idea{color:var(--amber);border-color:var(--amber)}
+.pill.s-test{color:var(--blue);border-color:var(--blue)}
+.pill.s-live{color:var(--tw-down);border-color:var(--tw-down)}
+.pill.s-arch{color:var(--ink-dim)}
+.pill.mkt-TW{color:var(--tw-up);border-color:var(--tw-up)}
+.pill.mkt-US{color:var(--tw-down);border-color:var(--tw-down)}
+.filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.filters select{width:auto}
+.empty{color:var(--ink-dim);text-align:center;padding:40px;border:1px dashed var(--line);border-radius:var(--radius)}
+
+/* ── 回測結果 ── */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:14px 0}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.stat .k{font-size:11px;color:var(--ink-dim)}
+.stat .v{font-family:var(--mono);font-size:17px;font-weight:700;margin-top:2px}
+.stat .v.pos{color:var(--tw-up)}   /* 台股慣例:獲利=紅 */
+.stat .v.neg{color:var(--tw-down)}
+.chart-wrap{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px;height:320px;position:relative}
+pre.code{background:#0a0f18;border:1px solid var(--line);border-radius:8px;padding:14px;font-family:var(--mono);font-size:12px;overflow-x:auto;white-space:pre;line-height:1.5;max-height:520px;overflow-y:auto}
+.hint{font-size:12px;color:var(--ink-dim);margin-top:8px}
+.hint a{color:var(--blue)}
+table.src{width:100%;border-collapse:collapse;font-size:13px}
+table.src th,table.src td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
+table.src th{color:var(--ink-dim);font-size:12px;font-weight:600}
+table.src td code{font-family:var(--mono);font-size:11.5px;color:var(--amber);word-break:break-all}
+table.src a{color:var(--blue);text-decoration:none}
+dialog{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:22px;width:min(680px,92vw);max-height:88vh;overflow-y:auto}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.dlg-actions{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
+.log-item{font-size:12px;font-family:var(--mono);color:var(--ink-dim);padding:6px 0;border-bottom:1px dashed var(--line)}
+
+/* ── 市場總覽(TradingView 風格) ── */
+.mkt-grid{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(280px,1fr);gap:16px}
+@media(max-width:900px){.mkt-grid{grid-template-columns:1fr}}
+.feat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+.feat .head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.feat .sym{font-size:13px;font-family:var(--mono);color:var(--ink-dim)}
+.feat .name{font-size:18px;font-weight:700}
+.feat .px{font-size:30px;font-family:var(--mono);font-weight:700;margin-top:4px}
+.feat .chg{font-size:14px;font-family:var(--mono);margin-left:10px}
+.feat .ranges{display:flex;gap:4px;margin:12px 0 8px}
+.feat .ranges button{background:none;border:1px solid transparent;color:var(--ink-dim);font-family:var(--mono);font-size:12px;padding:4px 10px;border-radius:6px;cursor:pointer}
+.feat .ranges button.on{color:var(--amber);border-color:var(--line);background:var(--panel2)}
+.feat .chartbox{height:340px;position:relative}
+.idx-list{display:flex;flex-direction:column;gap:8px}
+.idx-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;display:grid;grid-template-columns:1fr 84px auto;align-items:center;gap:10px;cursor:pointer;transition:border-color .15s}
+.idx-card:hover,.idx-card.on{border-color:var(--amber)}
+.idx-card .nm{font-weight:600;font-size:13.5px}
+.idx-card .tk{font-family:var(--mono);font-size:11px;color:var(--ink-dim)}
+.idx-card canvas{width:84px;height:30px}
+.idx-card .pxbox{text-align:right;font-family:var(--mono)}
+.idx-card .lp{font-size:14px;font-weight:700}
+.idx-card .cp{font-size:12px}
+.c-up{color:var(--tw-up)} .c-dn{color:var(--tw-down)}
+.mkt-note{margin-top:14px}
+@media(max-width:640px){main,header,nav{padding-left:14px;padding-right:14px}}
+</style>
+</head>
+<body>
+
+<div class="tape" id="tape"></div>
+
+<header>
+  <h1>量化策略實驗室<em>QUANT STRATEGY LAB</em></h1>
+  <span class="save-state" id="saveState">載入中…</span>
+</header>
+
+<nav>
+  <button class="active" data-tab="market">📈 市場總覽</button>
+  <button data-tab="vault">📓 策略庫</button>
+  <button data-tab="backtest">🧪 回測室</button>
+  <button data-tab="script">🐍 腳本產生器</button>
+  <button data-tab="pine">🌲 Pine Script</button>
+  <button data-tab="sync">⚙️ 同步與通知</button>
+  <button data-tab="sources">🔗 資料來源</button>
+</nav>
+
+<main>
+
+<!-- ═══════════ 市場總覽 ═══════════ -->
+<section class="tab show" id="tab-market">
+  <div class="empty" id="mktEmpty" style="display:none">
+    尚無價格資料。部署到 GitHub Pages 並在 Actions 手動跑一次「Daily Signal Scan」後,
+    這裡就會出現市場總覽(之後每個交易日收盤自動更新)。<br>
+    <span style="font-size:12px">Claude 預覽環境無法讀取 repo 資料,屬正常現象。</span>
+  </div>
+  <div class="mkt-grid" id="mktGrid" style="display:none">
+    <div class="feat">
+      <div class="head">
+        <span class="name" id="ftName">—</span>
+        <span class="sym" id="ftSym"></span>
+        <span class="sym" id="ftUpd" style="margin-left:auto"></span>
+      </div>
+      <div><span class="px" id="ftPx">—</span><span class="chg" id="ftChg"></span></div>
+      <div class="ranges" id="ftRanges">
+        <button data-r="22">1M</button><button data-r="66">3M</button>
+        <button data-r="126" class="on">6M</button><button data-r="252">1Y</button>
+        <button data-r="0">3Y</button>
+      </div>
+      <div class="chartbox"><canvas id="ftChart"></canvas></div>
+    </div>
+    <div class="idx-list" id="idxList"></div>
+  </div>
+  <p class="hint mkt-note" id="mktNote" style="display:none">
+    點左側卡片切換主圖。資料為還原日線(GitHub Actions 每交易日收盤後更新);
+    台股與台幣採紅漲綠跌,美股採 green-up。要看即時盤中走勢請開
+    <a href="https://tw.tradingview.com" target="_blank">TradingView</a>。
+  </p>
+</section>
+
+<!-- ═══════════ 策略庫 ═══════════ -->
+<section class="tab" id="tab-vault">
+  <div class="filters">
+    <button class="btn" onclick="openEditor()">＋ 新增策略</button>
+    <select id="fCat" onchange="renderVault()">
+      <option value="">全部類別</option>
+      <option>季節性</option><option>籌碼面</option><option>技術線型</option>
+      <option>動能</option><option>事件驅動/除權息</option><option>其他</option>
+    </select>
+    <select id="fMkt" onchange="renderVault()">
+      <option value="">全部市場</option><option value="TW">台股</option><option value="US">美股</option><option value="BOTH">台+美</option>
+    </select>
+    <select id="fStatus" onchange="renderVault()">
+      <option value="">全部狀態</option><option value="idea">💡 發想</option>
+      <option value="test">🧪 回測中</option><option value="live">✅ 實盤</option><option value="arch">🗄️ 封存</option>
+    </select>
+    <button class="btn ghost" onclick="exportData()">匯出 JSON</button>
+    <button class="btn ghost" onclick="document.getElementById('importFile').click()">匯入 JSON</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(this)">
+  </div>
+  <div id="stratList"></div>
+</section>
+
+<!-- ═══════════ 回測室 ═══════════ -->
+<section class="tab" id="tab-backtest">
+  <div class="card">
+    <h3>① 載入價格資料</h3>
+    <div class="row3">
+      <div style="grid-column:span 2">
+        <label>從自動資料庫選擇(GitHub Actions 每日更新,3 年還原日線)</label>
+        <select id="btTicker"><option value="">載入中…</option></select>
+      </div>
+      <div style="align-self:end;display:flex;gap:8px">
+        <button class="btn" onclick="loadTicker()">載入標的</button>
+        <button class="btn ghost" onclick="loadSample()">合成範例</button>
+      </div>
+    </div>
+    <p class="hint" id="dataInfo" style="margin-top:8px">想加標的到資料庫:編輯 repo 的 <code style="color:var(--amber)">config/watchlist.json</code>,下次掃描自動納入。</p>
+    <details style="margin-top:10px">
+      <summary class="hint" style="cursor:pointer">或手動貼上 CSV(Yahoo Finance 格式,備援用)</summary>
+      <textarea id="csvInput" rows="5" style="margin-top:8px" placeholder="Date,Open,High,Low,Close,Adj Close,Volume&#10;2023-01-03,384.37,386.43,377.83,380.82,373.51,74850700&#10;..."></textarea>
+      <button class="btn ghost" style="margin-top:8px" onclick="loadCSV()">解析 CSV</button>
+    </details>
+  </div>
+
+  <div class="card">
+    <h3>② 設定策略參數</h3>
+    <div class="row3">
+      <div>
+        <label>策略類型</label>
+        <select id="btStrategy" onchange="renderParamInputs()">
+          <option value="ma_cross">均線交叉(技術線型)</option>
+          <option value="momentum">動能:N 日報酬為正持有</option>
+          <option value="breakout">突破:N 日新高進場 / M 日新低出場</option>
+          <option value="seasonal">季節性:僅持有指定月份</option>
+        </select>
+      </div>
+      <div id="paramBox" style="display:contents"></div>
+      <div>
+        <label>手續費+滑價(單邊 %)</label>
+        <input type="number" id="btFee" value="0.15" step="0.01">
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn" onclick="runBacktest()">▶ 執行回測</button>
+      <select id="btSaveTo" style="width:auto"><option value="">回測結果不連結策略</option></select>
+      <button class="btn ghost" onclick="saveResult()">將結果存入策略紀錄</button>
+    </div>
+  </div>
+
+  <div class="card" id="btResult" style="display:none">
+    <h3>③ 回測結果 <span id="btTitle" style="color:var(--ink-dim);font-size:12px;font-family:var(--mono)"></span></h3>
+    <div class="stats" id="btStats"></div>
+    <div class="chart-wrap"><canvas id="eqChart"></canvas></div>
+    <p class="hint">紅=策略權益曲線(台股慣例:紅為正向),灰=Buy &amp; Hold 基準。指標以日資料計算,Sharpe 採年化(√252)。</p>
+  </div>
+</section>
+
+<!-- ═══════════ 腳本產生器 ═══════════ -->
+<section class="tab" id="tab-script">
+  <div class="card">
+    <h3>Python 回測腳本產生器</h3>
+    <div class="row3">
+      <div>
+        <label>資料來源</label>
+        <select id="pySource">
+          <option value="yf">yfinance(台股加 .TW / 美股)</option>
+          <option value="twse">TWSE OpenAPI(三大法人+個股日成交)</option>
+          <option value="taifex">期交所 TAIFEX(三大法人期貨部位)</option>
+        </select>
+      </div>
+      <div>
+        <label>策略模板</label>
+        <select id="pyStrategy">
+          <option value="ma_cross">均線交叉</option>
+          <option value="momentum">動能</option>
+          <option value="breakout">通道突破</option>
+          <option value="seasonal">季節性月份</option>
+          <option value="dividend">除權息事件研究</option>
+          <option value="chips">籌碼:外資連買 N 日</option>
+        </select>
+      </div>
+      <div>
+        <label>標的代碼</label>
+        <input id="pyTicker" value="2330.TW" placeholder="2330.TW / SPY / AAPL">
+      </div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:10px">
+      <button class="btn" onclick="genScript()">產生腳本</button>
+      <button class="btn ghost" onclick="copyScript()">複製到剪貼簿</button>
+    </div>
+    <pre class="code" id="pyOut" style="margin-top:14px">按「產生腳本」後,這裡會出現可直接在本機執行的 Python 程式碼。
+需先安裝:pip install yfinance pandas numpy matplotlib requests</pre>
+  </div>
+</section>
+
+<!-- ═══════════ Pine Script ═══════════ -->
+<section class="tab" id="tab-pine">
+  <div class="card">
+    <h3>TradingView Pine Script 產生器(v6)</h3>
+    <p class="hint">產生的策略碼可直接貼進 TradingView Pine Editor 回測;內含 <code style="color:var(--amber)">alert()</code> 呼叫,建立警報時選「Order fills / alert() function calls」即可把 JSON 訊號推到 webhook(接 Telegram 見「⚙️ 同步與通知」)。</p>
+    <div class="row3">
+      <div>
+        <label>策略模板</label>
+        <select id="pnStrategy">
+          <option value="ma_cross">均線交叉</option>
+          <option value="momentum">動能(N 日 ROC)</option>
+          <option value="breakout">通道突破(Turtle)</option>
+          <option value="seasonal">季節性月份</option>
+          <option value="rsi_pullback">趨勢中 RSI 回檔買進</option>
+          <option value="screener_alert">純警報:多條件掃描(不下單)</option>
+        </select>
+      </div>
+      <div>
+        <label>台股成本設定</label>
+        <select id="pnMkt">
+          <option value="TW">台股(稅+手續費 ≈ 0.585%/趟)</option>
+          <option value="US">美股(0.1%/趟)</option>
+        </select>
+      </div>
+      <div style="align-self:end">
+        <button class="btn" onclick="genPine()">產生 Pine 腳本</button>
+        <button class="btn ghost" onclick="copyPine()" style="margin-left:6px">複製</button>
+      </div>
+    </div>
+    <pre class="code" id="pnOut" style="margin-top:14px">選好模板後按「產生 Pine 腳本」。</pre>
+  </div>
+  <div class="card">
+    <h3>Pine 實戰備忘</h3>
+    <table class="src">
+      <tr><th>主題</th><th>重點</th></tr>
+      <tr><td>避免前視偏誤</td><td>策略單預設下一根 K 開盤成交(<code>process_orders_on_close=false</code>),與本平台回測室、Python 腳本的 shift(1) 邏輯一致,三邊結果才可互相對照。</td></tr>
+      <tr><td>台股成本</td><td>證交稅 0.3%(賣出)+ 手續費 0.1425%×2,來回約 0.585%;範本已用 <code>commission_value</code> 帶入。</td></tr>
+      <tr><td>警報 JSON</td><td>範本的 alert() 會送出 <code>{"ticker","action","price","time","strategy"}</code>,可被下方 Telegram 轉發服務直接解析。</td></tr>
+      <tr><td>免費方案限制</td><td>免費版警報無 webhook,可改用「電子郵件→Gmail 篩選轉發」或直接採用本專案的 GitHub Actions 掃描(完全免費、不依賴 TV)。</td></tr>
+      <tr><td>Bar Replay 驗證</td><td>寫完先用 Bar Replay 逐根確認訊號位置,再看回測績效,避免 repaint。指標中用到 <code>request.security</code> 時務必加 <code>lookahead=barmerge.lookahead_off</code>。</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════ 同步與通知 ═══════════ -->
+<section class="tab" id="tab-sync">
+  <div class="card">
+    <h3>GitHub 跨裝置同步</h3>
+    <p class="hint">把本頁部署到 GitHub Pages 後,策略資料會存到 repo 內 <code style="color:var(--amber)">data/strategies.json</code>,任何裝置開網頁都能拉取/推送,且每次變更都有 commit 紀錄可回滾。Token 只存在你目前這台裝置的瀏覽器,不會被寫進 repo。</p>
+    <div class="row3">
+      <div><label>Repo(owner/name)</label><input id="ghRepo" placeholder="yourname/quant-lab"></div>
+      <div><label>分支</label><input id="ghBranch" value="main"></div>
+      <div><label>Fine-grained Token(Contents: Read&Write)</label><input id="ghToken" type="password" placeholder="github_pat_..."></div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn ghost" onclick="saveSyncSettings()">儲存設定</button>
+      <button class="btn" onclick="ghPull()">⬇ 從 GitHub 拉取</button>
+      <button class="btn" onclick="ghPush()">⬆ 推送到 GitHub</button>
+      <span class="hint" id="ghStatus" style="align-self:center"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Telegram 通知</h3>
+    <p class="hint">① 在 Telegram 找 <b style="color:var(--amber)">@BotFather</b> → /newbot 取得 Bot Token ② 跟你的 bot 說一句話,開 <code>api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code> 找 chat id ③ 填入下方測試。日常訊號由 repo 內的 GitHub Actions 每日收盤後自動掃描發送(設定見 README)。</p>
+    <div class="row">
+      <div><label>Bot Token</label><input id="tgToken" type="password" placeholder="123456:ABC-DEF..."></div>
+      <div><label>Chat ID</label><input id="tgChat" placeholder="123456789"></div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn ghost" onclick="saveSyncSettings()">儲存設定</button>
+      <button class="btn" onclick="tgTest()">發送測試訊息</button>
+      <span class="hint" id="tgStatus" style="align-self:center"></span>
+    </div>
+    <p class="hint" style="margin-top:10px">⚠ 測試按鈕需在 GitHub Pages 或本機開啟時才能連線(Claude 預覽環境會擋外部請求)。TradingView 付費版 webhook 亦可直接指向 Cloudflare Worker 轉發到 Telegram(Worker 範本在 repo 的 <code>webhook/worker.js</code>)。</p>
+  </div>
+
+  <div class="card">
+    <h3>訊號通知架構</h3>
+    <pre class="code">┌─ 路線 A(免費,主力)────────────────────────────────┐
+│ GitHub Actions 排程(台股 13:45 / 美股收盤後)          │
+│   → scanner.py 讀 config/watchlist.json                │
+│   → yfinance 抓價 → 計算各策略今日訊號                  │
+│   → 訊號翻轉(買↔賣)→ Telegram Bot 推播               │
+└─────────────────────────────────────────────┘
+┌─ 路線 B(TradingView 付費版)─────────────────────────┐
+│ Pine 策略 alert() → TV Webhook                          │
+│   → Cloudflare Worker(webhook/worker.js,免費額度)     │
+│   → Telegram Bot 推播(盤中即時)                        │
+└─────────────────────────────────────────────┘</pre>
+  </div>
+</section>
+
+<!-- ═══════════ 資料來源 ═══════════ -->
+<section class="tab" id="tab-sources">
+  <div class="card">
+    <h3>台股開源資料</h3>
+    <table class="src">
+      <tr><th>來源</th><th>用途</th><th>端點 / 備註</th></tr>
+      <tr><td><a href="https://openapi.twse.com.tw" target="_blank">TWSE OpenAPI</a></td><td>個股日成交、三大法人、融資融券、月營收、本益比</td><td><code>https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL</code>(免金鑰,JSON)</td></tr>
+      <tr><td><a href="https://www.twse.com.tw/zh/trading/historical/fmtqik.html" target="_blank">TWSE 歷史交易</a></td><td>歷史日成交(單月查詢)</td><td><code>https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=YYYYMMDD&stockNo=2330</code></td></tr>
+      <tr><td><a href="https://www.tpex.org.tw" target="_blank">櫃買中心 TPEx</a></td><td>上櫃股票資料</td><td>網站提供 CSV/JSON 下載</td></tr>
+      <tr><td><a href="https://www.taifex.com.tw/cht/3/totalTableDate" target="_blank">期交所 TAIFEX</a></td><td>三大法人期貨/選擇權部位、大額交易人</td><td><code>https://www.taifex.com.tw/cht/3/futContractsDateDown</code>(CSV 下載)</td></tr>
+      <tr><td><a href="https://finmind.github.io/" target="_blank">FinMind</a></td><td>整合式台股 API(還原股價、籌碼、月營收、除權息)</td><td><code>pip install FinMind</code>,免費額度每小時 600 次</td></tr>
+      <tr><td><a href="https://mops.twse.com.tw" target="_blank">公開資訊觀測站</a></td><td>財報、月營收、重大訊息、除權息公告</td><td>股利政策/除權息日程查詢</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3>美股 / 通用</h3>
+    <table class="src">
+      <tr><th>來源</th><th>用途</th><th>端點 / 備註</th></tr>
+      <tr><td>yfinance</td><td>台美股 OHLCV、還原價、股利、拆股</td><td><code>yf.download("2330.TW SPY", start="2015-01-01", auto_adjust=True)</code></td></tr>
+      <tr><td><a href="https://www.tradingview.com" target="_blank">TradingView</a></td><td>看圖、Pine Script 快速驗證想法、Bar Replay</td><td>Pine 策略可先在 TV 回測,確認後再用 Python 精算;圖表可匯出 CSV(付費)</td></tr>
+      <tr><td><a href="https://fred.stlouisfed.org" target="_blank">FRED</a></td><td>總經數據(利率、CPI、失業率)</td><td><code>pandas_datareader</code> 或 fredapi</td></tr>
+      <tr><td><a href="https://www.nasdaq.com/market-activity" target="_blank">Nasdaq / SEC EDGAR</a></td><td>財報、13F 持倉、內部人交易</td><td>EDGAR full-text search 免費</td></tr>
+    </table>
+    <p class="hint">建議工作流:<b style="color:var(--amber)">TradingView 看圖發想 → 記進策略庫 → 回測室快速驗證 → Python 腳本精算(含手續費/稅/滑價)→ 實盤小部位驗證</b>。台股注意:證交稅 0.3%(當沖減半)、除權息需用還原股價回測。</p>
+  </div>
+</section>
+
+</main>
+
+<dialog id="editor"></dialog>
+
+<script>
+/* ════════════════ 資料層:三層備援 ════════════════
+   claude.ai 內 → window.storage
+   GitHub Pages / 本機 → localStorage(可再手動 ⬆⬇ 同步 GitHub repo)
+   都不可用 → 記憶體(提醒匯出 JSON)                          */
+let DB = { strategies: [], settings: {} };
+let backend = 'mem';
+const KEY = 'qlab-data-v1';
+
+async function storeGet(){
+  if(typeof window.storage !== 'undefined'){
+    backend = 'claude';
+    try{ const r = await window.storage.get(KEY); return r ? r.value : null; }
+    catch(e){ return null; } // key 不存在
+  }
+  try{
+    localStorage.setItem('__qlab_t','1'); localStorage.removeItem('__qlab_t');
+    backend = 'local';
+    return localStorage.getItem(KEY);
+  }catch(e){}
+  backend = 'mem';
+  return null;
+}
+async function storeSet(v){
+  try{
+    if(backend === 'claude'){ await window.storage.set(KEY, v); return true; }
+    if(backend === 'local'){ localStorage.setItem(KEY, v); return true; }
+  }catch(e){ console.error('save failed', e); }
+  return false;
+}
+
+async function loadDB(){
+  const raw = await storeGet();
+  if(raw){ try{ DB = JSON.parse(raw); }catch(e){} }
+  DB.settings = DB.settings || {};
+  if(!DB.strategies || DB.strategies.length === 0) seedSamples();
+  updateSaveState();
+  renderVault(); renderSaveToOptions(); renderTape(); fillSyncInputs();
+}
+async function saveDB(){
+  DB.updatedAt = new Date().toISOString();
+  await storeSet(JSON.stringify(DB));
+  updateSaveState();
+}
+function updateSaveState(){
+  const el = document.getElementById('saveState');
+  const n = DB.strategies.length;
+  if(backend === 'mem'){ el.textContent = '僅本次記憶 · 請善用匯出 JSON 或 GitHub 同步'; el.className = 'save-state mem'; }
+  else if(backend === 'local'){ el.textContent = '本機保存 · ' + n + ' 個策略' + (DB.settings.ghRepo ? ' · GitHub: ' + DB.settings.ghRepo : ''); el.className = 'save-state ok'; }
+  else { el.textContent = '已持久保存 · ' + n + ' 個策略'; el.className = 'save-state ok'; }
+}
+
+/* ── 首次使用:植入 5 個範例策略,涵蓋你提到的五大類 ── */
+function seedSamples(){
+  const now = new Date().toISOString();
+  DB.strategies = [
+    {id:id(), name:'台股除息前搶息行情', cat:'事件驅動/除權息', mkt:'TW', status:'idea', created:now,
+     hypothesis:'高殖利率股在除息日前 5~10 個交易日常有買盤推升(搶息),除息後若大盤環境佳,填息機率高的股票可續抱。',
+     entry:'除息日前 T-10 買進殖利率 > 5%、近三年填息率 > 80% 之個股', exit:'除息日前一日賣出(搶息版)或填息後賣出(參與版)',
+     params:'殖利率門檻 5%|回看填息率 3 年|進場 T-10', notes:'資料來源:公開資訊觀測站除權息公告 + FinMind。注意 8/9 月除息旺季集中度風險。需用還原股價驗證。', logs:[]},
+    {id:id(), name:'外資連買 5 日跟單', cat:'籌碼面', mkt:'TW', status:'test', created:now,
+     hypothesis:'外資連續買超且股價站上 20MA 的中大型股,短線動能延續機率高。',
+     entry:'外資連買 ≥5 日、累計買超 > 流通股本 0.3%、收盤 > 20MA', exit:'外資轉賣 2 日或跌破 20MA',
+     params:'連買 5 日|買超佔比 0.3%|均線 20', notes:'TWSE OpenAPI: /fund/T86 三大法人買賣超日報。小心期指結算週的法人調節。', logs:[]},
+    {id:id(), name:'美股 11 月-4 月季節性(Sell in May)', cat:'季節性', mkt:'US', status:'test', created:now,
+     hypothesis:'歷史上 SPY 11 月至隔年 4 月報酬顯著優於 5-10 月,搭配季節性可降低回撤。',
+     entry:'每年 11 月首個交易日買進 SPY', exit:'每年 5 月首個交易日出清,轉持現金或短債',
+     params:'持有月份 11,12,1,2,3,4', notes:'可用回測室的「季節性」策略直接驗證;進階版可加 200MA 濾網。', logs:[]},
+    {id:id(), name:'20 日突破動能(Turtle 簡化版)', cat:'技術線型', mkt:'BOTH', status:'idea', created:now,
+     hypothesis:'價格創 20 日新高代表趨勢啟動,順勢進場並用 10 日新低移動出場,吃趨勢段。',
+     entry:'收盤創 20 日新高', exit:'收盤跌破 10 日新低', params:'進場通道 20|出場通道 10',
+     notes:'適合台指期/美股 ETF。盤整市會被巴,需搭配 ATR 部位控管。回測室選「突破」可直接跑。', logs:[]},
+    {id:id(), name:'月營收 YoY 動能選股', cat:'動能', mkt:'TW', status:'idea', created:now,
+     hypothesis:'月營收 YoY 連續加速且創新高的公司,法人買盤跟進,股價中期動能強。',
+     entry:'每月 10 日營收公布後,篩 YoY > 30% 且連 3 月遞增、營收創 12 月新高', exit:'YoY 轉負或跌破 60MA',
+     params:'YoY 門檻 30%|遞增月數 3', notes:'FinMind TaiwanStockMonthRevenue。注意低基期陷阱與一次性營收。', logs:[]},
+  ];
+  saveDB();
+}
+function id(){ return Math.random().toString(36).slice(2,10); }
+
+/* ════════════════ 頂部紙帶 ════════════════ */
+function renderTape(){
+  const s = DB.strategies;
+  const c = {idea:0,test:0,live:0,arch:0};
+  s.forEach(x=>c[x.status]++);
+  const items = [
+    `<b>QLAB</b> 策略總數 ${s.length}`,
+    `💡 發想 <span class="up">${c.idea}</span>`,
+    `🧪 回測中 <b>${c.test}</b>`,
+    `✅ 實盤 <span class="up">${c.live}</span>`,
+    `🗄️ 封存 ${c.arch}`,
+    `台股紅漲綠跌 · 美股 green-up`,
+    `“Plan the trade, trade the plan.”`
+  ];
+  document.getElementById('tape').innerHTML = items.map(x=>`<span>${x}</span>`).join('');
+}
+
+/* ════════════════ 頁籤 ════════════════ */
+document.querySelectorAll('nav button').forEach(b=>{
+  b.onclick = ()=>{
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('show'));
+    b.classList.add('active');
+    document.getElementById('tab-'+b.dataset.tab).classList.add('show');
+  };
+});
+
+/* ════════════════ 策略庫 CRUD ════════════════ */
+const STATUS_LABEL = {idea:'💡 發想', test:'🧪 回測中', live:'✅ 實盤', arch:'🗄️ 封存'};
+const MKT_LABEL = {TW:'台股', US:'美股', BOTH:'台+美'};
+
+function renderVault(){
+  const fc = document.getElementById('fCat').value;
+  const fm = document.getElementById('fMkt').value;
+  const fs = document.getElementById('fStatus').value;
+  const list = DB.strategies.filter(s =>
+    (!fc || s.cat===fc) && (!fm || s.mkt===fm) && (!fs || s.status===fs));
+  const box = document.getElementById('stratList');
+  if(list.length===0){ box.innerHTML = '<div class="empty">沒有符合條件的策略。點「＋ 新增策略」記下你的第一個想法。</div>'; return; }
+  box.innerHTML = list.map(s=>`
+    <div class="strat" onclick="openEditor('${s.id}')">
+      <div class="top">
+        <span class="name">${esc(s.name)}</span>
+        <span class="pill s-${s.status}">${STATUS_LABEL[s.status]}</span>
+        <span class="pill cat">${esc(s.cat)}</span>
+        <span class="pill mkt-${s.mkt==='BOTH'?'TW':s.mkt}">${MKT_LABEL[s.mkt]}</span>
+        ${s.logs&&s.logs.length?`<span class="pill">📊 ${s.logs.length} 筆回測</span>`:''}
+      </div>
+      <div class="meta">${esc((s.hypothesis||'').slice(0,90))}${(s.hypothesis||'').length>90?'…':''}</div>
+    </div>`).join('');
+  renderTape();
+}
+
+function openEditor(sid){
+  const s = sid ? DB.strategies.find(x=>x.id===sid) : null;
+  const d = document.getElementById('editor');
+  d.innerHTML = `
+    <h3 style="color:var(--amber);margin-bottom:6px">${s?'編輯策略':'新增策略'}</h3>
+    <label>策略名稱</label><input id="eName" value="${s?esc(s.name):''}" placeholder="例:台指期结算週偏空">
+    <div class="row3">
+      <div><label>類別</label><select id="eCat">
+        ${['季節性','籌碼面','技術線型','動能','事件驅動/除權息','其他'].map(c=>`<option ${s&&s.cat===c?'selected':''}>${c}</option>`).join('')}
+      </select></div>
+      <div><label>市場</label><select id="eMkt">
+        <option value="TW" ${s&&s.mkt==='TW'?'selected':''}>台股</option>
+        <option value="US" ${s&&s.mkt==='US'?'selected':''}>美股</option>
+        <option value="BOTH" ${s&&s.mkt==='BOTH'?'selected':''}>台+美</option>
+      </select></div>
+      <div><label>狀態</label><select id="eStatus">
+        ${Object.entries(STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${s&&s.status===k?'selected':''}>${v}</option>`).join('')}
+      </select></div>
+    </div>
+    <label>核心假說(為什麼會賺錢?優勢來源?)</label><textarea id="eHypo" rows="2">${s?esc(s.hypothesis):''}</textarea>
+    <label>進場規則</label><textarea id="eEntry" rows="2">${s?esc(s.entry):''}</textarea>
+    <label>出場規則(停利/停損/時間出場)</label><textarea id="eExit" rows="2">${s?esc(s.exit):''}</textarea>
+    <label>參數(用 | 分隔)</label><input id="eParams" value="${s?esc(s.params):''}" placeholder="均線 20|停損 5%">
+    <label>備註 / 資料來源 / 風險提醒</label><textarea id="eNotes" rows="3">${s?esc(s.notes):''}</textarea>
+    ${s&&s.logs&&s.logs.length?`<label>回測紀錄</label><div>${s.logs.map(l=>`<div class="log-item">${l}</div>`).join('')}</div>`:''}
+    <div class="dlg-actions">
+      ${s?`<button class="btn danger" onclick="delStrat('${s.id}')">刪除</button>`:''}
+      <button class="btn ghost" onclick="document.getElementById('editor').close()">取消</button>
+      <button class="btn" onclick="saveStrat('${s?s.id:''}')">儲存</button>
+    </div>`;
+  d.showModal();
+}
+async function saveStrat(sid){
+  const g = i=>document.getElementById(i).value.trim();
+  if(!g('eName')){ alert('請輸入策略名稱'); return; }
+  const obj = {name:g('eName'),cat:g('eCat'),mkt:g('eMkt'),status:g('eStatus'),
+    hypothesis:g('eHypo'),entry:g('eEntry'),exit:g('eExit'),params:g('eParams'),notes:g('eNotes')};
+  if(sid){ Object.assign(DB.strategies.find(x=>x.id===sid), obj); }
+  else { DB.strategies.unshift({id:id(), created:new Date().toISOString(), logs:[], ...obj}); }
+  await saveDB();
+  document.getElementById('editor').close();
+  renderVault(); renderSaveToOptions();
+}
+async function delStrat(sid){
+  if(!confirm('確定刪除此策略?')) return;
+  DB.strategies = DB.strategies.filter(x=>x.id!==sid);
+  await saveDB();
+  document.getElementById('editor').close();
+  renderVault(); renderSaveToOptions();
+}
+function esc(t){ return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+
+/* ── 匯出/匯入 ── */
+function exportData(){
+  const blob = new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'qlab_backup_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+}
+function importData(inp){
+  const f = inp.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = async e=>{
+    try{ const d = JSON.parse(e.target.result);
+      if(!d.strategies) throw new Error('格式不符');
+      DB = d; await saveDB(); renderVault(); renderSaveToOptions();
+      alert('匯入成功:'+d.strategies.length+' 個策略');
+    }catch(err){ alert('匯入失敗:'+err.message); }
+  };
+  r.readAsText(f);
+}
+
+/* ════════════════ 回測引擎 ════════════════ */
+let PRICES = null; // {dates:[], close:[], high:[], low:[]}
+let lastResult = null;
+let eqChart = null;
+
+const PARAM_DEFS = {
+  ma_cross:[{k:'fast',l:'快線天數',v:20},{k:'slow',l:'慢線天數',v:60}],
+  momentum:[{k:'lookback',l:'動能回看天數',v:120}],
+  breakout:[{k:'inN',l:'進場通道(N 日新高)',v:20},{k:'outN',l:'出場通道(M 日新低)',v:10}],
+  seasonal:[{k:'months',l:'持有月份(逗號分隔)',v:'11,12,1,2,3,4',t:'text'}],
+};
+function renderParamInputs(){
+  const st = document.getElementById('btStrategy').value;
+  document.getElementById('paramBox').innerHTML = PARAM_DEFS[st].map(p=>
+    `<div><label>${p.l}</label><input id="p_${p.k}" type="${p.t||'number'}" value="${p.v}"></div>`).join('');
+}
+renderParamInputs();
+
+function loadCSV(){
+  const txt = document.getElementById('csvInput').value.trim();
+  if(!txt){ alert('請先貼上 CSV 內容'); return; }
+  const lines = txt.split(/\r?\n/).filter(l=>l.trim());
+  const head = lines[0].toLowerCase().split(',').map(h=>h.trim());
+  const di = head.findIndex(h=>h.includes('date'));
+  const ci = head.findIndex(h=>h==='close' || h.includes('adj'));
+  const closeIdx = head.indexOf('close')>=0 ? head.indexOf('close') : ci;
+  const hi = head.indexOf('high'), li = head.indexOf('low');
+  if(di<0 || closeIdx<0){ alert('找不到 Date / Close 欄位,請確認 CSV 格式'); return; }
+  const dates=[],close=[],high=[],low=[];
+  for(let i=1;i<lines.length;i++){
+    const c = lines[i].split(',');
+    const px = parseFloat(c[closeIdx]);
+    if(!c[di] || isNaN(px)) continue;
+    dates.push(c[di].trim()); close.push(px);
+    high.push(hi>=0?parseFloat(c[hi])||px:px);
+    low.push(li>=0?parseFloat(c[li])||px:px);
+  }
+  if(close.length<60){ alert('有效資料不足 60 筆,回測意義有限'); }
+  PRICES = {dates,close,high,low};
+  document.getElementById('dataInfo').textContent = `已載入 ${close.length} 筆:${dates[0]} → ${dates[dates.length-1]}`;
+}
+
+/* 合成範例:幾何布朗運動 + 季節性偏移,5 年日線 */
+function loadSample(){
+  const dates=[],close=[],high=[],low=[];
+  let px = 100;
+  const d = new Date('2021-01-04');
+  let seed = 42;
+  const rnd = ()=>{ seed=(seed*9301+49297)%233280; return seed/233280; };
+  while(dates.length<1260){
+    const dow = d.getDay();
+    if(dow!==0 && dow!==6){
+      const m = d.getMonth()+1;
+      const seasonal = (m>=11||m<=4)?0.0006:-0.0002; // 內建 11-4 月偏多,方便驗證季節性策略
+      const shock = (rnd()+rnd()+rnd()+rnd()-2)*0.012;
+      px *= (1 + seasonal + shock);
+      dates.push(d.toISOString().slice(0,10));
+      close.push(+px.toFixed(2));
+      high.push(+(px*(1+rnd()*0.01)).toFixed(2));
+      low.push(+(px*(1-rnd()*0.01)).toFixed(2));
+    }
+    d.setDate(d.getDate()+1);
+  }
+  PRICES = {dates,close,high,low};
+  document.getElementById('dataInfo').textContent = `已載入合成資料 ${close.length} 筆(內建 11-4 月季節性偏多,可測試季節性策略)`;
+}
+
+function runBacktest(){
+  if(!PRICES){ alert('請先載入資料(可按「載入範例資料」)'); return; }
+  const st = document.getElementById('btStrategy').value;
+  const fee = parseFloat(document.getElementById('btFee').value)/100 || 0;
+  const {dates,close,high,low} = PRICES;
+  const n = close.length;
+  const pos = new Array(n).fill(0); // 0=空手 1=持有(訊號於當日收盤成立,隔日起持有)
+  const gp = k=>document.getElementById('p_'+k).value;
+
+  if(st==='ma_cross'){
+    const f=+gp('fast'), s=+gp('slow');
+    const maF=sma(close,f), maS=sma(close,s);
+    for(let i=1;i<n;i++) pos[i] = (maF[i-1]!=null&&maS[i-1]!=null&&maF[i-1]>maS[i-1])?1:0;
+  } else if(st==='momentum'){
+    const lb=+gp('lookback');
+    for(let i=1;i<n;i++) pos[i] = (i-1>=lb && close[i-1]>close[i-1-lb])?1:0;
+  } else if(st==='breakout'){
+    const inN=+gp('inN'), outN=+gp('outN');
+    let hold=0;
+    for(let i=1;i<n;i++){
+      const j=i-1;
+      if(!hold && j>=inN && close[j] >= Math.max(...high.slice(j-inN,j))) hold=1;
+      else if(hold && j>=outN && close[j] <= Math.min(...low.slice(j-outN,j))) hold=0;
+      pos[i]=hold;
+    }
+  } else if(st==='seasonal'){
+    const months = gp('months').split(',').map(x=>parseInt(x.trim())).filter(x=>x>=1&&x<=12);
+    for(let i=0;i<n;i++){ const m=parseInt(dates[i].slice(5,7)); pos[i]=months.includes(m)?1:0; }
+  }
+
+  // 權益曲線
+  const eq=[1], bh=[1];
+  let trades=0, wins=0, entryEq=null;
+  for(let i=1;i<n;i++){
+    const r = close[i]/close[i-1]-1;
+    let stratR = pos[i]?r:0;
+    if(pos[i]!==pos[i-1]){ stratR -= fee; trades++;
+      if(pos[i]===1) entryEq = eq[eq.length-1]*(1+stratR);
+      else if(entryEq!=null){ if(eq[eq.length-1]*(1+stratR) > entryEq) wins++; entryEq=null; }
+    }
+    eq.push(eq[eq.length-1]*(1+stratR));
+    bh.push(bh[bh.length-1]*(1+r));
+  }
+  // 若最後仍持倉,結算最後一段勝負
+  if(entryEq!=null && eq[eq.length-1]>entryEq) wins++;
+
+  const yrs = n/252;
+  const dailyR = eq.map((v,i)=>i?v/eq[i-1]-1:0).slice(1);
+  const mean = dailyR.reduce((a,b)=>a+b,0)/dailyR.length;
+  const sd = Math.sqrt(dailyR.reduce((a,b)=>a+(b-mean)**2,0)/dailyR.length);
+  const stats = {
+    '總報酬': pct(eq[n-1]-1),
+    '年化報酬 CAGR': pct(Math.pow(eq[n-1],1/yrs)-1),
+    '最大回撤': pct(-maxDD(eq)),
+    'Sharpe(年化)': sd>0?( mean/sd*Math.sqrt(252)).toFixed(2):'—',
+    '交易次數': Math.ceil(trades/2),
+    '勝率': trades? pct(wins/Math.ceil(trades/2)) : '—',
+    'B&H 總報酬': pct(bh[n-1]-1),
+    '曝險比例': pct(pos.reduce((a,b)=>a+b,0)/n),
+  };
+  lastResult = {strategy:st, stats, when:new Date().toISOString().slice(0,16).replace('T',' ')};
+  renderResult(dates, eq, bh, stats, st);
+}
+function sma(arr,p){ const out=new Array(arr.length).fill(null); let s=0;
+  for(let i=0;i<arr.length;i++){ s+=arr[i]; if(i>=p) s-=arr[i-p]; if(i>=p-1) out[i]=s/p; } return out; }
+function maxDD(eq){ let peak=eq[0], dd=0;
+  for(const v of eq){ if(v>peak)peak=v; dd=Math.max(dd,(peak-v)/peak); } return dd; }
+function pct(x){ return (x*100).toFixed(1)+'%'; }
+
+function renderResult(dates, eq, bh, stats, st){
+  document.getElementById('btResult').style.display='block';
+  const names={ma_cross:'均線交叉',momentum:'動能',breakout:'通道突破',seasonal:'季節性'};
+  document.getElementById('btTitle').textContent = '· '+names[st]+' · '+dates[0]+' → '+dates[dates.length-1];
+  document.getElementById('btStats').innerHTML = Object.entries(stats).map(([k,v])=>{
+    let cls=''; const num=parseFloat(v);
+    if(k.includes('報酬')&&!isNaN(num)) cls = num>=0?'pos':'neg';
+    if(k==='最大回撤') cls='neg';
+    return `<div class="stat"><div class="k">${k}</div><div class="v ${cls}">${v}</div></div>`;
+  }).join('');
+  const step = Math.max(1, Math.floor(dates.length/600));
+  const lab=[], d1=[], d2=[];
+  for(let i=0;i<dates.length;i+=step){ lab.push(dates[i]); d1.push(eq[i]); d2.push(bh[i]); }
+  if(eqChart) eqChart.destroy();
+  eqChart = new Chart(document.getElementById('eqChart'), {
+    type:'line',
+    data:{labels:lab, datasets:[
+      {label:'策略', data:d1, borderColor:'#e5484d', borderWidth:1.8, pointRadius:0, tension:.1},
+      {label:'Buy & Hold', data:d2, borderColor:'#8b98ad', borderWidth:1.2, pointRadius:0, borderDash:[4,3], tension:.1},
+    ]},
+    options:{responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{color:'#e6ecf6',font:{size:12}}}},
+      scales:{x:{ticks:{color:'#8b98ad',maxTicksLimit:8},grid:{color:'#28344a'}},
+              y:{ticks:{color:'#8b98ad'},grid:{color:'#28344a'}}}}
+  });
+}
+
+/* ── 將結果寫回策略紀錄 ── */
+function renderSaveToOptions(){
+  const sel = document.getElementById('btSaveTo');
+  sel.innerHTML = '<option value="">回測結果不連結策略</option>' +
+    DB.strategies.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+}
+async function saveResult(){
+  if(!lastResult){ alert('請先執行回測'); return; }
+  const sid = document.getElementById('btSaveTo').value;
+  if(!sid){ alert('請先在下拉選單選擇要連結的策略'); return; }
+  const s = DB.strategies.find(x=>x.id===sid);
+  const line = `[${lastResult.when}] ${lastResult.strategy} | ` +
+    Object.entries(lastResult.stats).map(([k,v])=>`${k} ${v}`).join(' · ');
+  (s.logs = s.logs||[]).unshift(line);
+  if(s.status==='idea') s.status='test';
+  await saveDB(); renderVault();
+  alert('已存入「'+s.name+'」的回測紀錄');
+}
+
+/* ════════════════ Python 腳本產生器 ════════════════ */
+function genScript(){
+  const src = document.getElementById('pySource').value;
+  const st = document.getElementById('pyStrategy').value;
+  const tk = document.getElementById('pyTicker').value.trim() || '2330.TW';
+  document.getElementById('pyOut').textContent = buildScript(src, st, tk);
+}
+function copyScript(){
+  navigator.clipboard.writeText(document.getElementById('pyOut').textContent)
+    .then(()=>alert('已複製')).catch(()=>alert('複製失敗,請手動選取'));
+}
+
+function buildScript(src, st, tk){
+  const head = `# ============================================================
+# Quant Strategy Lab 自動產生 · ${new Date().toISOString().slice(0,10)}
+# 標的: ${tk} | 策略: ${st} | 資料源: ${src}
+# pip install yfinance pandas numpy matplotlib requests
+# ============================================================
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+`;
+  let data = '';
+  if(src==='yf') data = `import yfinance as yf
+
+# auto_adjust=True 使用還原股價(含股利/拆股),回測除權息必備
+df = yf.download("${tk}", start="2015-01-01", auto_adjust=True)
+df = df.droplevel(1, axis=1) if isinstance(df.columns, pd.MultiIndex) else df
+df = df.dropna()
+`;
+  else if(src==='twse') data = `import requests, time
+
+# --- TWSE OpenAPI:全市場個股日成交(當日快照) ---
+day_all = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL").json()
+
+# --- 三大法人買賣超日報(籌碼策略核心資料) ---
+t86 = requests.get("https://openapi.twse.com.tw/v1/fund/T86").json()
+chips = pd.DataFrame(t86)
+
+# --- 個股歷史日成交(逐月抓取範例) ---
+def twse_month(stock_no, yyyymmdd):
+    url = f"https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date={yyyymmdd}&stockNo={stock_no}&response=json"
+    r = requests.get(url).json()
+    cols = ["日期","成交股數","成交金額","開盤價","最高價","最低價","收盤價","漲跌價差","成交筆數"]
+    return pd.DataFrame(r.get("data", []), columns=cols)
+
+frames = []
+stock_no = "${tk.replace('.TW','')}"
+for ym in pd.date_range("2023-01-01", "2026-06-01", freq="MS"):
+    frames.append(twse_month(stock_no, ym.strftime("%Y%m%d")))
+    time.sleep(3)  # 禮貌性延遲,避免被擋
+raw = pd.concat(frames, ignore_index=True)
+# 民國年轉西元 + 數值清洗
+raw["Date"] = pd.to_datetime(raw["日期"].str.split("/").apply(
+    lambda x: f"{int(x[0])+1911}-{x[1]}-{x[2]}"))
+for c in ["開盤價","最高價","最低價","收盤價"]:
+    raw[c] = pd.to_numeric(raw[c].str.replace(",",""), errors="coerce")
+df = raw.set_index("Date")[["開盤價","最高價","最低價","收盤價"]]
+df.columns = ["Open","High","Low","Close"]
+df = df.dropna()
+`;
+  else data = `import requests
+from io import StringIO
+
+# --- 期交所:三大法人期貨部位(CSV 下載) ---
+url = "https://www.taifex.com.tw/cht/3/futContractsDateDown"
+payload = {"queryStartDate": "2025/01/01", "queryEndDate": "2026/06/30",
+           "commodityId": "TXF"}  # TXF=台指期
+r = requests.post(url, data=payload)
+r.encoding = "big5"
+fut = pd.read_csv(StringIO(r.text))
+print(fut.head())
+# 常用欄位:多方未平倉口數/空方未平倉口數 → 外資淨部位 = 多方 - 空方
+# 策略想法:外資台指期淨多單 > 門檻時偏多操作現貨/ETF
+
+# 價格資料仍建議搭配 yfinance:
+import yfinance as yf
+df = yf.download("^TWII", start="2015-01-01", auto_adjust=True)
+df = df.droplevel(1, axis=1) if isinstance(df.columns, pd.MultiIndex) else df
+`;
+
+  const strategies = {
+    ma_cross: `# ── 策略:均線交叉 ──
+FAST, SLOW = 20, 60
+df["fast"] = df["Close"].rolling(FAST).mean()
+df["slow"] = df["Close"].rolling(SLOW).mean()
+df["signal"] = (df["fast"] > df["slow"]).astype(int)`,
+    momentum: `# ── 策略:時間序列動能 ──
+LOOKBACK = 120
+df["mom"] = df["Close"] / df["Close"].shift(LOOKBACK) - 1
+df["signal"] = (df["mom"] > 0).astype(int)`,
+    breakout: `# ── 策略:通道突破(Turtle 簡化) ──
+IN_N, OUT_N = 20, 10
+hh = df["High"].rolling(IN_N).max().shift(1)
+ll = df["Low"].rolling(OUT_N).min().shift(1)
+sig = np.zeros(len(df)); hold = 0
+for i in range(len(df)):
+    if not hold and df["Close"].iloc[i] >= hh.iloc[i]: hold = 1
+    elif hold and df["Close"].iloc[i] <= ll.iloc[i]: hold = 0
+    sig[i] = hold
+df["signal"] = sig`,
+    seasonal: `# ── 策略:季節性月份持有 ──
+HOLD_MONTHS = [11, 12, 1, 2, 3, 4]   # Sell in May
+df["signal"] = df.index.month.isin(HOLD_MONTHS).astype(int)`,
+    dividend: `# ── 策略:除權息事件研究 ──
+# yfinance 股利資料(台股除息日)
+import yfinance as yf
+tkr = yf.Ticker("${tk}")
+divs = tkr.dividends          # index = 除息日
+px = df["Close"]
+
+WINDOW = 10                   # 除息日前後各 10 個交易日
+events = []
+for ex_date in divs.index.tz_localize(None):
+    if ex_date not in px.index: continue
+    loc = px.index.get_loc(ex_date)
+    if loc < WINDOW or loc + WINDOW >= len(px): continue
+    seg = px.iloc[loc-WINDOW: loc+WINDOW+1]
+    events.append((seg / seg.iloc[0] - 1).values)
+
+avg_path = np.nanmean(np.array(events), axis=0)
+plt.plot(range(-WINDOW, WINDOW+1), avg_path*100, color="crimson")
+plt.axvline(0, ls="--", c="gray"); plt.title("除息日前後平均累積報酬 (%)")
+plt.xlabel("相對除息日的交易日"); plt.show()
+# 判讀:t<0 上升=搶息行情存在;t>0 回升斜率=填息速度
+df["signal"] = 0  # 事件研究先看圖,再設計進出場規則
+`,
+    chips: `# ── 策略:外資連買 N 日(需 FinMind 籌碼資料) ──
+# pip install FinMind
+from FinMind.data import DataLoader
+api = DataLoader()   # 免費版可不登入,額度較低
+chip = api.taiwan_stock_institutional_investors(
+    stock_id="${tk.replace('.TW','')}", start_date="2020-01-01")
+foreign = chip[chip["name"] == "Foreign_Investor"].copy()
+foreign["net"] = foreign["buy"] - foreign["sell"]
+foreign["date"] = pd.to_datetime(foreign["date"])
+foreign = foreign.set_index("date")["net"]
+
+N = 5
+streak = (foreign > 0).rolling(N).sum()
+sig = (streak >= N).astype(int).reindex(df.index).ffill().fillna(0)
+df["signal"] = sig`,
+  };
+
+  const engine = `
+
+# ── 回測引擎(訊號隔日生效,含單邊成本) ──
+FEE = 0.0015 + (0.0015 if "${tk}".endswith(".TW") else 0)  # 台股加證交稅約略值
+ret = df["Close"].pct_change().fillna(0)
+pos = df["signal"].shift(1).fillna(0)          # 避免前視偏誤
+cost = pos.diff().abs().fillna(0) * FEE
+strat = pos * ret - cost
+eq = (1 + strat).cumprod(); bh = (1 + ret).cumprod()
+
+yrs = len(df) / 252
+cagr = eq.iloc[-1] ** (1/yrs) - 1
+mdd = (eq / eq.cummax() - 1).min()
+sharpe = strat.mean() / strat.std() * np.sqrt(252) if strat.std() > 0 else 0
+print(f"總報酬 {eq.iloc[-1]-1:+.1%} | CAGR {cagr:+.1%} | MDD {mdd:.1%} | Sharpe {sharpe:.2f}")
+print(f"B&H  {bh.iloc[-1]-1:+.1%} | 曝險 {pos.mean():.0%}")
+
+fig, ax = plt.subplots(figsize=(11,5))
+eq.plot(ax=ax, color="crimson", label="Strategy")
+bh.plot(ax=ax, color="gray", ls="--", label="Buy & Hold")
+ax.legend(); ax.set_title("${tk} — Equity Curve"); plt.tight_layout(); plt.show()
+
+# TODO: 下一步強化
+# 1. walk-forward / 樣本外驗證,避免過擬合
+# 2. 參數敏感度熱力圖(不同 FAST/SLOW 組合)
+# 3. 加入部位控管(ATR sizing、資金上限)
+`;
+  return head + data + '\n' + (strategies[st]||'') + engine;
+}
+
+/* ════════════════ GitHub 同步 ════════════════ */
+const GH_PATH = 'data/strategies.json';
+const b64e = s => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+const b64d = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g,'')), c=>c.charCodeAt(0)));
+
+function fillSyncInputs(){
+  const s = DB.settings;
+  const set = (i,v)=>{ const el=document.getElementById(i); if(el&&v) el.value=v; };
+  set('ghRepo',s.ghRepo); set('ghBranch',s.ghBranch||'main');
+  set('ghToken',s.ghToken); set('tgToken',s.tgToken); set('tgChat',s.tgChat);
+}
+async function saveSyncSettings(){
+  const g = i=>document.getElementById(i).value.trim();
+  Object.assign(DB.settings, {ghRepo:g('ghRepo'), ghBranch:g('ghBranch')||'main',
+    ghToken:g('ghToken'), tgToken:g('tgToken'), tgChat:g('tgChat')});
+  await saveDB();
+  document.getElementById('ghStatus').textContent = '設定已儲存(僅存於本裝置)';
+}
+function ghHeaders(){
+  return {'Authorization':'Bearer '+DB.settings.ghToken,
+          'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
+}
+function ghURL(){
+  return `https://api.github.com/repos/${DB.settings.ghRepo}/contents/${GH_PATH}?ref=${DB.settings.ghBranch||'main'}`;
+}
+async function ghPull(){
+  await saveSyncSettings();
+  const st = document.getElementById('ghStatus');
+  if(!DB.settings.ghRepo || !DB.settings.ghToken){ st.textContent='請先填 Repo 與 Token'; return; }
+  st.textContent = '拉取中…';
+  try{
+    const r = await fetch(ghURL(), {headers: ghHeaders()});
+    if(r.status === 404){ st.textContent = 'repo 內尚無 strategies.json,先「⬆ 推送」建立即可'; return; }
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const j = await r.json();
+    const remote = JSON.parse(b64d(j.content));
+    if(!remote.strategies) throw new Error('遠端檔案格式不符');
+    const keep = DB.settings;               // 設定(含 token)永遠只留本機
+    DB = {strategies: remote.strategies, updatedAt: remote.updatedAt, settings: keep};
+    await saveDB(); renderVault(); renderSaveToOptions();
+    st.textContent = `✓ 已拉取 ${remote.strategies.length} 個策略(遠端更新於 ${remote.updatedAt||'?'})`;
+  }catch(e){ st.textContent = '✗ 拉取失敗:'+e.message+'(Claude 預覽環境會擋外部請求,請在 Pages/本機使用)'; }
+}
+async function ghPush(){
+  await saveSyncSettings();
+  const st = document.getElementById('ghStatus');
+  if(!DB.settings.ghRepo || !DB.settings.ghToken){ st.textContent='請先填 Repo 與 Token'; return; }
+  st.textContent = '推送中…';
+  try{
+    let sha;
+    const r0 = await fetch(ghURL(), {headers: ghHeaders()});
+    if(r0.ok) sha = (await r0.json()).sha;
+    const payload = JSON.stringify({strategies: DB.strategies, updatedAt: new Date().toISOString()}, null, 2);
+    const body = {message: 'qlab sync '+new Date().toISOString().slice(0,16),
+                  content: b64e(payload), branch: DB.settings.ghBranch||'main'};
+    if(sha) body.sha = sha;
+    const r = await fetch(ghURL().split('?')[0], {method:'PUT', headers:ghHeaders(), body:JSON.stringify(body)});
+    if(!r.ok) throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,80));
+    st.textContent = '✓ 已推送 '+DB.strategies.length+' 個策略到 '+DB.settings.ghRepo;
+  }catch(e){ st.textContent = '✗ 推送失敗:'+e.message; }
+}
+
+/* ════════════════ Telegram 測試 ════════════════ */
+async function tgTest(){
+  await saveSyncSettings();
+  const st = document.getElementById('tgStatus');
+  const {tgToken, tgChat} = DB.settings;
+  if(!tgToken || !tgChat){ st.textContent='請先填 Bot Token 與 Chat ID'; return; }
+  st.textContent = '發送中…';
+  try{
+    const r = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({chat_id: tgChat,
+        text: '✅ Quant Strategy Lab 測試通知\n目前策略庫:'+DB.strategies.length+' 個策略\n'+new Date().toLocaleString('zh-TW')})
+    });
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.description||('HTTP '+r.status));
+    st.textContent = '✓ 已發送,請查看 Telegram';
+  }catch(e){ st.textContent = '✗ 失敗:'+e.message+'(Claude 預覽環境會擋外部請求)'; }
+}
+
+/* ════════════════ Pine Script 產生器 ════════════════ */
+function genPine(){
+  const st = document.getElementById('pnStrategy').value;
+  const mkt = document.getElementById('pnMkt').value;
+  document.getElementById('pnOut').textContent = buildPine(st, mkt);
+}
+function copyPine(){
+  navigator.clipboard.writeText(document.getElementById('pnOut').textContent)
+    .then(()=>alert('已複製')).catch(()=>alert('複製失敗,請手動選取'));
+}
+function buildPine(st, mkt){
+  const comm = mkt==='TW' ? '0.2925' : '0.05'; // 單邊%:台股 (0.1425*2+0.3)/2≈0.29、美股抓 0.05
+  const head = `//@version=6
+// Quant Strategy Lab 產生 · ${new Date().toISOString().slice(0,10)}
+strategy("${({ma_cross:'QLAB 均線交叉',momentum:'QLAB 動能',breakout:'QLAB 通道突破',seasonal:'QLAB 季節性',rsi_pullback:'QLAB RSI 回檔',screener_alert:'QLAB 多條件警報'})[st]}",
+     overlay=true, initial_capital=1000000,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=95,
+     commission_type=strategy.commission.percent, commission_value=${comm},
+     process_orders_on_close=false)  // 訊號成立→下一根開盤成交,避免前視
+
+// ── 共用:警報 JSON(webhook 用) ──
+alertMsg(action) =>
+    '{"ticker":"' + syminfo.ticker + '","action":"' + action +
+    '","price":' + str.tostring(close) + ',"time":"' + str.format_time(time) +
+    '","strategy":"${st}"}'
+`;
+  const bodies = {
+    ma_cross: `
+fastLen = input.int(20, "快線")
+slowLen = input.int(60, "慢線")
+fastMA = ta.sma(close, fastLen)
+slowMA = ta.sma(close, slowLen)
+plot(fastMA, "Fast", color.new(color.orange, 0))
+plot(slowMA, "Slow", color.new(color.blue, 0))
+
+longSig  = ta.crossover(fastMA, slowMA)
+exitSig  = ta.crossunder(fastMA, slowMA)
+
+if longSig
+    strategy.entry("L", strategy.long)
+    alert(alertMsg("BUY"), alert.freq_once_per_bar_close)
+if exitSig
+    strategy.close("L")
+    alert(alertMsg("SELL"), alert.freq_once_per_bar_close)`,
+    momentum: `
+lookback = input.int(120, "動能回看天數")
+mom = close / close[lookback] - 1
+longSig = mom > 0 and mom[1] <= 0
+exitSig = mom < 0 and mom[1] >= 0
+
+if longSig
+    strategy.entry("L", strategy.long)
+    alert(alertMsg("BUY"), alert.freq_once_per_bar_close)
+if exitSig
+    strategy.close("L")
+    alert(alertMsg("SELL"), alert.freq_once_per_bar_close)`,
+    breakout: `
+inN  = input.int(20, "進場通道:N 日新高")
+outN = input.int(10, "出場通道:M 日新低")
+hh = ta.highest(high, inN)[1]
+ll = ta.lowest(low, outN)[1]
+plot(hh, "Upper", color.new(color.red, 60))
+plot(ll, "Lower", color.new(color.green, 60))
+
+if close >= hh and strategy.position_size == 0
+    strategy.entry("L", strategy.long)
+    alert(alertMsg("BUY"), alert.freq_once_per_bar_close)
+if close <= ll and strategy.position_size > 0
+    strategy.close("L")
+    alert(alertMsg("SELL"), alert.freq_once_per_bar_close)`,
+    seasonal: `
+// Sell in May:預設持有 11 月至隔年 4 月,可自行勾選
+m1  = input.bool(true,  "1 月"),  m2  = input.bool(true,  "2 月")
+m3  = input.bool(true,  "3 月"),  m4  = input.bool(true,  "4 月")
+m5  = input.bool(false, "5 月"),  m6  = input.bool(false, "6 月")
+m7  = input.bool(false, "7 月"),  m8  = input.bool(false, "8 月")
+m9  = input.bool(false, "9 月"),  m10 = input.bool(false, "10 月")
+m11 = input.bool(true,  "11 月"), m12 = input.bool(true,  "12 月")
+hold = switch month
+    1 => m1, 2 => m2, 3 => m3, 4 => m4, 5 => m5, 6 => m6
+    7 => m7, 8 => m8, 9 => m9, 10 => m10, 11 => m11, => m12
+
+if hold and strategy.position_size == 0
+    strategy.entry("L", strategy.long)
+    alert(alertMsg("BUY"), alert.freq_once_per_bar_close)
+if not hold and strategy.position_size > 0
+    strategy.close("L")
+    alert(alertMsg("SELL"), alert.freq_once_per_bar_close)`,
+    rsi_pullback: `
+// 趨勢濾網 + 回檔進場:200MA 之上、RSI 跌破 30 後回升買進
+maLen  = input.int(200, "趨勢均線")
+rsiLen = input.int(14, "RSI 長度")
+buyLv  = input.int(30, "超賣水位")
+tpLv   = input.int(70, "出場水位")
+trendMA = ta.sma(close, maLen)
+r = ta.rsi(close, rsiLen)
+plot(trendMA, "Trend MA", color.new(color.gray, 0))
+
+longSig = close > trendMA and ta.crossover(r, buyLv)
+exitSig = ta.crossover(r, tpLv) or close < trendMA
+
+if longSig
+    strategy.entry("L", strategy.long)
+    alert(alertMsg("BUY"), alert.freq_once_per_bar_close)
+if exitSig and strategy.position_size > 0
+    strategy.close("L")
+    alert(alertMsg("SELL"), alert.freq_once_per_bar_close)`,
+    screener_alert: `
+// 純警報範本:同時滿足多條件時通知,不實際下單
+// 條件:站上 20MA + 20 日新高 + 量增 1.5 倍(可自行增減)
+ma20 = ta.sma(close, 20)
+volMA = ta.sma(volume, 20)
+c1 = close > ma20
+c2 = close >= ta.highest(high, 20)[1]
+c3 = volume > volMA * 1.5
+allHit = c1 and c2 and c3
+plotshape(allHit, style=shape.triangleup, location=location.belowbar,
+     color=color.red, size=size.small)
+
+if allHit and not allHit[1]
+    alert(alertMsg("SCAN_HIT"), alert.freq_once_per_bar_close)
+// 建立警報時:條件選此指標 →「alert() function calls only」
+// 一次可對整個 watchlist 逐一建立,或用 TV 的 Screener + 警報`,
+  };
+  return head + bodies[st] + `
+
+// ══ 使用步驟 ══
+// 1. TradingView → Pine Editor → 貼上 → Add to chart 看回測(Strategy Tester)
+// 2. 右上鬧鐘建立警報 → Condition 選本策略 → alert() function calls only
+// 3. (付費版)Notifications 勾 Webhook URL → 填 Cloudflare Worker 網址即轉發 Telegram
+// 4. 免費版改用 repo 的 GitHub Actions 每日掃描,同樣可收 Telegram`;
+}
+
+/* ════════════════ 市場總覽(TradingView 風格) ════════════════ */
+let MKT = null;               // manifest: data/prices/index.json
+const SERIES_CACHE = {};      // 各標的完整日線快取
+let ftChart = null, ftItem = null, ftRange = 126;
+
+async function loadMarket(){
+  try{
+    const r = await fetch('data/prices/index.json?_=' + Date.now());
+    if(!r.ok) throw new Error('no data');
+    MKT = await r.json();
+    if(!Array.isArray(MKT) || !MKT.length) throw new Error('empty');
+    document.getElementById('mktGrid').style.display = 'grid';
+    document.getElementById('mktNote').style.display = 'block';
+    renderIdxList();
+    setFeatured(MKT[0]);
+    fillTickerSelect();
+  }catch(e){
+    document.getElementById('mktEmpty').style.display = 'block';
+    const sel = document.getElementById('btTicker');
+    if(sel) sel.innerHTML = '<option value="">(資料庫未就緒,請用合成範例或 CSV)</option>';
+  }
+}
+function convUp(m){ return m === 'US' ? false : true; }  // TW/FX:紅漲;US:綠漲
+function chgColor(item){
+  const up = item.chgPct >= 0;
+  if(convUp(item.market)) return up ? 'var(--tw-up)' : 'var(--tw-down)';
+  return up ? 'var(--tw-down)' : 'var(--tw-up)';
+}
+function chgHex(item){
+  const up = item.chgPct >= 0;
+  if(convUp(item.market)) return up ? '#e5484d' : '#2fa66c';
+  return up ? '#2fa66c' : '#e5484d';
+}
+function fmtChg(item){
+  const s = item.chg >= 0 ? '+' : '';
+  return `${s}${item.chg.toLocaleString()} (${s}${item.chgPct.toFixed(2)}%)`;
+}
+
+function renderIdxList(){
+  const box = document.getElementById('idxList');
+  box.innerHTML = MKT.map((it,i)=>`
+    <div class="idx-card${i===0?' on':''}" id="idx_${i}" onclick="setFeatured(MKT[${i}], ${i})">
+      <div><div class="nm">${esc(it.name)}</div><div class="tk">${esc(it.ticker)}</div></div>
+      <canvas width="168" height="60"></canvas>
+      <div class="pxbox">
+        <div class="lp">${it.last.toLocaleString()}</div>
+        <div class="cp" style="color:${chgColor(it)}">${(it.chgPct>=0?'+':'')}${it.chgPct.toFixed(2)}%</div>
+      </div>
+    </div>`).join('');
+  MKT.forEach((it,i)=>{
+    drawSpark(document.querySelector('#idx_'+i+' canvas'), it.spark, chgHex(it));
+  });
+}
+function drawSpark(cv, pts, color){
+  const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+  const min = Math.min(...pts), max = Math.max(...pts), rng = (max-min) || 1;
+  ctx.clearRect(0,0,w,h);
+  ctx.beginPath();
+  pts.forEach((p,i)=>{
+    const x = i/(pts.length-1)*w, y = h-6-(p-min)/rng*(h-12);
+    i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+  });
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+  ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath();
+  const g = ctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0, color+'44'); g.addColorStop(1, color+'00');
+  ctx.fillStyle = g; ctx.fill();
+}
+
+async function getSeries(item){
+  if(SERIES_CACHE[item.file]) return SERIES_CACHE[item.file];
+  const r = await fetch('data/prices/' + item.file + '?_=' + Date.now());
+  if(!r.ok) throw new Error('讀取失敗');
+  const s = await r.json();
+  SERIES_CACHE[item.file] = s;
+  return s;
+}
+async function setFeatured(item, idx){
+  ftItem = item;
+  document.querySelectorAll('.idx-card').forEach(c=>c.classList.remove('on'));
+  if(idx != null){ const el = document.getElementById('idx_'+idx); if(el) el.classList.add('on'); }
+  document.getElementById('ftName').textContent = item.name;
+  document.getElementById('ftSym').textContent = item.ticker;
+  document.getElementById('ftUpd').textContent = '更新:' + item.updated;
+  document.getElementById('ftPx').textContent = item.last.toLocaleString();
+  const chgEl = document.getElementById('ftChg');
+  chgEl.textContent = fmtChg(item);
+  chgEl.style.color = chgColor(item);
+  try{ drawFeatured(await getSeries(item)); }
+  catch(e){ console.error(e); }
+}
+document.getElementById('ftRanges').addEventListener('click', async e=>{
+  if(e.target.tagName !== 'BUTTON') return;
+  document.querySelectorAll('#ftRanges button').forEach(b=>b.classList.remove('on'));
+  e.target.classList.add('on');
+  ftRange = parseInt(e.target.dataset.r);
+  if(ftItem) drawFeatured(await getSeries(ftItem));
+});
+function drawFeatured(s){
+  const n = s.c.length;
+  const start = ftRange > 0 ? Math.max(0, n - ftRange) : 0;
+  const dates = s.dates.slice(start), close = s.c.slice(start);
+  const periodUp = close[close.length-1] >= close[0];
+  const upIsRed = convUp(s.market);
+  const hex = (periodUp === upIsRed) ? '#e5484d' : '#2fa66c';
+
+  const ctx = document.getElementById('ftChart').getContext('2d');
+  const g = ctx.createLinearGradient(0,0,0,340);
+  g.addColorStop(0, hex+'3a'); g.addColorStop(1, hex+'00');
+  if(ftChart) ftChart.destroy();
+  ftChart = new Chart(ctx, {
+    type:'line',
+    data:{labels:dates, datasets:[{
+      data:close, borderColor:hex, backgroundColor:g, fill:true,
+      borderWidth:1.8, pointRadius:0, pointHitRadius:8, tension:.08,
+    }]},
+    options:{responsive:true, maintainAspectRatio:false, animation:{duration:250},
+      interaction:{mode:'index', intersect:false},
+      plugins:{legend:{display:false},
+        tooltip:{backgroundColor:'#0a0f18', borderColor:'#28344a', borderWidth:1,
+          titleFont:{family:'monospace'}, bodyFont:{family:'monospace'},
+          callbacks:{label:c=>' '+c.parsed.y.toLocaleString()}}},
+      scales:{
+        x:{ticks:{color:'#8b98ad', maxTicksLimit:7, font:{size:11}}, grid:{display:false}},
+        y:{position:'right', ticks:{color:'#8b98ad', font:{family:'monospace', size:11}},
+           grid:{color:'#1c2536'}}}}
+  });
+}
+
+/* ── 回測室:從資料庫載入標的 ── */
+function fillTickerSelect(){
+  const sel = document.getElementById('btTicker');
+  if(!sel || !MKT) return;
+  const watch = MKT.filter(x=>!x.isIndex), idxs = MKT.filter(x=>x.isIndex);
+  sel.innerHTML =
+    (watch.length ? '<optgroup label="觀察清單">' + watch.map(x=>
+      `<option value="${x.file}">${esc(x.name)}(${x.ticker})</option>`).join('') + '</optgroup>' : '') +
+    '<optgroup label="市場指數">' + idxs.map(x=>
+      `<option value="${x.file}">${esc(x.name)}(${x.ticker})</option>`).join('') + '</optgroup>';
+}
+async function loadTicker(){
+  const sel = document.getElementById('btTicker');
+  if(!sel.value){ alert('資料庫未就緒,請先在 GitHub Actions 跑一次掃描,或改用合成範例/CSV'); return; }
+  const item = MKT.find(x=>x.file === sel.value);
+  try{
+    const s = await getSeries(item);
+    PRICES = {dates:s.dates, close:s.c, high:s.h, low:s.l};
+    document.getElementById('dataInfo').textContent =
+      `已載入 ${item.name}(${item.ticker})${s.c.length} 筆:${s.dates[0]} → ${s.dates[s.dates.length-1]}`;
+  }catch(e){ alert('載入失敗:'+e.message); }
+}
+
+/* ════════════════ 啟動 ════════════════ */
+loadDB();
+loadMarket();
+</script>
+</body>
+</html>

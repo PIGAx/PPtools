@@ -1,0 +1,32 @@
+[
+  {
+    "label": "台積電 20/60 均線",
+    "ticker": "2330.TW",
+    "strategy": "ma_cross",
+    "params": { "fast": 20, "slow": 60 }
+  },
+  {
+    "label": "0050 通道突破",
+    "ticker": "0050.TW",
+    "strategy": "breakout",
+    "params": { "inN": 20, "outN": 10 }
+  },
+  {
+    "label": "SPY 季節性 11-4 月",
+    "ticker": "SPY",
+    "strategy": "seasonal",
+    "params": { "months": [11, 12, 1, 2, 3, 4] }
+  },
+  {
+    "label": "QQQ 半年動能",
+    "ticker": "QQQ",
+    "strategy": "momentum",
+    "params": { "lookback": 120 }
+  },
+  {
+    "label": "台指ETF RSI 回檔(200MA 之上)",
+    "ticker": "006208.TW",
+    "strategy": "rsi_pullback",
+    "params": { "maLen": 200, "rsiLen": 14, "buyLv": 30, "tpLv": 70 }
+  }
+]
