@@ -102,25 +102,32 @@
     .pyr-lots { display: none; }
   }
 
-  /* 買賣超金字塔：買超前15、賣超前15 左右兩欄併排，各自一列一條橫向長條 */
-  .pyr-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 4px; }
-  .pyr-col { min-width: 0; }
-  .pyr-col-head { font-size: 12px; font-weight: 700; color: var(--text-muted); padding: 2px 2px 8px; display: flex; align-items: center; border-bottom: 1px solid var(--stroke); margin-bottom: 4px; }
-  .pyr-col-head .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
-  .pyr-col-head .dot.buy { background: var(--red); }
-  .pyr-col-head .dot.sell { background: var(--green); }
-  .qrow { display: grid; grid-template-columns: 22px minmax(78px, 30%) 1fr auto; align-items: center; gap: 8px; padding: 4px 2px; border-radius: 6px; transition: background .15s; }
-  .qrow:hover { background: var(--surface-alt); }
-  .qtrack { position: relative; height: 16px; min-width: 0; }
-  .qbar { position: absolute; left: 0; top: 0; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; transition: width .35s cubic-bezier(.32, .72, .28, 1); }
-  .qbar.buy { background: linear-gradient(90deg, color-mix(in srgb, var(--red) 55%, transparent), var(--red)); }
-  .qbar.sell { background: linear-gradient(90deg, color-mix(in srgb, var(--green) 55%, transparent), var(--green)); }
-  .qlbl { display: flex; align-items: baseline; gap: 6px; justify-content: flex-end; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .qlbl .chg { font-size: 10.5px; font-weight: 600; }
-  @media (max-width: 760px) {
-    .pyr-cols { grid-template-columns: 1fr; gap: 8px; }
-    .qrow { grid-template-columns: 20px minmax(70px, 34%) 1fr auto; gap: 6px; }
-    .qlbl .chg { display: none; }
+  /* 買賣超金字塔（龍捲圖）：中央為標的＋漲跌幅的表格欄，長條以中心為原點往兩側長出 */
+  .tornado { margin-top: 4px; }
+  .tor-head { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; font-weight: 700; color: var(--text-muted); padding: 2px 4px 8px; border-bottom: 1px solid var(--stroke); margin-bottom: 6px; }
+  .tor-head .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin: 0 4px; vertical-align: middle; }
+  .tor-head .dot.sell { background: var(--green); } .tor-head .dot.buy { background: var(--red); }
+  .tor-head .thm { font-weight: 600; opacity: .8; }
+  .tor-row { display: grid; grid-template-columns: 54px 1fr 226px 1fr 54px; align-items: center; gap: 8px; padding: 3px 2px; border-radius: 6px; transition: background .15s; }
+  .tor-row:hover { background: var(--surface-alt); }
+  .tor-amt { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tor-amt.sell { text-align: right; color: var(--green); }
+  .tor-amt.buy { text-align: left; color: var(--red); }
+  .tor-track { position: relative; height: 15px; min-width: 0; }
+  .tor-bar { position: absolute; top: 0; height: 100%; min-width: 2px; transition: width .35s cubic-bezier(.32, .72, .28, 1); }
+  .tor-track.left .tor-bar { right: 0; border-radius: 4px 0 0 4px; background: linear-gradient(270deg, color-mix(in srgb, var(--green) 55%, transparent), var(--green)); }
+  .tor-track.right .tor-bar { left: 0; border-radius: 0 4px 4px 0; background: linear-gradient(90deg, color-mix(in srgb, var(--red) 55%, transparent), var(--red)); }
+  .tor-center { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 2px 8px; border-left: 1px solid var(--stroke); border-right: 1px solid var(--stroke); }
+  .tor-name { min-width: 0; flex: 1; display: flex; flex-direction: column; line-height: 1.2; overflow: hidden; }
+  .tor-name .pyr-title { font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tor-name .pyr-code { font-size: 10px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tor-chg { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  @media (max-width: 700px) {
+    .tor-row { grid-template-columns: 38px 1fr 128px 1fr 38px; gap: 4px; }
+    .tor-center { padding: 2px 5px; gap: 4px; }
+    .tor-name .pyr-title { font-size: 12px; }
+    .tor-amt { font-size: 10px; }
+    .tor-chg { font-size: 10px; }
   }
 
   /* 兩欄卡片（資金流向／類股漲跌） */
@@ -162,11 +169,16 @@
   .rk-meta { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
   .rank-inst-table th, .rank-inst-table td { padding: 7px 9px; }
   .rank-inst-table tbody tr:hover { background: var(--surface-alt); }
+  /* 全市場即時行情表 */
+  .quote-search { min-width: 150px; font-size: 12.5px; padding: 6px 11px; }
+  .quote-table { font-size: 12.5px; }
+  .quote-table th, .quote-table td { padding: 6px 9px; white-space: nowrap; }
   @media (max-width: 640px) {
     /* 手機：股票代號／產業改放名稱下一行，收斂欄寬避免整列過寬 */
     .rk-meta { display: block; font-size: 10px; margin-top: 1px; }
     .rank-inst-table { font-size: 12px; }
     .rank-inst-table th, .rank-inst-table td { padding: 6px 7px; }
+    .quote-search { width: 100%; }
   }
 
   .card-head-row { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
@@ -409,39 +421,25 @@
         ⚠ {{ instTypeLabel }}買賣超資料暫時無法取得（投信／自營商拆分需每日快照，尚未產生時請稍候或按「全部更新」）
       </div>
 
-      <!-- 金字塔：買超（前15）與賣超（前15）左右兩欄併排，長條依估計金額、右側附漲跌幅與金額 -->
-      <div v-else-if="rankTab === 'inst' && (instBuys.length || instSells.length)" class="pyr-cols">
-        <div class="pyr-col">
-          <div class="pyr-col-head"><i class="dot buy"></i>買超 前 {{ instBuys.length }}</div>
-          <div v-for="(s, i) in instBuys" :key="s.market + s.code" class="qrow">
-            <div class="pyr-rank">{{ i + 1 }}</div>
-            <div class="pyr-name">
-              <span class="pyr-title">{{ s.name }}</span>
-              <span class="pyr-code">{{ s.code }}・{{ s.industry }}</span>
-            </div>
-            <div class="qtrack"><div class="qbar buy" :style="{ width: barPct(s.estAmount) + '%' }"></div></div>
-            <div class="qlbl">
-              <span class="chg" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</span>
-              <span class="up">{{ sign(s.estAmount, 2) }}</span>
-            </div>
-          </div>
-          <div v-if="!instBuys.length" class="empty-note">目前無買超資料</div>
+      <!-- 金字塔（龍捲圖）：中央為標的與漲跌幅，長條以中心為原點往兩側長出——賣超（綠）向左、買超（紅）向右 -->
+      <div v-else-if="rankTab === 'inst' && pyrRows.length" class="tornado">
+        <div class="tor-head">
+          <span class="ths"><i class="dot sell"></i>賣超</span>
+          <span class="thm">標的 · 漲跌幅　（長條＝估計金額 億）</span>
+          <span class="thb">買超<i class="dot buy"></i></span>
         </div>
-        <div class="pyr-col">
-          <div class="pyr-col-head"><i class="dot sell"></i>賣超 前 {{ instSells.length }}</div>
-          <div v-for="(s, i) in instSells" :key="s.market + s.code" class="qrow">
-            <div class="pyr-rank">{{ i + 1 }}</div>
-            <div class="pyr-name">
+        <div v-for="(s, i) in pyrRows" :key="s.market + s.code" class="tor-row">
+          <div class="tor-amt sell">{{ s.netLots < 0 ? sign(s.estAmount, 2) : '' }}</div>
+          <div class="tor-track left"><div v-if="s.netLots < 0" class="tor-bar sell" :style="{ width: barPct(s.estAmount) + '%' }"></div></div>
+          <div class="tor-center">
+            <div class="tor-name">
               <span class="pyr-title">{{ s.name }}</span>
               <span class="pyr-code">{{ s.code }}・{{ s.industry }}</span>
             </div>
-            <div class="qtrack"><div class="qbar sell" :style="{ width: barPct(s.estAmount) + '%' }"></div></div>
-            <div class="qlbl">
-              <span class="chg" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</span>
-              <span class="down">{{ sign(s.estAmount, 2) }}</span>
-            </div>
+            <span class="tor-chg" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</span>
           </div>
-          <div v-if="!instSells.length" class="empty-note">目前無賣超資料</div>
+          <div class="tor-track right"><div v-if="s.netLots > 0" class="tor-bar buy" :style="{ width: barPct(s.estAmount) + '%' }"></div></div>
+          <div class="tor-amt buy">{{ s.netLots > 0 ? sign(s.estAmount, 2) : '' }}</div>
         </div>
       </div>
 
@@ -491,6 +489,66 @@
         </table>
       </div>
       <div v-else class="empty-note">尚無資料</div>
+    </template>
+  </div>
+
+  <!-- 全市場即時行情全欄表 -->
+  <div class="detail-card glass">
+    <div class="card-head-row">
+      <div>
+        <h3 style="margin-bottom:2px">📋 全市場即時行情</h3>
+        <div class="detail-sub" style="margin-bottom:0">全上市櫃個股・點表頭排序・可搜尋代號或名稱</div>
+      </div>
+      <div class="card-head-controls">
+        <input class="pp-field quote-search" v-model="quoteSearch" placeholder="🔍 代號 / 名稱" />
+        <div class="seg">
+          <div class="seg-btn" :class="{ active: quoteMarket === 'ALL' }" @click="quoteMarket = 'ALL'">合計</div>
+          <div class="seg-btn" :class="{ active: quoteMarket === 'TWSE' }" @click="quoteMarket = 'TWSE'">上市</div>
+          <div class="seg-btn" :class="{ active: quoteMarket === 'TPEX' }" @click="quoteMarket = 'TPEX'">上櫃</div>
+        </div>
+        <label class="etf-toggle"><input type="checkbox" v-model="quoteExcludeETF"> 排除ETF</label>
+      </div>
+    </div>
+    <div v-if="!snapshot.stocks.length" class="err-note">
+      ⚠ {{ snapshotErrors.stocks || '全市場資料尚未取得，請按「全部更新」' }}
+    </div>
+    <template v-else>
+      <div class="table-wrap">
+        <table class="detail-table rank-inst-table quote-table">
+          <thead>
+            <tr>
+              <th class="sortable" :class="{ 'sort-active': quoteSortKey === 'code' }" @click="sortQuote('code')">股票{{ quoteArrow('code') }}</th>
+              <th class="num sortable" :class="{ 'sort-active': quoteSortKey === 'close' }" @click="sortQuote('close')">股價{{ quoteArrow('close') }}</th>
+              <th class="num sortable" :class="{ 'sort-active': quoteSortKey === 'change' }" @click="sortQuote('change')">漲跌{{ quoteArrow('change') }}</th>
+              <th class="num sortable" :class="{ 'sort-active': quoteSortKey === 'changePct' }" @click="sortQuote('changePct')">漲跌幅{{ quoteArrow('changePct') }}</th>
+              <th class="num sortable" :class="{ 'sort-active': quoteSortKey === 'open' }" @click="sortQuote('open')">開盤{{ quoteArrow('open') }}</th>
+              <th class="num sortable" :class="{ 'sort-active': quoteSortKey === 'high' }" @click="sortQuote('high')">最高{{ quoteArrow('high') }}</th>
+              <th class="num sortable" :class="{ 'sort-active': quoteSortKey === 'low' }" @click="sortQuote('low')">最低{{ quoteArrow('low') }}</th>
+              <th class="num sortable" :class="{ 'sort-active': quoteSortKey === 'prevClose' }" @click="sortQuote('prevClose')">昨收{{ quoteArrow('prevClose') }}</th>
+              <th class="num sortable" :class="{ 'sort-active': quoteSortKey === 'volume' }" @click="sortQuote('volume')">成交量{{ quoteArrow('volume') }}</th>
+              <th class="num sortable" :class="{ 'sort-active': quoteSortKey === 'transactions' }" @click="sortQuote('transactions')">成交筆數{{ quoteArrow('transactions') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="s in quoteRows" :key="s.market + s.code">
+              <td><span class="rk-name">{{ s.name }}</span> <span class="rk-meta">{{ s.code }}・{{ s.market === 'TWSE' ? '上市' : '上櫃' }}</span></td>
+              <td class="num">{{ fmt(s.close, 2) }}</td>
+              <td class="num" :class="pnClass(s.change)">{{ sign(s.change, 2) }}</td>
+              <td class="num" :class="pnClass(s.changePct)">{{ sign(s.changePct, 2) }}%</td>
+              <td class="num">{{ fmt(s.open, 2) }}</td>
+              <td class="num">{{ fmt(s.high, 2) }}</td>
+              <td class="num">{{ fmt(s.low, 2) }}</td>
+              <td class="num">{{ (s.close != null && s.change != null) ? fmt(s.close - s.change, 2) : '—' }}</td>
+              <td class="num">{{ fmt(s.volume, 0) }}</td>
+              <td class="num">{{ fmt(s.transactions, 0) }}</td>
+            </tr>
+            <tr v-if="!quoteRows.length"><td colspan="10" style="text-align:center;color:var(--text-muted)">查無符合的個股</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="detail-sub" style="margin-top:8px">
+        共 {{ quoteTotal }} 檔{{ quoteSearch.trim() ? ' 符合' : '' }}，顯示 {{ quoteRows.length }} 檔{{ !quoteSearch.trim() && quoteTotal > quoteRows.length ? '（依目前排序前 ' + quoteRows.length + ' 檔；要看更多可用搜尋或切換排序）' : '' }}・成交量為股數
+      </div>
     </template>
   </div>
 
@@ -808,6 +866,14 @@ createApp({
     const instSnap = ref({ date: '', stocks: {} }); // 每日快照的三大法人買賣超（張）
     const rankExcludeETF = ref(true);
     const selectedIndustry = ref(null);
+
+    /* 全市場即時行情全欄表 */
+    const quoteSearch = ref('');
+    const quoteMarket = ref('ALL'); // 'ALL' | 'TWSE' | 'TPEX'
+    const quoteExcludeETF = ref(true);
+    const quoteSortKey = ref('value'); // code / close / change / changePct / open / high / low / prevClose / volume / transactions / value
+    const quoteSortDir = ref('desc');
+    const QUOTE_CAP = 150; // 無搜尋時僅顯示排序後前 N 檔，避免一次渲染上千列卡頓
 
     /* 非凡新聞直播 */
     const newsPresets = [
@@ -1168,7 +1234,11 @@ createApp({
       const change = num(pick(r, [/^change$/i, /change/i, /漲跌/]));
       const value = num(pick(r, [/tradevalue/i, /amount/i, /成交金額/, /金額/]));
       const volume = num(pick(r, [/tradevolume/i, /shares/i, /成交股數/, /股數/]));
-      return { code, name, market, close, change, value, volume };
+      const open = num(pick(r, [/openingprice/i, /^open$/i, /開盤/]));
+      const high = num(pick(r, [/highestprice/i, /^high$/i, /最高/]));
+      const low = num(pick(r, [/lowestprice/i, /^low$/i, /最低/]));
+      const transactions = num(pick(r, [/transaction/i, /成交筆數|筆數/]));
+      return { code, name, market, close, change, value, volume, open, high, low, transactions };
     }
 
     async function fetchTwseStocks() {
@@ -1189,8 +1259,12 @@ createApp({
         market: 'TPEX',
         close: num(row[2]),
         change: num(row[3]),
+        open: num(row[4]),
+        high: num(row[5]),
+        low: num(row[6]),
         value: num(row[9]),
-        volume: num(row[8])
+        volume: num(row[8]),
+        transactions: null // 舊版上櫃行情無成交筆數欄位
       };
     }
 
@@ -1597,6 +1671,8 @@ createApp({
     // 金字塔（併排兩欄）：買超前 15、賣超前 15，皆依買賣超張數大小排序
     const instBuys = computed(() => instWith.value.filter(s => s.netLots > 0).sort((a, b) => b.netLots - a.netLots).slice(0, 15));
     const instSells = computed(() => instWith.value.filter(s => s.netLots < 0).sort((a, b) => a.netLots - b.netLots).slice(0, 15));
+    // 龍捲圖列序：最大買超在上 → 最小 → 最小賣超 → 最大賣超在下，形成中央窄、上下寬的金字塔
+    const pyrRows = computed(() => [...instBuys.value, ...instSells.value.slice().reverse()]);
 
     // 法人買賣超「表格模式」：買超前 20 + 賣超前 20，依點選的表頭欄位排序
     const instTableRows = computed(() => {
@@ -1631,6 +1707,42 @@ createApp({
     });
     function barPct(amount) {
       return Math.max(2, Math.round((Math.abs(amount || 0) / rankMaxAmount.value) * 100));
+    }
+
+    /* ── 全市場即時行情全欄表：篩選（市場／ETF／搜尋）＋ 依表頭排序 ── */
+    function quoteVal(s, key) {
+      if (key === 'prevClose') return (s.close != null && s.change != null) ? s.close - s.change : null;
+      const v = s[key];
+      return v == null ? null : v;
+    }
+    const quoteFiltered = computed(() => {
+      let list = snapshot.value.stocks || [];
+      if (quoteMarket.value !== 'ALL') list = list.filter(s => s.market === quoteMarket.value);
+      if (quoteExcludeETF.value) list = list.filter(s => !s.isETF);
+      const q = quoteSearch.value.trim();
+      if (q) list = list.filter(s => (s.code && s.code.includes(q)) || (s.name && s.name.includes(q)));
+      return list;
+    });
+    const quoteTotal = computed(() => quoteFiltered.value.length);
+    const quoteRows = computed(() => {
+      const key = quoteSortKey.value, dir = quoteSortDir.value === 'asc' ? 1 : -1;
+      const sorted = [...quoteFiltered.value].sort((a, b) => {
+        if (key === 'code') return String(a.code).localeCompare(String(b.code)) * dir;
+        const va = quoteVal(a, key), vb = quoteVal(b, key);
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;   // 缺值一律排到最後
+        if (vb == null) return -1;
+        return (va - vb) * dir;
+      });
+      // 有搜尋時放寬顯示上限，方便找齊；無搜尋時只顯示排序後前 N 檔以維持流暢
+      return sorted.slice(0, quoteSearch.value.trim() ? 400 : QUOTE_CAP);
+    });
+    function sortQuote(key) {
+      if (quoteSortKey.value === key) quoteSortDir.value = quoteSortDir.value === 'desc' ? 'asc' : 'desc';
+      else { quoteSortKey.value = key; quoteSortDir.value = key === 'code' ? 'asc' : 'desc'; }
+    }
+    function quoteArrow(key) {
+      return quoteSortKey.value === key ? (quoteSortDir.value === 'desc' ? ' ▼' : ' ▲') : '';
     }
 
     function saveNews() {
@@ -1894,7 +2006,8 @@ createApp({
       snapshot, snapshotErrors, snapshotLoading, fetchMarketSnapshot,
       fundFlowTab, excludeETF, rankTab, rankExcludeETF,
       instType, rankViewMode, instSnap, instTypeLabel, instTypeHasData, barPct,
-      rankSortKey, rankSortDir, instTableRows, instBuys, instSells, sortInst, sortArrow,
+      rankSortKey, rankSortDir, instTableRows, instBuys, instSells, pyrRows, sortInst, sortArrow,
+      quoteSearch, quoteMarket, quoteExcludeETF, quoteSortKey, quoteRows, quoteTotal, sortQuote, quoteArrow,
       hasTpexData, hasInstData, topIndustriesForFlow, sectorTable, marketBreadth, rankRows,
       selectedIndustry, industryStocks, industryModalTotal, openIndustry, closeIndustry,
       news, newsPresets, newsVideoId, setNewsPreset, saveNews,
