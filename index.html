@@ -314,9 +314,8 @@
   <div class="main">
     <header class="header glass">
       <button class="menu-btn" onclick="toggleSidebar()" aria-label="開啟選單">&#9776;</button>
-      <span class="header-title" id="headerTitle">總覽</span>
+      <span class="header-title" id="headerTitle">市場指標</span>
       <div class="header-right">
-        <button class="btn btn-sm" onclick="openAddPanelFromHeader()" id="addPanelHeaderBtn" title="加入儀表板面板" style="display:none">＋ 面板</button>
         <button class="btn btn-sm" onclick="openDataHub()" id="syncBtn" title="資料中心">☁ 同步</button>
         <button class="btn btn-sm" onclick="onFontClick()" id="fontBtn" title="字級大小（點擊切換：標準→大→特大→小）">🔤 標準</button>
         <button class="btn btn-sm" onclick="onThemeClick()" id="themeBtn">⚙ 系統</button>
@@ -324,22 +323,7 @@
     </header>
 
     <div class="content">
-      <div id="welcomeView" class="welcome">
-        <div class="welcome-inner">
-          <div class="dashboard-head">
-            <div>
-              <h2>總覽</h2>
-              <div class="dash-tag">DASHBOARD</div>
-            </div>
-            <div class="dashboard-actions">
-              <button class="btn btn-sm btn-primary" id="addPanelBtn" onclick="toggleAddPanelMenu(event)">＋ 加入面板</button>
-              <div class="add-panel-menu glass" id="addPanelMenu"></div>
-            </div>
-          </div>
-          <div class="dashboard-grid" id="dashboardGrid"></div>
-        </div>
-      </div>
-      <iframe id="contentFrame" class="content-frame" style="display:none" title="模組內容" allowfullscreen allow="fullscreen; autoplay; encrypted-media; picture-in-picture; clipboard-write; web-share"></iframe>
+      <iframe id="contentFrame" class="content-frame" title="模組內容" allowfullscreen allow="fullscreen; autoplay; encrypted-media; picture-in-picture; clipboard-write; web-share"></iframe>
     </div>
   </div>
 </div>
@@ -430,14 +414,6 @@ function buildNav() {
   const nav = document.getElementById('sidebarNav');
   let lastSection = '';
 
-  // Home item
-  const home = document.createElement('div');
-  home.className = 'nav-item active';
-  home.dataset.id = '__home';
-  home.innerHTML = '<span class="nav-icon">⌂</span> 總覽';
-  home.onclick = () => loadModule(null);
-  nav.appendChild(home);
-
   MODULES.forEach(m => {
     if (m.section !== lastSection) {
       const sec = document.createElement('div');
@@ -455,218 +431,23 @@ function buildNav() {
   });
 }
 
-// ════════════════════════════════════════════
-//  可自訂儀表板 — 總覽頁的模組化面板配置
-// ════════════════════════════════════════════
-const DASH_KEY = 'pptools-dashboard';
-const DASH_HEIGHT_PX = { S: 320, M: 480, L: 680 };
-const DASH_HEIGHT_ORDER = ['S', 'M', 'L'];
-
-function defaultDashboardCfg() {
-  return {
-    panels: [
-      { id: 'p-market', moduleId: 'market', span: 2, height: 'M' },
-      { id: 'p-watchlist', moduleId: 'watchlist', span: 1, height: 'M' },
-      { id: 'p-sector-notes', moduleId: 'sector-notes', span: 1, height: 'M' }
-    ]
-  };
-}
-
-function loadDashboardCfg() {
-  try {
-    const raw = localStorage.getItem(DASH_KEY);
-    if (raw) {
-      const cfg = JSON.parse(raw);
-      if (cfg && Array.isArray(cfg.panels)) return cfg;
-    }
-  } catch (e) {}
-  return defaultDashboardCfg();
-}
-
-function saveDashboardCfg() {
-  try { localStorage.setItem(DASH_KEY, JSON.stringify(dashCfg)); } catch (e) {}
-}
-
-function panelUid() {
-  return 'p-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
-let dashCfg = loadDashboardCfg();
-let dashDragIndex = null;
-
-function renderDashboard() {
-  const grid = document.getElementById('dashboardGrid');
-  if (!grid) return;
-  grid.innerHTML = '';
-
-  if (!dashCfg.panels.length) {
-    const empty = document.createElement('div');
-    empty.className = 'dash-empty';
-    empty.textContent = '尚未加入任何面板，點擊右上角「＋ 加入面板」開始建立你的儀表板。';
-    grid.appendChild(empty);
-    renderAddPanelMenu();
-    return;
-  }
-
-  dashCfg.panels.forEach((p, idx) => {
-    const mod = MODULES.find(m => m.id === p.moduleId);
-    if (!mod) return;
-
-    const panel = document.createElement('div');
-    panel.className = 'dash-panel glass';
-    panel.dataset.span = p.span;
-    panel.dataset.index = idx;
-
-    const header = document.createElement('div');
-    header.className = 'dash-panel-header';
-    header.draggable = true;
-    header.innerHTML =
-      '<span class="dp-handle">⠿</span>' +
-      '<span class="dp-icon">' + mod.icon + '</span>' +
-      '<span class="dp-title">' + mod.title + '</span>' +
-      '<button type="button" class="dp-btn" data-act="span" title="切換寬度">' + (p.span === 2 ? '◧' : '◨') + '</button>' +
-      '<button type="button" class="dp-btn" data-act="height" title="切換高度">' + p.height + '</button>' +
-      '<button type="button" class="dp-btn" data-act="open" title="全螢幕開啟">↗</button>' +
-      '<button type="button" class="dp-btn" data-act="remove" title="移除面板">×</button>';
-
-    header.addEventListener('dragstart', () => {
-      dashDragIndex = idx;
-      grid.classList.add('dragging');
-    });
-    header.addEventListener('dragend', () => {
-      dashDragIndex = null;
-      grid.classList.remove('dragging');
-      grid.querySelectorAll('.dash-panel.drag-over').forEach(el => el.classList.remove('drag-over'));
-    });
-
-    header.querySelector('[data-act="span"]').onclick = () => {
-      p.span = p.span === 2 ? 1 : 2;
-      saveDashboardCfg();
-      renderDashboard();
-    };
-    header.querySelector('[data-act="height"]').onclick = () => {
-      p.height = DASH_HEIGHT_ORDER[(DASH_HEIGHT_ORDER.indexOf(p.height) + 1) % DASH_HEIGHT_ORDER.length];
-      saveDashboardCfg();
-      renderDashboard();
-    };
-    header.querySelector('[data-act="open"]').onclick = () => loadModule(mod);
-    header.querySelector('[data-act="remove"]').onclick = () => {
-      dashCfg.panels = dashCfg.panels.filter(x => x.id !== p.id);
-      saveDashboardCfg();
-      renderDashboard();
-    };
-
-    panel.addEventListener('dragover', (e) => {
-      if (dashDragIndex === null) return;
-      e.preventDefault();
-      panel.classList.add('drag-over');
-    });
-    panel.addEventListener('dragleave', () => panel.classList.remove('drag-over'));
-    panel.addEventListener('drop', (e) => {
-      e.preventDefault();
-      panel.classList.remove('drag-over');
-      grid.classList.remove('dragging');
-      const from = dashDragIndex;
-      dashDragIndex = null;
-      if (from === null || from === idx) return;
-      const moved = dashCfg.panels.splice(from, 1)[0];
-      dashCfg.panels.splice(idx, 0, moved);
-      saveDashboardCfg();
-      renderDashboard();
-    });
-
-    const body = document.createElement('div');
-    body.className = 'dash-panel-body';
-    body.style.height = (DASH_HEIGHT_PX[p.height] || DASH_HEIGHT_PX.M) + 'px';
-    const iframe = document.createElement('iframe');
-    iframe.loading = 'lazy';
-    iframe.title = mod.title;
-    iframe.src = mod.src;
-    body.appendChild(iframe);
-
-    panel.appendChild(header);
-    panel.appendChild(body);
-    grid.appendChild(panel);
-  });
-
-  renderAddPanelMenu();
-}
-
-function renderAddPanelMenu() {
-  const menu = document.getElementById('addPanelMenu');
-  if (!menu) return;
-  menu.innerHTML = '';
-  const usedIds = new Set(dashCfg.panels.map(p => p.moduleId));
-  MODULES.forEach(m => {
-    const used = usedIds.has(m.id);
-    const item = document.createElement('div');
-    item.className = 'add-panel-item' + (used ? ' disabled' : '');
-    item.innerHTML = '<span class="api-icon">' + m.icon + '</span><span>' + m.title + '</span>';
-    if (!used) {
-      item.onclick = () => {
-        dashCfg.panels.push({ id: panelUid(), moduleId: m.id, span: 1, height: 'M' });
-        saveDashboardCfg();
-        closeAddPanelMenu();
-        renderDashboard();
-      };
-    }
-    menu.appendChild(item);
-  });
-}
-
-function toggleAddPanelMenu(e) {
-  if (e) e.stopPropagation();
-  const menu = document.getElementById('addPanelMenu');
-  if (menu) menu.classList.toggle('open');
-}
-function closeAddPanelMenu() {
-  const menu = document.getElementById('addPanelMenu');
-  if (menu) menu.classList.remove('open');
-}
-function openAddPanelFromHeader() {
-  const welcome = document.getElementById('welcomeView');
-  if (welcome) welcome.scrollTop = 0;
-  const menu = document.getElementById('addPanelMenu');
-  if (menu) menu.classList.add('open');
-}
-document.addEventListener('click', (e) => {
-  const menu = document.getElementById('addPanelMenu');
-  const btn = document.getElementById('addPanelBtn');
-  if (!menu || !menu.classList.contains('open')) return;
-  if (menu.contains(e.target) || (btn && btn.contains(e.target))) return;
-  closeAddPanelMenu();
-});
-
 function loadModule(mod) {
+  if (!mod) mod = MODULES[0]; // 已移除「總覽」，永遠載入一個模組（預設第一個）
   const frame = document.getElementById('contentFrame');
-  const welcome = document.getElementById('welcomeView');
   const title = document.getElementById('headerTitle');
 
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
 
-  if (!mod) {
-    frame.style.display = 'none';
-    frame.src = '';
-    welcome.style.display = 'flex';
-    title.textContent = '總覽';
-    document.querySelector('[data-id="__home"]').classList.add('active');
-    currentModule = null;
-  } else {
-    welcome.style.display = 'none';
-    frame.style.display = 'block';
-    frame.src = mod.src;
-    title.textContent = mod.title;
-    document.querySelector(`[data-id="${mod.id}"]`).classList.add('active');
-    currentModule = mod;
-  }
+  frame.style.display = 'block';
+  frame.src = mod.src;
+  title.textContent = mod.title;
+  const navEl = document.querySelector(`[data-id="${mod.id}"]`);
+  if (navEl) navEl.classList.add('active');
+  currentModule = mod;
 
   // close mobile sidebar
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('open');
-
-  const addBtn = document.getElementById('addPanelHeaderBtn');
-  if (addBtn) addBtn.style.display = currentModule ? 'none' : 'inline-flex';
-  if (currentModule) closeAddPanelMenu();
 }
 
 function toggleSidebar() {
@@ -714,10 +495,9 @@ function refreshSyncHint() {
 
 // Init
 buildNav();
-renderDashboard();
 refreshThemeBtn();
 refreshFontBtn();
-document.getElementById('addPanelHeaderBtn').style.display = currentModule ? 'none' : 'inline-flex';
+loadModule(MODULES[0]); // 已移除「總覽」，開站直接載入第一個模組（市場指標）
 
 // PPStore — 自動備份引擎（只在 portal shell 運作）
 if (window.PPStore) {
