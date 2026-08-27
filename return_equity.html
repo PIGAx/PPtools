@@ -502,23 +502,39 @@
                             <input v-model.number="calc.addPrice" type="number" step="0.01" class="border p-2 rounded w-full bg-gray-50 focus:bg-white text-sm" :disabled="!calc.selectedTicker">
                         </div>
                         <div class="sm:col-span-2">
-                            <label class="block text-xs font-semibold text-gray-600 mb-1">本次加碼槓桿倍數（現股填 1）</label>
-                            <input v-model.number="calc.addLev" type="number" step="0.1" min="1" placeholder="1" class="border p-2 rounded w-full bg-gray-50 focus:bg-white text-sm" :disabled="!calc.selectedTicker">
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">本次加碼方式</label>
+                            <div class="flex gap-2 items-center flex-wrap">
+                                <div class="flex rounded-lg overflow-hidden border border-gray-300 text-xs font-semibold">
+                                    <button type="button" @click="setAddMode('cash')" :disabled="!calc.selectedTicker"
+                                            class="px-4 py-2 transition disabled:opacity-50"
+                                            :class="calc.useLev ? 'bg-white text-gray-600 hover:bg-gray-100' : 'bg-blue-600 text-white'">現股買進</button>
+                                    <button type="button" @click="setAddMode('lev')" :disabled="!calc.selectedTicker"
+                                            class="px-4 py-2 transition border-l border-gray-300 disabled:opacity-50"
+                                            :class="calc.useLev ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'">槓桿工具</button>
+                                </div>
+                                <div v-if="calc.useLev" class="flex items-center gap-1.5">
+                                    <span class="text-xs text-gray-500 font-semibold">倍數</span>
+                                    <input v-model.number="calc.addLev" type="number" step="0.1" min="1" placeholder="2" class="border p-2 rounded w-20 bg-gray-50 focus:bg-white text-sm text-center">
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
                     <div class="bg-gray-100 p-4 rounded border border-gray-200 flex flex-col text-sm">
                         <div v-if="estimatedAddCost > 0" class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 pb-3 border-b border-gray-300 gap-2">
                             <div>
-                                <p class="text-xs text-gray-500 font-semibold mb-0.5">預估加碼花費</p>
+                                <p class="text-xs text-gray-500 font-semibold mb-0.5">{{ calc.useLev ? '本次需自備現金' : '預估加碼花費' }}</p>
                                 <div class="flex items-baseline space-x-1">
-                                    <p class="text-xl font-bold text-red-600">{{ formatNumber(estimatedAddCost) }}</p>
+                                    <p class="text-xl font-bold text-red-600">{{ formatNumber(estimatedSelfFund) }}</p>
                                     <span class="text-xs text-gray-500 font-bold">{{ calc.market === 'US' ? 'USD' : 'TWD' }}</span>
                                 </div>
+                                <p v-if="calc.useLev" class="text-[11px] text-gray-500 mt-0.5">
+                                    買進金額 {{ formatNumber(estimatedAddCost) }}，其中借款 {{ formatNumber(estimatedAddCost - estimatedSelfFund) }}
+                                </p>
                             </div>
                             <div class="text-left sm:text-right" v-if="calc.market === 'US'">
                                 <p class="text-xs text-gray-500 font-semibold mb-0.5">約當台幣</p>
-                                <p class="text-base font-bold text-gray-700">{{ formatNumber(estimatedAddCostTWD) }} TWD</p>
+                                <p class="text-base font-bold text-gray-700">{{ formatNumber(estimatedSelfFund * exchangeRate) }} TWD</p>
                             </div>
                         </div>
 
@@ -531,6 +547,72 @@
                                 <p class="text-xs text-gray-500 font-semibold">試算後新均價</p>
                                 <p class="text-2xl font-bold text-blue-600">{{ formatNumber(newAveragePrice) }}</p>
                             </div>
+                        </div>
+
+                        <div v-if="addCompare" class="mt-3 pt-3 border-t border-gray-300">
+                            <p class="text-xs text-gray-500 font-semibold mb-2">現股 vs 槓桿 對照（金額為 TWD）</p>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-xs">
+                                    <thead class="text-gray-500">
+                                        <tr>
+                                            <th class="text-left px-1 py-1.5 font-semibold"></th>
+                                            <th class="text-right px-2 py-1.5 font-semibold" :class="!calc.useLev ? 'text-blue-600' : ''">
+                                                現股{{ !calc.useLev ? ' ✓' : '' }}
+                                            </th>
+                                            <th class="text-right px-2 py-1.5 font-semibold" :class="calc.useLev ? 'text-indigo-600' : ''">
+                                                槓桿 {{ addCompare.lev.lev }}x{{ calc.useLev ? ' ✓' : '' }}
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr class="border-t border-gray-300">
+                                            <td class="px-1 py-1.5 text-gray-500">買進金額</td>
+                                            <td class="px-2 py-1.5 text-right">{{ formatNumber(addCompare.cash.buyAmt) }}</td>
+                                            <td class="px-2 py-1.5 text-right">{{ formatNumber(addCompare.lev.buyAmt) }}</td>
+                                        </tr>
+                                        <tr class="border-t border-gray-200">
+                                            <td class="px-1 py-1.5 text-gray-500">需自備現金</td>
+                                            <td class="px-2 py-1.5 text-right font-bold">{{ formatNumber(addCompare.cash.cashNeed) }}</td>
+                                            <td class="px-2 py-1.5 text-right font-bold text-indigo-600">{{ formatNumber(addCompare.lev.cashNeed) }}</td>
+                                        </tr>
+                                        <tr class="border-t border-gray-200">
+                                            <td class="px-1 py-1.5 text-gray-500">新增借款</td>
+                                            <td class="px-2 py-1.5 text-right">0</td>
+                                            <td class="px-2 py-1.5 text-right text-indigo-600">{{ formatNumber(addCompare.lev.borrowAdd) }}</td>
+                                        </tr>
+                                        <tr class="border-t border-gray-200">
+                                            <td class="px-1 py-1.5 text-gray-500">加碼後剩餘現金</td>
+                                            <td class="px-2 py-1.5 text-right" :class="addCompare.cash.cashLeft < 0 ? 'text-green-600 font-bold' : ''">{{ formatNumber(addCompare.cash.cashLeft) }}</td>
+                                            <td class="px-2 py-1.5 text-right" :class="addCompare.lev.cashLeft < 0 ? 'text-green-600 font-bold' : ''">{{ formatNumber(addCompare.lev.cashLeft) }}</td>
+                                        </tr>
+                                        <tr class="border-t border-gray-200">
+                                            <td class="px-1 py-1.5 text-gray-500">加碼後實質槓桿</td>
+                                            <td class="px-2 py-1.5 text-right">{{ addCompare.cash.levAfter }}x</td>
+                                            <td class="px-2 py-1.5 text-right font-bold">{{ addCompare.lev.levAfter }}x</td>
+                                        </tr>
+                                        <tr class="border-t border-gray-200">
+                                            <td class="px-1 py-1.5 text-gray-500">加碼後追繳價</td>
+                                            <td class="px-2 py-1.5 text-right text-gray-400">{{ addCompare.cash.callAfter > 0 ? formatNumber(addCompare.cash.callAfter) : '—' }}</td>
+                                            <td class="px-2 py-1.5 text-right">{{ formatNumber(addCompare.lev.callAfter) }}</td>
+                                        </tr>
+                                        <tr class="border-t border-gray-200">
+                                            <td class="px-1 py-1.5 text-gray-500">加碼後下跌緩衝</td>
+                                            <td class="px-2 py-1.5 text-right text-gray-400">{{ addCompare.cash.callAfter > 0 ? addCompare.cash.bufferAfter.toFixed(1) + '%' : '—' }}</td>
+                                            <td class="px-2 py-1.5 text-right font-bold" :class="bufferClass(addCompare.lev.bufferAfter)">{{ addCompare.lev.bufferAfter.toFixed(1) }}%</td>
+                                        </tr>
+                                        <tr class="border-t border-gray-200">
+                                            <td class="px-1 py-1.5 text-gray-500">年化持有成本增加</td>
+                                            <td class="px-2 py-1.5 text-right">0</td>
+                                            <td class="px-2 py-1.5 text-right">{{ formatNumber(addCompare.lev.carryAdd) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                                兩案的名目曝險與淨資產相同，差別在於：槓桿少付 {{ formatNumber(addCompare.cash.cashNeed - addCompare.lev.cashNeed) }} 現金保留彈性，
+                                但換來借款、每年 {{ formatNumber(addCompare.lev.carryAdd) }} 的持有成本，以及這檔部位的追繳風險。
+                                庫存費率沿用此部位設定的 {{ Number(positions[calc.selectedIndex] && positions[calc.selectedIndex].carryFee) || 0 }}%／年。
+                            </p>
                         </div>
                     </div>
                     <button @click="executeAddOn" v-if="calc.selectedTicker" class="w-full mt-4 bg-indigo-600 text-white p-2.5 rounded hover:bg-indigo-700 font-bold text-base transition shadow-sm">確認執行加碼 (寫入庫存與明細)</button>
@@ -632,7 +714,8 @@
                         currentPrice: 0,
                         addShares: null,
                         addPrice: null,
-                        addLev: null
+                        addLev: null,
+                        useLev: false
                     }
                 }
             },
@@ -679,6 +762,55 @@
                 },
                 reversedHistory() {
                     return [...this.history].reverse();
+                },
+
+                /* ══ 加碼試算：現股 vs 槓桿 ══ */
+                addLevValue() {
+                    const l = Number(this.calc.addLev);
+                    if (!l || l <= 1 || isNaN(l)) return 2; // 對照用的預設倍數
+                    return l;
+                },
+                estimatedSelfFund() {
+                    // 本次實際要動用的自有資金（原幣）
+                    return this.estimatedAddCost / this.addExecLev;
+                },
+                addExecLev() {
+                    // 實際會寫入庫存的槓桿：沒開槓桿模式就是現股
+                    return this.calc.useLev ? this.addLevValue : 1;
+                },
+                addCompare() {
+                    const shares = this.calc.addShares || 0;
+                    const price = this.calc.addPrice || 0;
+                    const pos = this.positions[this.calc.selectedIndex];
+                    if (!pos || !this.calc.selectedTicker || shares <= 0 || price <= 0) return null;
+
+                    const fx = this.fxRate(pos);
+                    const amt = shares * price;                 // 原幣買進金額
+                    const borrowNow = this.posBorrowOrig(pos);
+                    const avgAfter = this.newAveragePrice;
+                    const vm = this;
+
+                    function build(lev) {
+                        const borrowAdd = vm.lotBorrow(shares, price, lev);
+                        const proj = Object.assign({}, pos, {
+                            shares: (pos.shares || 0) + shares,
+                            price: avgAfter,
+                            borrow: borrowNow + borrowAdd,
+                            currentPrice: pos.currentPrice || price
+                        });
+                        return {
+                            lev: Math.round(lev * 100) / 100,
+                            buyAmt: amt * fx,
+                            cashNeed: (amt - borrowAdd) * fx,
+                            borrowAdd: borrowAdd * fx,
+                            cashLeft: (Number(vm.cash) || 0) - (amt - borrowAdd) * fx,
+                            levAfter: Math.round(vm.posLev(proj) * 100) / 100,
+                            callAfter: vm.posCallPrice(proj),
+                            bufferAfter: vm.posBufferPct(proj),
+                            carryAdd: borrowAdd * fx * (Number(pos.carryFee) || 0) / 100
+                        };
+                    }
+                    return { cash: build(1), lev: build(this.addLevValue) };
                 },
 
                 /* ══ 帳務計算：曝險、借款、權益 ══ */
@@ -911,11 +1043,11 @@
                     });
 
                     pos.borrow = this.posBorrowOrig(pos) +
-                        this.lotBorrow(this.calc.addShares, this.calc.addPrice, this.calc.addLev);
+                        this.lotBorrow(this.calc.addShares, this.calc.addPrice, this.addExecLev);
                     pos.shares = this.newTotalShares;
                     pos.price = parseFloat(this.newAveragePrice.toFixed(4));
                     
-                    this.calc = { selectedIndex: null, selectedTicker: '', market: '', currentShares: 0, currentPrice: 0, addShares: null, addPrice: null, addLev: null };
+                    this.calc = { selectedIndex: null, selectedTicker: '', market: '', currentShares: 0, currentPrice: 0, addShares: null, addPrice: null, addLev: null, useLev: false };
                     this.saveData();
                 },
                 closePosition(index) {
@@ -1125,6 +1257,10 @@
                     return 'text-gray-700';
                 },
 
+                setAddMode(mode) {
+                    this.calc.useLev = (mode === 'lev');
+                    if (this.calc.useLev && !this.calc.addLev) this.calc.addLev = 2;
+                },
                 selectForCalc(pos) {
                     const index = this.positions.findIndex(p => p.ticker === pos.ticker && p.market === pos.market);
                     this.calc.selectedIndex = index;
@@ -1135,6 +1271,7 @@
                     this.calc.addShares = null;
                     this.calc.addPrice = pos.currentPrice;
                     this.calc.addLev = null;
+                    this.calc.useLev = false;
                 },
                 formatNumber(num) {
                     if (isNaN(num)) return '0';
