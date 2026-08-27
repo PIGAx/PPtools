@@ -292,7 +292,7 @@
                                 <tbody>
                                     <tr v-for="pos in leveragedPositions" :key="pos.ticker + pos.market" class="border-t border-gray-200">
                                         <td class="px-2 py-1.5 font-bold">{{ pos.ticker }}<span class="text-[10px] text-gray-400 ml-1">{{ pos.market }}</span></td>
-                                        <td class="px-2 py-1.5 text-right">{{ posLev(pos) }}x</td>
+                                        <td class="px-2 py-1.5 text-right">{{ posLevLabel(pos) }}x</td>
                                         <td class="px-2 py-1.5 text-right">{{ formatNumber(pos.currentPrice || pos.price) }}</td>
                                         <td class="px-2 py-1.5 text-right">{{ formatNumber(posCallPrice(pos)) }}</td>
                                         <td class="px-2 py-1.5 text-right text-gray-500">{{ posCallMode(pos) === 'equity' ? '權益 ' : '維持 ' }}{{ posTriggerPct(pos) }}%</td>
@@ -359,7 +359,7 @@
                         <input v-model.number="newPosition.lev" type="number" step="0.1" min="1" placeholder="槓桿倍數（現股填 1）" class="border p-2 rounded text-sm w-full">
                         <input v-model.number="newPosition.carryFee" type="number" step="0.01" placeholder="庫存費 %／年（槓桿用）" class="border p-2 rounded text-sm w-full">
                     </div>
-                    <p class="text-[11px] text-gray-400 mb-3 leading-relaxed">槓桿倍數 &gt; 1 時，只有「買進金額 ÷ 槓桿」算自有資金，其餘視為借款，會納入下方帳務與風險計算。細部費率（作業處理費、追繳維持率）可在庫存卡片內調整。</p>
+                    <p class="text-[11px] text-gray-400 mb-3 leading-relaxed">槓桿倍數是「這一筆」的槓桿：買進金額 ÷ 槓桿算自有資金，其餘計入借款。對已有的部位加碼時只會加上這筆的借款，原有股數的融資條件不受影響。細部費率（作業處理費、追繳維持率）與借款餘額可在庫存卡片內調整。</p>
                     <button @click="addPosition" class="w-full bg-blue-600 text-white p-2.5 rounded hover:bg-blue-700 font-bold transition text-sm shadow-sm">加入庫存</button>
                 </div>
 
@@ -406,8 +406,8 @@
                         <div class="mb-3">
                             <div class="flex items-center justify-between gap-2 mb-1.5">
                                 <span class="text-[11px] font-bold px-1.5 py-0.5 rounded"
-                                      :class="posLev(pos) > 1 ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-200 text-gray-600'">
-                                    {{ posLev(pos) > 1 ? '槓桿 ' + posLev(pos) + 'x' : '現股（無槓桿）' }}
+                                      :class="hasLeverage(pos) ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-200 text-gray-600'">
+                                    {{ hasLeverage(pos) ? '實質槓桿 ' + posLevLabel(pos) + 'x' : '現股（無槓桿）' }}
                                 </span>
                                 <button @click="toggleLev(pos)" class="text-xs text-indigo-600 hover:underline font-semibold">
                                     {{ isLevOpen(pos) ? '收合設定 ▲' : '⚙ 槓桿／費用設定 ▼' }}
@@ -416,8 +416,8 @@
 
                             <div v-show="isLevOpen(pos)" class="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-indigo-50 p-3 rounded border border-indigo-100 mb-2">
                                 <div>
-                                    <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">槓桿倍數</label>
-                                    <input v-model.number="pos.lev" type="number" step="0.1" min="1" placeholder="1" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="saveData">
+                                    <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">借款餘額（原幣）</label>
+                                    <input v-model.number="pos.borrow" type="number" step="1" min="0" placeholder="0" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="saveData">
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">庫存費 %／年</label>
@@ -445,8 +445,9 @@
                                 </div>
                             </div>
 
-                            <div v-if="posLev(pos) > 1" class="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1 text-xs bg-gray-50 p-3 rounded border border-gray-200">
+                            <div v-if="hasLeverage(pos)" class="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1 text-xs bg-gray-50 p-3 rounded border border-gray-200">
                                 <div class="flex justify-between"><span class="text-gray-500">名目曝險</span><span class="font-semibold">{{ formatNumber(posExposureTWD(pos)) }}</span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">實質槓桿</span><span class="font-semibold text-indigo-600">{{ posLevLabel(pos) }}x</span></div>
                                 <div class="flex justify-between"><span class="text-gray-500">自備保證金</span><span class="font-semibold">{{ formatNumber(posMarginTWD(pos)) }}</span></div>
                                 <div class="flex justify-between"><span class="text-gray-500">借款金額</span><span class="font-semibold text-indigo-600">{{ formatNumber(posBorrowTWD(pos)) }}</span></div>
                                 <div class="flex justify-between"><span class="text-gray-500">部位權益</span><span class="font-semibold" :class="posEquityTWD(pos) >= posMarginTWD(pos) ? 'text-red-600' : 'text-green-600'">{{ formatNumber(posEquityTWD(pos)) }}</span></div>
@@ -456,7 +457,8 @@
                                 <div class="flex justify-between"><span class="text-gray-500">槓桿後報酬</span><span class="font-semibold" :class="posLevROI(pos) >= 0 ? 'text-red-600' : 'text-green-600'">{{ posLevROI(pos) >= 0 ? '+' : '' }}{{ posLevROI(pos).toFixed(2) }}%</span></div>
                                 <div class="flex justify-between"><span class="text-gray-500">每日持有成本</span><span class="font-semibold">{{ formatNumber(posDailyCostTWD(pos)) }}</span></div>
                                 <p class="col-span-2 sm:col-span-3 text-[10px] text-gray-400 border-t border-gray-200 pt-1 mt-0.5">
-                                    借款以建倉成本計算（成本 × (1 − 1/槓桿)），庫存費對借款計息。
+                                    借款餘額由各次買進累加（每筆 = 買進金額 × (1 − 1/該筆槓桿)），賣出時按股數比例償還；
+                                    實質槓桿 = 總成本 ÷ 自有資金，庫存費對借款計息。
                                     <template v-if="posCallMode(pos) === 'maint'">維持率 = 市值 ÷ 借款，跌破 {{ posMaintPct(pos) }}% 視為追繳。</template>
                                     <template v-else>權益 = 市值 − 借款，跌到初始保證金的 {{ posEquityTriggerPct(pos) }}% 視為追繳。</template>
                                     一次性作業處理費約 {{ formatNumber(posHandlingCostTWD(pos)) }} TWD。
@@ -498,6 +500,10 @@
                         <div>
                             <label class="block text-xs font-semibold text-gray-600 mb-1">計畫加碼價格</label>
                             <input v-model.number="calc.addPrice" type="number" step="0.01" class="border p-2 rounded w-full bg-gray-50 focus:bg-white text-sm" :disabled="!calc.selectedTicker">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">本次加碼槓桿倍數（現股填 1）</label>
+                            <input v-model.number="calc.addLev" type="number" step="0.1" min="1" placeholder="1" class="border p-2 rounded w-full bg-gray-50 focus:bg-white text-sm" :disabled="!calc.selectedTicker">
                         </div>
                     </div>
                     
@@ -625,7 +631,8 @@
                         currentShares: 0,
                         currentPrice: 0,
                         addShares: null,
-                        addPrice: null
+                        addPrice: null,
+                        addLev: null
                     }
                 }
             },
@@ -720,7 +727,7 @@
                 /* ══ 槓桿部位與追繳距離 ══ */
                 leveragedPositions() {
                     return this.positions
-                        .filter(p => this.posLev(p) > 1)
+                        .filter(p => this.hasLeverage(p))
                         .sort((a, b) => this.posBufferPct(a) - this.posBufferPct(b));
                 },
                 minBufferPct() {
@@ -862,9 +869,11 @@
                     const existingIndex = this.positions.findIndex(p => p.ticker === this.newPosition.ticker && p.market === this.newPosition.market);
                     if (existingIndex !== -1) {
                         const ep = this.positions[existingIndex];
-                        // 加碼時若有填新的槓桿／費率就更新，沒填則沿用原設定
-                        if (this.newPosition.lev) ep.lev = this.newPosition.lev;
-                        if (this.newPosition.carryFee != null) ep.carryFee = this.newPosition.carryFee;
+                        // 只把「這一筆」的借款加進去，原有股數的融資條件不受影響
+                        ep.borrow = this.posBorrowOrig(ep) +
+                            this.lotBorrow(this.newPosition.shares, this.newPosition.price, this.newPosition.lev);
+                        // 費率只在原本沒設定時才帶入，避免加碼順手改掉整檔的費率
+                        if (!Number(ep.carryFee) && Number(this.newPosition.carryFee)) ep.carryFee = this.newPosition.carryFee;
                         const newTotalShares = ep.shares + this.newPosition.shares;
                         const newAvgPrice = ((ep.shares * ep.price) + (this.newPosition.shares * this.newPosition.price)) / newTotalShares;
                         ep.shares = newTotalShares;
@@ -872,7 +881,8 @@
                     } else {
                         this.positions.push({
                             ...this.newPosition,
-                            lev: this.newPosition.lev || 1,
+                            lev: undefined, // 槓桿倍數不落地，一律以借款餘額為準
+                            borrow: this.lotBorrow(this.newPosition.shares, this.newPosition.price, this.newPosition.lev),
                             carryFee: this.newPosition.carryFee || 0,
                             handlingFee: 0,
                             callMode: null,
@@ -900,10 +910,12 @@
                         date: new Date().toLocaleString('zh-TW', { hour12: false })
                     });
 
+                    pos.borrow = this.posBorrowOrig(pos) +
+                        this.lotBorrow(this.calc.addShares, this.calc.addPrice, this.calc.addLev);
                     pos.shares = this.newTotalShares;
                     pos.price = parseFloat(this.newAveragePrice.toFixed(4));
                     
-                    this.calc = { selectedIndex: null, selectedTicker: '', market: '', currentShares: 0, currentPrice: 0, addShares: null, addPrice: null };
+                    this.calc = { selectedIndex: null, selectedTicker: '', market: '', currentShares: 0, currentPrice: 0, addShares: null, addPrice: null, addLev: null };
                     this.saveData();
                 },
                 closePosition(index) {
@@ -933,7 +945,11 @@
                         date: new Date().toLocaleString('zh-TW', { hour12: false })
                     });
 
+                    // 賣掉多少比例的股數，就償還多少比例的借款
+                    const borrowBefore = this.posBorrowOrig(pos);
+                    const sharesBefore = pos.shares;
                     pos.shares -= pos.closeShares;
+                    if (sharesBefore > 0) pos.borrow = borrowBefore * (pos.shares / sharesBefore);
                     pos.closeShares = null;
                     pos.closePrice = null;
 
@@ -978,8 +994,23 @@
                     return pos.market === 'US' ? (this.exchangeRate || 1) : 1;
                 },
                 posLev(pos) {
-                    const l = Number(pos.lev);
-                    return (!l || l < 1 || isNaN(l)) ? 1 : l;
+                    // 實質槓桿 = 總成本 ÷ 自有資金，由實際借款餘額回推
+                    const cost = this.posCostOrig(pos);
+                    const own = cost - this.posBorrowOrig(pos);
+                    if (cost <= 0 || own <= 0) return 1;
+                    return cost / own;
+                },
+                posLevLabel(pos) {
+                    return (Math.round(this.posLev(pos) * 100) / 100).toString();
+                },
+                hasLeverage(pos) {
+                    return this.posBorrowOrig(pos) > 0;
+                },
+                lotBorrow(shares, price, lev) {
+                    // 單筆買進產生的借款：買進金額 × (1 − 1/槓桿)
+                    const l = Number(lev);
+                    if (!l || l <= 1 || isNaN(l)) return 0;
+                    return (shares || 0) * (price || 0) * (1 - 1 / l);
                 },
                 posMaintPct(pos) {
                     const m = Number(pos.maintPct);
@@ -993,15 +1024,21 @@
                     return (pos.shares || 0) * cur * this.fxRate(pos);
                 },
                 posBorrowOrig(pos) {
-                    const lev = this.posLev(pos);
-                    if (lev <= 1) return 0;
-                    return this.posCostOrig(pos) * (1 - 1 / lev);
+                    const cost = this.posCostOrig(pos);
+                    if (pos.borrow != null && !isNaN(Number(pos.borrow))) {
+                        return Math.max(0, Math.min(Number(pos.borrow), cost));
+                    }
+                    // 舊資料相容：只有槓桿倍數、沒有借款餘額時，用成本回推一次
+                    const lev = Number(pos.lev);
+                    if (!lev || lev <= 1 || isNaN(lev)) return 0;
+                    return cost * (1 - 1 / lev);
                 },
                 posBorrowTWD(pos) {
                     return this.posBorrowOrig(pos) * this.fxRate(pos);
                 },
                 posMarginTWD(pos) {
-                    return (this.posCostOrig(pos) / this.posLev(pos)) * this.fxRate(pos);
+                    // 自備保證金 = 總成本 − 借款
+                    return (this.posCostOrig(pos) - this.posBorrowOrig(pos)) * this.fxRate(pos);
                 },
                 posEquityTWD(pos) {
                     return this.posExposureTWD(pos) - this.posBorrowTWD(pos);
@@ -1025,7 +1062,7 @@
                 },
                 posEquityRatio(pos) {
                     // 目前權益（市值 − 借款）相對於初始自備保證金的比率
-                    const margin = this.posCostOrig(pos) / this.posLev(pos);
+                    const margin = this.posCostOrig(pos) - this.posBorrowOrig(pos);
                     if (margin <= 0) return 0;
                     const cur = pos.currentPrice || pos.price || 0;
                     return ((pos.shares || 0) * cur - this.posBorrowOrig(pos)) / margin * 100;
@@ -1041,7 +1078,7 @@
                     if (borrow <= 0 || !pos.shares) return 0;
                     if (this.posCallMode(pos) === 'equity') {
                         // 權益 = 市值 − 借款，跌到初始保證金的 X% 時觸發
-                        const margin = this.posCostOrig(pos) / this.posLev(pos);
+                        const margin = this.posCostOrig(pos) - this.posBorrowOrig(pos);
                         return (borrow + margin * this.posEquityTriggerPct(pos) / 100) / pos.shares;
                     }
                     // 市值 = 借款 × 維持率 時觸發追繳
@@ -1096,7 +1133,8 @@
                     this.calc.currentShares = pos.shares;
                     this.calc.currentPrice = pos.price;
                     this.calc.addShares = null;
-                    this.calc.addPrice = pos.currentPrice; 
+                    this.calc.addPrice = pos.currentPrice;
+                    this.calc.addLev = null;
                 },
                 formatNumber(num) {
                     if (isNaN(num)) return '0';
@@ -1214,7 +1252,20 @@
                         this.history = parsed.history || [];
                         this.netHistory = parsed.netHistory || [];
                         this.lastQuoteAt = parsed.lastQuoteAt || null;
+                        let migrated = false;
+                        this.positions.forEach(p => {
+                            // 舊版只存槓桿倍數，改存實際借款餘額，之後加碼才不會回頭改到原有部位
+                            if (p.borrow == null || isNaN(Number(p.borrow))) {
+                                migrated = true;
+                                const lev = Number(p.lev);
+                                p.borrow = (!lev || lev <= 1 || isNaN(lev))
+                                    ? 0
+                                    : (p.shares || 0) * (p.price || 0) * (1 - 1 / lev);
+                            }
+                            delete p.lev;
+                        });
                         this.cash = Number(parsed.cash) || 0;
+                        if (migrated) this.$nextTick(() => this.saveData());
                         if (parsed.riskCfg) this.riskCfg = Object.assign({ callMode: 'maint', maintPct: 130, equityPct: 25, stressPct: 15 }, parsed.riskCfg);
                     } else if (dataOld) {
                         const parsed = JSON.parse(dataOld);
