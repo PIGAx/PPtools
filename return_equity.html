@@ -484,6 +484,117 @@
             </div>
 
             <div class="space-y-6">
+                <!-- ══════ 下單前風險試算（槓桿股權選擇權） ══════ -->
+                <div class="bg-white p-5 rounded-lg shadow-md border-t-4 border-red-500">
+                    <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-3">
+                        <h2 class="text-lg font-bold">🎯 下單前風險試算</h2>
+                        <p class="text-xs text-gray-500">自訂槓桿股權選擇權（買權）</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">參考成交價</label>
+                            <input v-model.number="order.price" type="number" step="0.01" placeholder="1650" class="border p-2 rounded w-full text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">股數</label>
+                            <input v-model.number="order.shares" type="number" step="1" placeholder="10" class="border p-2 rounded w-full text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">槓桿倍數</label>
+                            <input v-model.number="order.lev" type="number" step="1" min="1" placeholder="5" class="border p-2 rounded w-full text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">庫存費 %／年</label>
+                            <input v-model.number="order.carryFee" type="number" step="0.01" placeholder="3.5" class="border p-2 rounded w-full text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">作業處理費 %</label>
+                            <input v-model.number="order.handlingFee" type="number" step="0.01" placeholder="0" class="border p-2 rounded w-full text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">預計持有天數</label>
+                            <input v-model.number="order.days" type="number" step="1" placeholder="30" class="border p-2 rounded w-full text-sm">
+                        </div>
+                    </div>
+
+                    <div v-if="!orderCalc" class="text-gray-400 text-sm p-4 border border-dashed rounded text-center">填入成交價與股數即可試算。</div>
+
+                    <template v-else>
+                        <!-- 最重要的三個數字 -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                            <div class="p-3 rounded border-2 border-red-500 bg-red-100">
+                                <h4 class="text-[10px] font-bold text-gray-600 mb-1">最多會賠（合約上限）</h4>
+                                <p class="text-xl font-bold text-red-600">{{ formatNumber(orderCalc.maxLoss) }}</p>
+                                <p class="text-[10px] text-gray-500 mt-0.5">= 權利金 {{ formatNumber(orderCalc.premium) }}<span v-if="orderCalc.handlingBoth > 0"> + 處理費 {{ formatNumber(orderCalc.handlingBoth) }}</span></p>
+                            </div>
+                            <div class="p-3 rounded border-2 border-indigo-500 bg-indigo-50">
+                                <h4 class="text-[10px] font-bold text-gray-600 mb-1">強制收回價（下限價）</h4>
+                                <p class="text-xl font-bold text-indigo-700">{{ formatNumber(orderCalc.floorPrice) }}</p>
+                                <p class="text-[10px] text-gray-500 mt-0.5">標的跌 {{ orderCalc.dropToFloorPct.toFixed(2) }}% 就觸發</p>
+                            </div>
+                            <div class="p-3 rounded border border-gray-200 bg-gray-50">
+                                <h4 class="text-[10px] font-bold text-gray-600 mb-1">現在要付（權利金）</h4>
+                                <p class="text-xl font-bold">{{ formatNumber(orderCalc.premium) }}</p>
+                                <p class="text-[10px] text-gray-500 mt-0.5">契約本金 {{ formatNumber(orderCalc.notional) }}</p>
+                            </div>
+                        </div>
+
+                        <!-- 合約參數 -->
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1 text-xs bg-gray-50 p-3 rounded border border-gray-200 mb-3">
+                            <div class="flex justify-between"><span class="text-gray-500">每股權利金</span><span class="font-semibold">{{ formatNumber(orderCalc.premPerShare) }}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">履約價</span><span class="font-semibold">{{ formatNumber(orderCalc.strike) }}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">下限價</span><span class="font-semibold text-indigo-600">{{ formatNumber(orderCalc.floorPrice) }}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">損益兩平價</span><span class="font-semibold">{{ formatNumber(orderCalc.breakeven) }}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">每日庫存費</span><span class="font-semibold">{{ formatNumber(orderCalc.carryDaily) }}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">{{ orderCalc.days }} 天庫存費</span><span class="font-semibold">{{ formatNumber(orderCalc.carryTotal) }}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">處理費（進+出）</span><span class="font-semibold">{{ formatNumber(orderCalc.handlingBoth) }}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">權利金佔淨資產</span><span class="font-semibold" :class="orderCalc.premiumOfNetPct > 10 ? 'text-red-600' : ''">{{ orderCalc.premiumOfNetPct.toFixed(1) }}%</span></div>
+                        </div>
+
+                        <!-- 觸發強制收回時的損失區間 -->
+                        <div class="p-3 rounded border border-red-500 bg-red-100 mb-3">
+                            <p class="text-xs font-bold text-gray-700 mb-1.5">⚠️ 若跌到 {{ formatNumber(orderCalc.floorPrice) }} 被強制收回</p>
+                            <div class="flex items-baseline gap-2 flex-wrap text-sm">
+                                <span class="text-gray-600 text-xs">實際損失落在</span>
+                                <span class="font-bold text-red-600 text-base">{{ formatNumber(orderCalc.floorLossMin) }} ～ {{ formatNumber(orderCalc.floorLossMax) }}</span>
+                                <span class="text-gray-500 text-xs">（權利金的 50%～100%）</span>
+                            </div>
+                            <p class="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
+                                結算參考價取觸發後的最低第一委買價，但合約規定「低於履約價時以履約價計」。
+                                剛好結算在下限價 → 拿回權利金的一半；被壓到履約價 → 權利金全數歸零。
+                                位置一旦收回就出場，無法等反彈。
+                            </p>
+                        </div>
+
+                        <!-- 現股對照 -->
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-500">
+                                    <tr>
+                                        <th class="text-left px-1 py-1.5 font-semibold">標的跌幅</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">同股數現股損失</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">此槓桿合約損失</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">狀態</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="row in orderCalc.scenarios" :key="row.drop" class="border-t border-gray-200">
+                                        <td class="px-1 py-1.5 font-semibold">−{{ row.drop.toFixed(1) }}%</td>
+                                        <td class="px-2 py-1.5 text-right text-green-600">{{ formatNumber(-row.cashLoss) }}</td>
+                                        <td class="px-2 py-1.5 text-right font-bold text-green-600">{{ formatNumber(-row.levLoss) }}</td>
+                                        <td class="px-2 py-1.5 text-right" :class="row.knocked ? 'text-red-600 font-bold' : 'text-gray-400'">{{ row.knocked ? '強制收回' : '持有中' }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                            現股損失為帳面未實現、部位仍在；槓桿合約在下限價以下一律視為已收回，損失以權利金全額計（保守估計），並含 {{ orderCalc.days }} 天庫存費與進出處理費。
+                            庫存費依合約以「契約本金 × 年率 ÷ 365」計算；合約明訂履約價金不足支付庫存費時不再另行收費，因此總損失不會超過權利金加處理費。
+                        </p>
+                    </template>
+                </div>
+
                 <div class="bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500">
                     <h2 class="text-lg font-bold mb-3">⚖️ 加碼 / 攤平試算器</h2>
                     <div v-if="calc.selectedTicker" class="bg-indigo-50 p-3 rounded mb-3 border border-indigo-100 text-sm">
@@ -698,6 +809,7 @@
                     newPosition: { ticker: '', market: 'TW', shares: null, price: null, lev: null, carryFee: null },
                     positions: [],
                     cash: 0,
+                    order: { price: null, shares: null, lev: 5, carryFee: 3.5, handlingFee: 0, days: 30 },
                     riskCfg: { callMode: 'maint', maintPct: 130, equityPct: 25, stressPct: 15 },
                     levOpen: {},
                     history: [],
@@ -762,6 +874,66 @@
                 },
                 reversedHistory() {
                     return [...this.history].reverse();
+                },
+
+                /* ══ 下單前風險試算：依康和自訂槓桿股權選擇權合約規格 ══
+                   每股權利金 = 參考成交價 ÷ 槓桿
+                   買權履約價 = 參考成交價 − 每股權利金
+                   買權下限價 = 履約價 + 每股權利金 × 50%  →  成交價 × (1 − 1/(2L))
+                   庫存費     = 契約本金 × 年率 ÷ 365
+                   最大虧損   = 權利金（合約明訂不高於權利金 × 成交單位）      */
+                orderCalc() {
+                    const P = Number(this.order.price) || 0;
+                    const N = Number(this.order.shares) || 0;
+                    let L = Number(this.order.lev);
+                    if (!L || L < 1 || isNaN(L)) L = 1;
+                    if (P <= 0 || N <= 0) return null;
+
+                    const days = Math.max(0, Number(this.order.days) || 0);
+                    const carryPct = Number(this.order.carryFee) || 0;
+                    const handlingPct = Number(this.order.handlingFee) || 0;
+
+                    const notional = P * N;                       // 契約本金
+                    const premPerShare = P / L;                   // 每股權利金
+                    const premium = premPerShare * N;             // 權利金總額 = 自備款
+                    const strike = P - premPerShare;              // 履約價
+                    const floorPrice = strike + premPerShare * 0.5; // 下限價 = P × (1 − 1/(2L))
+                    const dropToFloorPct = P > 0 ? (P - floorPrice) / P * 100 : 0;
+
+                    const carryDaily = notional * carryPct / 100 / 365;
+                    const carryTotal = carryDaily * days;
+                    const handlingOnce = notional * handlingPct / 100;
+                    const handlingBoth = handlingOnce * 2;        // 進場一次、結算一次
+
+                    // 合約：履約價金不足支付庫存費時不再另收，故總損失上限為權利金加處理費
+                    const maxLoss = premium + handlingBoth;
+                    const floorLossMin = premium * 0.5 + handlingBoth + carryTotal; // 剛好結算在下限價
+                    const floorLossMax = maxLoss;                                    // 被壓到履約價
+                    const breakeven = P + (carryTotal + handlingBoth) / N;
+
+                    const net = this.netAssetTWD;
+                    const premiumOfNetPct = net > 0 ? premium / net * 100 : 0;
+
+                    // 跌幅情境：含下限價那一檔，超過下限價一律視為已收回
+                    const drops = [...new Set([2, 5, dropToFloorPct, 10, 15, 20]
+                        .filter(d => d > 0).map(d => Math.round(d * 100) / 100))].sort((a, b) => a - b);
+                    const scenarios = drops.map(d => {
+                        const px = P * (1 - d / 100);
+                        const knocked = px <= floorPrice + 1e-9;
+                        const cashLoss = (P - px) * N;            // 同股數現股的帳面損失
+                        // 下限價以上 delta 為 1，損益與現股同步；被收回時履約價金不足，庫存費不再另收
+                        const levLoss = knocked ? maxLoss : cashLoss + carryTotal + handlingBoth;
+                        return { drop: d, cashLoss: cashLoss, levLoss: levLoss, knocked: knocked };
+                    });
+
+                    return {
+                        days: days, notional: notional, premPerShare: premPerShare, premium: premium,
+                        strike: strike, floorPrice: floorPrice, dropToFloorPct: dropToFloorPct,
+                        carryDaily: carryDaily, carryTotal: carryTotal,
+                        handlingOnce: handlingOnce, handlingBoth: handlingBoth,
+                        maxLoss: maxLoss, floorLossMin: floorLossMin, floorLossMax: floorLossMax,
+                        breakeven: breakeven, premiumOfNetPct: premiumOfNetPct, scenarios: scenarios
+                    };
                 },
 
                 /* ══ 加碼試算：現股 vs 槓桿 ══ */
@@ -957,6 +1129,13 @@
                 history: {
                     handler() {
                         this.updateChart();
+                    },
+                    deep: true
+                },
+                order: {
+                    handler() {
+                        // 下單試算的參數也留著，下次開頁不用重打
+                        if (this.positions.length || this.order.price) this.saveData();
                     },
                     deep: true
                 }
@@ -1373,7 +1552,8 @@
                         netHistory: this.netHistory,
                         lastQuoteAt: this.lastQuoteAt,
                         cash: this.cash,
-                        riskCfg: this.riskCfg
+                        riskCfg: this.riskCfg,
+                        order: this.order
                     }));
                     this.updateNetChart();
                     this.updateAllocChart();
@@ -1403,6 +1583,7 @@
                         });
                         this.cash = Number(parsed.cash) || 0;
                         if (migrated) this.$nextTick(() => this.saveData());
+                        if (parsed.order) this.order = Object.assign({ price: null, shares: null, lev: 5, carryFee: 3.5, handlingFee: 0, days: 30 }, parsed.order);
                         if (parsed.riskCfg) this.riskCfg = Object.assign({ callMode: 'maint', maintPct: 130, equityPct: 25, stressPct: 15 }, parsed.riskCfg);
                     } else if (dataOld) {
                         const parsed = JSON.parse(dataOld);
