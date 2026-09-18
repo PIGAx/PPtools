@@ -134,10 +134,13 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
     <h2>📊 庫存戰情室</h2>
     <span class="tag" id="srcTag">與部位控管共用同一份庫存</span>
     <div class="spacer"></div>
+    <label class="switch" title="開啟這頁時，自動補回沒開電腦那幾天的淨值紀錄"><input type="checkbox" id="autoCatch"> 開啟時自動補資料</label>
+    <button class="btn btn-sm" id="backfillBtn" title="用每日收盤價補回缺漏的交易日">⟲ 補回缺漏</button>
     <button class="btn btn-sm" id="reloadBtn" title="重新讀取部位控管的庫存">↻ 重讀庫存</button>
     <button class="btn btn-sm btn-primary" id="quoteBtn">⟳ 更新報價</button>
   </div>
   <div class="qstat" id="qstat">—</div>
+  <div class="qstat" id="bfstat"></div>
 
   <section id="sec-overview" style="margin-top:14px">
     <div class="overview">
@@ -624,6 +627,99 @@ function setQStat(msg){
   document.getElementById('qstat').textContent=(msg?msg+' · ':'')+'上次報價更新：'+at+' · USD/TWD '+S.exchangeRate;
 }
 
+/* ── 自動補資料 ──────────────────────────────────────────────
+   問題：淨值紀錄只有「人打開這頁」才會寫入，沒開的那幾天就斷掉。
+   伺服器端（GitHub Actions）每天收盤後都有抓價，但它寫不進瀏覽器的
+   localStorage，所以改成：一開啟這頁就用每日收盤價回頭把缺的交易日補齊。
+   每天的股數與成本，用 history 的買賣紀錄從「現在」往回推。
+   ──────────────────────────────────────────────────────────── */
+const AUTO_KEY='pp-inventory-autocatchup';
+function autoCatchOn(){ try{ return localStorage.getItem(AUTO_KEY)!=='0'; }catch(e){ return true; } }
+function tradeDate(d){
+  if(!d) return null;
+  const t=new Date(d);
+  return isNaN(t)?String(d).slice(0,10).replace(/\//g,'-'):t.toLocaleDateString('en-CA');
+}
+/* 回推某一天收盤時各檔的股數與成本（原幣別） */
+function stateAt(date){
+  const map={};
+  S.positions.forEach(p=>{
+    map[p.ticker]={market:p.market,shares:Number(p.shares)||0,cost:(Number(p.shares)||0)*(Number(p.price)||0)};
+  });
+  const later=(S.history||[]).filter(h=>{const d=tradeDate(h.date); return d&&d>date;});
+  later.sort((a,b)=>tradeDate(a.date)<tradeDate(b.date)?1:-1); // 由新往舊還原
+  later.forEach(h=>{
+    const k=h.ticker;
+    if(!map[k]) map[k]={market:h.market||'TW',shares:0,cost:0};
+    const sh=Number(h.shares)||0, px=Number(h.buyPrice)||0;
+    if(h.type==='BUY'){ map[k].shares-=sh; map[k].cost-=sh*px; }
+    else { map[k].shares+=sh; map[k].cost+=sh*px; }
+  });
+  Object.keys(map).forEach(k=>{ if(map[k].shares<=0.0000001){ delete map[k]; } });
+  return map;
+}
+async function dailyCloses(ticker,market){
+  const symbols=market==='US'?[ticker]:[ticker+'.TW',ticker+'.TWO'];
+  let lastErr=null;
+  for(const sym of symbols){
+    try{
+      const d=await fetchViaProxy('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym)+'?interval=1d&range=6mo');
+      const r=d&&d.chart&&d.chart.result&&d.chart.result[0];
+      const ts=r&&r.timestamp, closes=r&&r.indicators&&r.indicators.quote&&r.indicators.quote[0]&&r.indicators.quote[0].close;
+      if(!ts||!closes) throw new Error('no series');
+      const out={};
+      ts.forEach((t,i)=>{ if(closes[i]!=null) out[new Date(t*1000).toLocaleDateString('en-CA')]=closes[i]; });
+      return out;
+    }catch(e){ lastErr=e; }
+  }
+  throw lastErr||new Error('no data');
+}
+async function backfillHistory(auto){
+  const st=document.getElementById('bfstat');
+  const dates=(S.netHistory||[]).map(x=>x.date).sort();
+  const last=dates.length?dates[dates.length-1]:null;
+  const today=new Date().toLocaleDateString('en-CA');
+  if(!S.positions.length) return 0;
+  if(last&&last>=today){ if(!auto) st.textContent='沒有缺漏，紀錄已經是最新的。'; return 0; }
+  st.textContent='補回缺漏中…';
+  // 需要的標的：目前持股 ＋ 缺漏期間賣掉的
+  const need={};
+  S.positions.forEach(p=>{ need[p.ticker]=p.market; });
+  (S.history||[]).forEach(h=>{ const d=tradeDate(h.date); if(d&&(!last||d>last)&&!need[h.ticker]) need[h.ticker]=h.market||'TW'; });
+  const series={}, failed=[];
+  for(const tk of Object.keys(need)){
+    try{ series[tk]=await dailyCloses(tk,need[tk]); }catch(e){ failed.push(tk); }
+  }
+  if(failed.length){ st.textContent='補不回來：'+failed.join('、')+' 抓不到歷史收盤價，稍後再按一次「補回缺漏」。'; return 0; }
+  // 交易日以有收盤價的日期為準
+  const all=new Set();
+  Object.values(series).forEach(m=>Object.keys(m).forEach(d=>all.add(d)));
+  const have=new Set(dates);
+  const targets=[...all].filter(d=>(!last||d>last)&&d<=today&&!have.has(d)).sort();
+  if(!targets.length){ st.textContent=auto?'':'沒有可以補的交易日。'; return 0; }
+  const fx=Number(S.exchangeRate)||1;
+  let added=0;
+  targets.forEach(d=>{
+    const at=stateAt(d);
+    let value=0, cost=0, ok=false;
+    Object.keys(at).forEach(tk=>{
+      const px=series[tk]&&series[tk][d];
+      if(px==null) return;
+      const f=at[tk].market==='US'?fx:1;
+      value+=at[tk].shares*px*f; cost+=at[tk].cost*f; ok=true;
+    });
+    if(!ok) return;
+    S.netHistory.push({date:d,value:Math.round(value),cost:Math.round(cost),src:'backfill'});
+    added++;
+  });
+  if(added){
+    S.netHistory.sort((a,b)=>a.date<b.date?-1:1);
+    persist(); calCursor=null; renderAll();
+  }
+  st.textContent=added?('已用收盤價補回 '+added+' 個交易日（'+targets[0]+' ～ '+targets[targets.length-1]+'，美股以目前匯率換算）。'):'';
+  return added;
+}
+
 /* ── 淨值紀錄編輯（修正誤植用） ── */
 function renderNetHistory(){
   const h=[...(S.netHistory||[])].sort((a,b)=>a.date<b.date?-1:1);
@@ -639,7 +735,7 @@ function renderNetHistory(){
       '<td><input type="date" class="pp-field" data-f="date" value="'+x.date+'"></td>'+
       '<td><input type="number" step="1" class="pp-field num" data-f="value" value="'+(Number(x.value)||0)+'"></td>'+
       '<td><input type="number" step="1" class="pp-field num" data-f="cost" value="'+(Number(x.cost)||0)+'"></td>'+
-      '<td class="num '+(pnl==null?'flat':cls(pnl))+'">'+(pnl==null?'—':signed(pnl))+(odd?' <span class="tag">疑似誤植</span>':'')+'</td>'+
+      '<td class="num '+(pnl==null?'flat':cls(pnl))+'">'+(pnl==null?'—':signed(pnl))+(odd?' <span class="tag">疑似誤植</span>':'')+(x.src==='backfill'?' <span class="tag">自動補</span>':'')+'</td>'+
       '<td><button class="btn btn-sm btn-danger" data-del="'+x.date+'">刪除</button></td></tr>';
   }).join('');
 }
@@ -699,7 +795,11 @@ document.getElementById('nextM').addEventListener('click',()=>{calCursor.m++;if(
   chart.addEventListener('pointerleave',()=>{ barPick=null; setBarReadout(barData.length?barData.length-1:null); });
 })();
 document.getElementById('clipOutlier').addEventListener('change',renderAll);
-document.getElementById('quoteBtn').addEventListener('click',refreshQuotes);
+document.getElementById('quoteBtn').addEventListener('click',()=>refreshQuotes());
+document.getElementById('backfillBtn').addEventListener('click',()=>backfillHistory(false));
+document.getElementById('autoCatch').addEventListener('change',e=>{
+  try{ localStorage.setItem(AUTO_KEY, e.target.checked?'1':'0'); }catch(err){}
+});
 document.getElementById('reloadBtn').addEventListener('click',()=>{
   loadData(); calCursor=null; renderAll(); setQStat('已重新讀取庫存');
   document.getElementById('stress').value=S.riskCfg.stressPct;
@@ -757,9 +857,21 @@ async function hydrateNames(){
 
 loadData();
 document.getElementById('stress').value=S.riskCfg.stressPct;
+document.getElementById('autoCatch').checked=autoCatchOn();
 renderAll();
 setQStat('');
 hydrateNames();
+
+/* 開場自動追上進度：今天還沒更新過報價就先更新，再把沒開電腦那幾天補回來 */
+(async function catchUp(){
+  if(!autoCatchOn()||!S.positions.length) return;
+  const today=new Date().toLocaleDateString('en-CA');
+  const quotedToday=S.lastQuoteAt&&new Date(S.lastQuoteAt).toLocaleDateString('en-CA')===today;
+  try{
+    if(!quotedToday) await refreshQuotes();
+    await backfillHistory(true);
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
