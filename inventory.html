@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>庫存戰情室 — 視覺化損益與槓桿</title>
+<link rel="stylesheet" href="pp-ui.css">
+<script src="pp-theme.js"></script>
+<style>
+/* ══════════════════════════════════════════════════════════════
+   庫存戰情室：把「部位控管」的同一份庫存資料（quantPortfolioDataV2）
+   換成以視覺化損益為主的呈現，另加槓桿水位與追繳風險試算。
+   本頁不做部位增刪（交給部位控管），只讀資料 + 更新報價 + 風險參數。
+   顏色全部走 pp-ui.css 代幣，深淺色自動跟著 PPTheme 切換。
+   ══════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg-base);color:var(--text)}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.num{font-family:'SF Mono','Menlo','Consolas',monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:18px;padding-block:18px 48px}
+.up{color:var(--red)}.down{color:var(--green)}.flat{color:var(--text-muted)}
+
+.page-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.page-head h2{font-size:18px;font-weight:800;letter-spacing:.4px;margin:0}
+.page-head .spacer{flex:1}
+.qstat{font-size:11px;color:var(--text-muted)}
+
+section{margin-top:20px}
+.sec-head{display:flex;align-items:baseline;gap:10px;margin-bottom:9px}
+.sec-title{font-size:11.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--accent)}
+.sec-note{font-size:11px;color:var(--text-muted);margin-left:auto;text-align:right}
+.panel{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)}
+.pad{padding:14px}
+
+/* ── 損益總覽 ── */
+.overview{display:grid;grid-template-columns:1.25fr 1fr;gap:14px;align-items:stretch}
+@media(max-width:860px){.overview{grid-template-columns:1fr}}
+.hero{overflow:hidden;display:flex;flex-direction:column}
+.hero-main{padding:18px 16px 14px;border-bottom:1px solid var(--stroke)}
+.hero-label{font-size:11px;color:var(--text-muted);letter-spacing:1px;display:flex;align-items:center;gap:6px}
+.hero-value{font-size:40px;font-weight:700;line-height:1.05;margin-top:6px}
+.hero-sub{font-size:13px;margin-top:2px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.hero-grid{display:grid;grid-template-columns:repeat(3,1fr);flex:1}
+.hero-cell{padding:12px 14px;border-right:1px solid var(--stroke)}
+.hero-cell:last-child{border-right:0}
+.hero-cell .k{font-size:11px;color:var(--text-muted);letter-spacing:.6px}
+.hero-cell .v{font-size:19px;font-weight:700;margin-top:3px}
+.hero-cell .s{font-size:11px;color:var(--text-muted);opacity:.8}
+@media(max-width:430px){.hero-grid{grid-template-columns:1fr 1fr}.hero-cell:nth-child(2){border-right:0}.hero-cell:nth-child(3){border-top:1px solid var(--stroke)}.hero-value{font-size:32px}}
+.tag{font-size:10px;font-weight:700;letter-spacing:.4px;padding:2px 7px;border-radius:var(--radius-sm);background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--stroke)}
+.tag.lev{color:var(--purple);border-color:color-mix(in srgb,var(--purple) 40%,var(--stroke))}
+.hint{font-size:11px;color:var(--text-muted);margin-top:6px}
+
+.split{display:grid;grid-template-columns:132px 1fr;gap:14px;align-items:center;height:100%}
+@media(max-width:430px){.split{grid-template-columns:104px 1fr;gap:10px}}
+.legend{display:grid;gap:7px;align-content:center}
+.legend-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.legend-row .dot{width:8px;height:8px;border-radius:2px;flex:0 0 auto}
+.legend-row .lbl{color:var(--text-muted)}
+.legend-row .val{margin-left:auto;font-weight:700}
+
+/* ── 持股 ── */
+.sorter{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.sortbtn{border:1px solid var(--stroke);background:var(--glass);color:var(--text-muted);border-radius:var(--radius-sm);padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit}
+.sortbtn[aria-pressed="true"]{color:var(--accent);border-color:var(--accent);background:var(--accent-light)}
+.holding{border-bottom:1px solid var(--stroke);padding:12px 14px;cursor:pointer}
+.holding:last-child{border-bottom:0}
+.holding:hover{background:var(--surface-alt)}
+.h-top{display:flex;align-items:flex-start;gap:10px}
+.h-name{font-weight:700;font-size:15px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.h-ticker{font-size:11px;color:var(--text-muted);letter-spacing:.3px}
+.h-right{margin-left:auto;text-align:right}
+.h-total{font-size:17px;font-weight:700;line-height:1.2}
+.h-pct{font-size:12px}
+.h-meta{display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--text-muted);flex-wrap:wrap}
+.h-meta b{color:var(--text);font-weight:600}
+.bar{height:6px;border-radius:3px;background:var(--surface-alt);margin-top:10px;position:relative;overflow:hidden}
+.bar i{position:absolute;top:0;bottom:0;display:block;border-radius:3px}
+.bar .zero{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--stroke)}
+.h-detail{margin-top:10px;padding-top:10px;border-top:1px dashed var(--stroke);display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px 12px;font-size:11px}
+.h-detail .k{color:var(--text-muted)}
+.h-detail .v{font-weight:700;font-size:13px;margin-top:1px}
+
+/* ── 槓桿 ── */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:1px;background:var(--stroke);border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--glass-border)}
+.kpi{background:var(--glass);padding:11px 12px}
+.kpi .k{font-size:11px;color:var(--text-muted);letter-spacing:.5px}
+.kpi .v{font-size:18px;font-weight:700;margin-top:2px}
+.kpi .s{font-size:10px;color:var(--text-muted);opacity:.8}
+.stack{height:26px;border-radius:var(--radius-sm);overflow:hidden;display:flex;border:1px solid var(--stroke);background:var(--surface-alt)}
+.stack div{display:grid;place-items:center;font-size:10px;font-weight:700;color:#141410;white-space:nowrap;overflow:hidden}
+input[type=range]{width:100%;accent-color:var(--accent);height:24px}
+.stress-out{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px;margin-top:12px}
+.stress-out .k{font-size:11px;color:var(--text-muted)}
+.stress-out .v{font-weight:700;font-size:15px}
+
+/* ── 日曆 ── */
+.cal-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.cal-title{font-weight:700;font-size:14px}
+.tblwrap{overflow-x:auto}
+table.cal{width:100%;min-width:580px;border-collapse:separate;border-spacing:3px}
+table.cal th{font-size:10px;color:var(--text-muted);font-weight:500;padding-bottom:2px;white-space:nowrap}
+table.cal td{height:52px;vertical-align:top;border-radius:var(--radius-sm);background:var(--surface-alt);padding:4px 5px;border:1px solid transparent}
+table.cal td.empty{background:transparent}
+table.cal td.wk{background:transparent;border:1px dashed var(--stroke)}
+table.cal .d{font-size:10px;color:var(--text-muted)}
+table.cal .p{font-size:11px;font-weight:700;margin-top:2px;line-height:1.25;white-space:nowrap}
+table.cal .pp{font-size:9px;opacity:.85}
+table.cal td.today{border-color:var(--accent)}
+
+.chart{width:100%;height:auto;display:block}
+.cap{font-size:11px;color:var(--text-muted);margin-top:6px}
+.switch{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);cursor:pointer}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+.field{display:grid;gap:4px}
+.field label{font-size:10px;color:var(--text-muted);letter-spacing:.5px}
+.field input{width:100%}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+.msg{font-size:11px;color:var(--green)}
+.empty{padding:30px 16px;text-align:center;color:var(--text-muted);font-size:13px}
+footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-align:center;line-height:1.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="page-head">
+    <h2>📊 庫存戰情室</h2>
+    <span class="tag" id="srcTag">與部位控管共用同一份庫存</span>
+    <div class="spacer"></div>
+    <button class="btn btn-sm" id="reloadBtn" title="重新讀取部位控管的庫存">↻ 重讀庫存</button>
+    <button class="btn btn-sm btn-primary" id="quoteBtn">⟳ 更新報價</button>
+  </div>
+  <div class="qstat" id="qstat">—</div>
+
+  <section id="sec-overview" style="margin-top:14px">
+    <div class="overview">
+      <div class="panel hero">
+        <div class="hero-main">
+          <div class="hero-label">今日損益 <span class="tag" id="todaySrc">—</span></div>
+          <div class="hero-value num" id="todayVal">—</div>
+          <div class="hero-sub"><span class="num" id="todayPct">—</span><span id="levChip"></span></div>
+          <div class="hint" id="todayHint" style="display:none">按「更新報價」抓最新收盤與昨收，今日損益就會逐檔計算。</div>
+        </div>
+        <div class="hero-grid">
+          <div class="hero-cell"><div class="k">累積損益</div><div class="v num" id="totalVal">—</div><div class="s num" id="totalPct">—</div></div>
+          <div class="hero-cell"><div class="k">股票市值</div><div class="v num" id="mvVal">—</div><div class="s num" id="costVal">—</div></div>
+          <div class="hero-cell"><div class="k">自有權益報酬</div><div class="v num" id="roeVal">—</div><div class="s num" id="roeSub">—</div></div>
+        </div>
+      </div>
+      <div class="panel pad">
+        <div class="split">
+          <svg id="donut" class="chart" viewBox="0 0 120 120" role="img" aria-label="盈虧市值佔比"></svg>
+          <div class="legend" id="pnlLegend"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-holdings">
+    <div class="sec-head"><div class="sec-title">持股明細</div><div class="sec-note">點一列展開成本、槓桿與追繳資訊</div></div>
+    <div class="sorter" id="sorter"></div>
+    <div class="panel" id="holdings"></div>
+    <div class="cap">長條為各檔總損益佔整體絕對損益的比重，紅漲綠跌（台股慣例）。部位增刪請到「部位控管」。</div>
+  </section>
+
+  <section id="sec-leverage">
+    <div class="sec-head"><div class="sec-title">槓桿與風險</div><div class="sec-note" id="callMode">—</div></div>
+    <div class="kpis" id="levKpis"></div>
+    <div class="panel pad" style="margin-top:12px">
+      <div class="hero-label" style="margin-bottom:8px">資金結構（市值 ＝ 自有權益 ＋ 融資負債）</div>
+      <div class="stack" id="capStack"></div>
+      <div class="cap" id="capCap">—</div>
+      <div class="hero-label" style="margin:16px 0 4px">壓力測試：全倉下跌 <b class="num" id="stressPctOut">15%</b></div>
+      <input type="range" id="stress" min="0" max="50" step="1" value="15" aria-label="壓力測試下跌幅度">
+      <div class="stress-out" id="stressOut"></div>
+    </div>
+  </section>
+
+  <section id="sec-calendar">
+    <div class="sec-head"><div class="sec-title">報酬日曆</div><div class="sec-note">由每日淨值紀錄推算，已扣掉當日新增／減少的成本</div></div>
+    <div class="panel pad">
+      <div class="cal-head">
+        <button class="btn btn-sm" id="prevM" aria-label="上個月">‹</button>
+        <div class="cal-title num" id="calTitle">—</div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="num" id="calSum" style="font-weight:700">—</div>
+          <div class="num" id="calSumPct" style="font-size:11px">—</div>
+        </div>
+        <button class="btn btn-sm" id="nextM" aria-label="下個月">›</button>
+      </div>
+      <div class="tblwrap"><table class="cal" id="cal"></table></div>
+    </div>
+    <div class="panel pad" style="margin-top:12px">
+      <div class="hero-label" style="margin-bottom:8px">每日損益</div>
+      <svg id="barChart" class="chart" viewBox="0 0 640 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="每日損益長條圖"></svg>
+      <div class="cap" id="barCap">—</div>
+    </div>
+  </section>
+
+  <section id="sec-curve">
+    <div class="sec-head"><div class="sec-title">權益曲線</div>
+      <label class="switch sec-note"><input type="checkbox" id="clipOutlier" checked> 隱藏異常淨值點（同步套用日曆）</label>
+    </div>
+    <div class="panel pad">
+      <svg id="lineChart" class="chart" viewBox="0 0 640 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="淨值與成本曲線"></svg>
+      <div class="cap" id="lineCap">—</div>
+    </div>
+  </section>
+
+  <section id="sec-risk">
+    <div class="sec-head"><div class="sec-title">風險參數</div><div class="sec-note">與部位控管共用 riskCfg，改完按儲存兩邊都會生效</div></div>
+    <div class="panel pad">
+      <div class="settings">
+        <div class="field"><label for="fxIn">USD/TWD 匯率</label><input class="pp-field num" type="number" id="fxIn" step="0.01"></div>
+        <div class="field"><label for="cashIn">可動用現金 (TWD)</label><input class="pp-field num" type="number" id="cashIn" step="1"></div>
+        <div class="field"><label for="maintIn">追繳維持率 (%)</label><input class="pp-field num" type="number" id="maintIn" step="1"></div>
+        <div class="field"><label for="stressIn">預設壓力測試跌幅 (%)</label><input class="pp-field num" type="number" id="stressIn" step="1"></div>
+      </div>
+      <div class="btnrow">
+        <button class="btn btn-primary" id="saveBtn">儲存參數</button>
+        <span class="msg" id="saveMsg"></span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    庫存戰情室 · 紅漲綠跌（台股慣例）· 融資維持率 ＝ 市值 ÷ 融資金額<br>
+    僅供個人庫存分析，不構成投資建議。
+  </footer>
+</div>
+
+<script>
+/* ── 狀態：直接讀寫部位控管的 quantPortfolioDataV2 ── */
+const KEY='quantPortfolioDataV2';
+let S={exchangeRate:32.5,positions:[],netHistory:[],cash:0,riskCfg:{callMode:'maint',maintPct:130,equityPct:25,stressPct:15},lastQuoteAt:null,history:[]};
+let sortKey='pnl', sortDir=-1, calCursor=null, openRow=null, quoteBusy=false;
+
+function loadData(){
+  try{
+    const raw=localStorage.getItem(KEY);
+    if(raw){
+      const p=JSON.parse(raw);
+      S=Object.assign(S,p);
+      S.positions=(p.positions||[]).map((x,i)=>Object.assign({_i:i},x));
+      S.netHistory=p.netHistory||[];
+      S.riskCfg=Object.assign({callMode:'maint',maintPct:130,equityPct:25,stressPct:15},p.riskCfg||{});
+      S.cash=Number(p.cash)||0;
+    }
+  }catch(e){}
+}
+function persist(){
+  // 保留部位控管寫進來的其他欄位，只覆蓋本頁會動到的部分
+  let base={};
+  try{ base=JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){}
+  base.exchangeRate=S.exchangeRate;
+  base.cash=S.cash;
+  base.riskCfg=S.riskCfg;
+  base.lastQuoteAt=S.lastQuoteAt;
+  base.positions=S.positions.map(p=>{const o=Object.assign({},p);delete o._i;delete o._name;return o;});
+  base.netHistory=S.netHistory;
+  try{ localStorage.setItem(KEY,JSON.stringify(base)); }catch(e){}
+}
+
+/* ── 計算 ── */
+const fxOf=p=>p.market==='US'?(Number(S.exchangeRate)||1):1;
+function rows(){
+  return S.positions.map(p=>{
+    const fx=fxOf(p), sh=Number(p.shares)||0, cur=Number(p.currentPrice)||0, avg=Number(p.price)||0;
+    const mv=sh*cur*fx, cost=sh*avg*fx, pnl=mv-cost;
+    const prev=(p.prevClose==null||p.prevClose==='')?null:Number(p.prevClose);
+    const borrow=Number(p.borrow)||0;
+    return {id:'p'+p._i, ticker:p.ticker, name:p._name||p.name||p.ticker, market:p.market, shares:sh,
+      price:avg, currentPrice:cur, fx, mv, cost, pnl, pnlPct:cost?pnl/cost:0,
+      day:prev!==null?sh*(cur-prev)*fx:null, dayPct:prev?(cur-prev)/prev:null,
+      borrow, own:cost-borrow, maint:borrow>0?mv/borrow:null,
+      callPrice:borrow>0&&sh?borrow*(Number(S.riskCfg.maintPct)||130)/100/(sh*fx):null};
+  });
+}
+function totals(rs){
+  const mv=rs.reduce((a,r)=>a+r.mv,0), cost=rs.reduce((a,r)=>a+r.cost,0);
+  const debt=rs.reduce((a,r)=>a+r.borrow,0), cash=Number(S.cash)||0;
+  const known=rs.filter(r=>r.day!==null);
+  const ds=dailySeries(), last=ds.length?ds[ds.length-1]:null;
+  const day=known.length?known.reduce((a,r)=>a+r.day,0):(last?last.pnl:0);
+  const daySrc=known.length?(known.length===rs.length?'逐檔即時':'部分即時'):'淨值推算';
+  const base=known.length?known.reduce((a,r)=>a+r.mv-r.day,0):(last?last.base:0);
+  const equity=mv+cash-debt;
+  return {mv,cost,debt,cash,equity,day,daySrc,dayPct:base?day/base:0,
+    pnl:mv-cost,pnlPct:cost?(mv-cost)/cost:0,ownCost:cost-debt,
+    roe:(cost-debt)?(mv-cost)/(cost-debt):0,lev:equity>0?mv/equity:0,maint:debt>0?mv/debt:null};
+}
+function cleanHistory(){
+  let h=[...(S.netHistory||[])].sort((a,b)=>a.date<b.date?-1:1);
+  const clip=document.getElementById('clipOutlier');
+  if(clip&&clip.checked&&h.length>3){
+    const v=h.map(x=>x.value).sort((a,b)=>a-b), med=v[Math.floor(v.length/2)]||1;
+    const keep=h.filter(x=>x.value<=med*5);
+    if(keep.length>2) return {h:keep,hidden:h.length-keep.length};
+  }
+  return {h,hidden:0};
+}
+function dailySeries(){
+  const h=cleanHistory().h, out=[];
+  for(let i=1;i<h.length;i++){
+    const pnl=(h[i].value-h[i-1].value)-(h[i].cost-h[i-1].cost);
+    out.push({date:h[i].date,pnl,pct:h[i-1].value?pnl/h[i-1].value:0,base:h[i-1].value});
+  }
+  return out;
+}
+const fmt=n=>Math.round(n).toLocaleString('en-US');
+const signed=n=>(n>0?'+':n<0?'−':'')+fmt(Math.abs(n));
+const pct=(n,d=2)=>(n>0?'+':n<0?'−':'')+(Math.abs(n)*100).toFixed(d)+'%';
+const cls=n=>n>0?'up':n<0?'down':'flat';
+const cssv=n=>n>0?'var(--red)':n<0?'var(--green)':'var(--text-muted)';
+
+/* ── 總覽 ── */
+function renderOverview(rs,T){
+  const tv=document.getElementById('todayVal');
+  tv.textContent=signed(T.day); tv.className='hero-value num '+cls(T.day);
+  const tp=document.getElementById('todayPct');
+  tp.textContent=pct(T.dayPct); tp.className='num '+cls(T.day);
+  document.getElementById('todaySrc').textContent=T.daySrc;
+  document.getElementById('todayHint').style.display=(T.daySrc==='逐檔即時'||!rs.length)?'none':'';
+  document.getElementById('levChip').innerHTML=T.debt>0
+    ?'<span class="tag lev">槓桿 '+T.lev.toFixed(2)+'x · 自有權益影響 '+pct((T.equity-T.day)?T.day/(T.equity-T.day):0)+'</span>'
+    :'<span class="tag">無槓桿 1.00x</span>';
+  const tot=document.getElementById('totalVal');
+  tot.textContent=signed(T.pnl); tot.className='v num '+cls(T.pnl);
+  const tpc=document.getElementById('totalPct');
+  tpc.textContent=pct(T.pnlPct); tpc.className='s num '+cls(T.pnl);
+  document.getElementById('mvVal').textContent=fmt(T.mv);
+  document.getElementById('costVal').textContent='成本 '+fmt(T.cost);
+  const roe=document.getElementById('roeVal');
+  roe.textContent=pct(T.roe); roe.className='v num '+cls(T.roe);
+  document.getElementById('roeSub').textContent='自有 '+fmt(T.ownCost)+(T.debt>0?' · 融資 '+fmt(T.debt):'');
+
+  const win=rs.filter(r=>r.pnl>0), lose=rs.filter(r=>r.pnl<0);
+  const wMv=win.reduce((a,r)=>a+r.mv,0), lMv=lose.reduce((a,r)=>a+r.mv,0), all=T.mv||1;
+  const wP=wMv/all, C=2*Math.PI*42;
+  document.getElementById('donut').innerHTML=
+    '<circle cx="60" cy="60" r="42" fill="none" stroke="var(--surface-alt)" stroke-width="16"/>'+
+    (lMv>0?'<circle cx="60" cy="60" r="42" fill="none" stroke="var(--green)" stroke-width="16" stroke-dasharray="'+C+'" transform="rotate(-90 60 60)"/>':'')+
+    (wMv>0?'<circle cx="60" cy="60" r="42" fill="none" stroke="var(--red)" stroke-width="16" stroke-dasharray="'+(C*wP)+' '+(C*(1-wP))+'" transform="rotate(-90 60 60)"/>':'')+
+    '<text x="60" y="56" text-anchor="middle" fill="var(--red)" font-size="17" font-weight="700">'+(wP*100).toFixed(0)+'%</text>'+
+    '<text x="60" y="74" text-anchor="middle" fill="var(--green)" font-size="13">'+((1-wP)*100).toFixed(0)+'%</text>';
+  document.getElementById('pnlLegend').innerHTML=
+    lg('var(--red)','獲利檔數',win.length+' 檔')+lg('transparent','獲利金額',signed(win.reduce((a,r)=>a+r.pnl,0)),'up')+
+    lg('var(--green)','虧損檔數',lose.length+' 檔')+lg('transparent','虧損金額',signed(lose.reduce((a,r)=>a+r.pnl,0)),'down')+
+    lg('var(--surface-alt)','盈虧市值佔比',fmt(T.mv));
+}
+const lg=(c,k,v,cl='')=>'<div class="legend-row"><span class="dot" style="background:'+c+'"></span><span class="lbl">'+k+'</span><span class="val num '+cl+'">'+v+'</span></div>';
+
+/* ── 持股 ── */
+const SORTS=[['pnl','總損益'],['pnlPct','報酬率'],['day','今日損益'],['mv','市值'],['borrow','融資']];
+function renderHoldings(rs,T){
+  document.getElementById('sorter').innerHTML=SORTS.map(s=>
+    '<button class="sortbtn" data-k="'+s[0]+'" aria-pressed="'+(sortKey===s[0])+'">'+s[1]+(sortKey===s[0]?(sortDir<0?' ↓':' ↑'):'')+'</button>').join('');
+  if(!rs.length){ document.getElementById('holdings').innerHTML='<div class="empty">目前沒有庫存部位。先到「部位控管」加入庫存，這裡就會跟著長出來。</div>'; return; }
+  const list=[...rs].sort((a,b)=>(((a[sortKey]==null?0:a[sortKey])-(b[sortKey]==null?0:b[sortKey]))*sortDir));
+  const maxAbs=Math.max(1,...rs.map(r=>Math.abs(r.pnl)));
+  document.getElementById('holdings').innerHTML=list.map(r=>{
+    const w=Math.abs(r.pnl)/maxAbs*50, open=openRow===r.id;
+    return '<div class="holding" data-id="'+r.id+'" role="button" tabindex="0" aria-expanded="'+open+'">'+
+      '<div class="h-top"><div><div class="h-name">'+r.name+
+        (r.borrow>0?' <span class="tag lev">融資</span>':'')+(r.market==='US'?' <span class="tag">US</span>':'')+'</div>'+
+        '<div class="h-ticker num">'+r.ticker+' · 市值 '+fmt(r.mv)+'</div></div>'+
+        '<div class="h-right"><div class="h-total num '+cls(r.pnl)+'">'+signed(r.pnl)+'</div>'+
+        '<div class="h-pct num '+cls(r.pnl)+'">'+pct(r.pnlPct)+'</div></div></div>'+
+      '<div class="h-meta"><span>現價 <b class="num">'+r.currentPrice+'</b></span>'+
+        '<span>成本 <b class="num">'+Number(r.price).toFixed(2)+'</b></span>'+
+        '<span>股數 <b class="num">'+fmt(r.shares)+'</b></span>'+
+        '<span>今日 <b class="num '+(r.day===null?'flat':cls(r.day))+'">'+(r.day===null?'待更新報價':signed(r.day)+' / '+pct(r.dayPct))+'</b></span>'+
+        '<span>佔比 <b class="num">'+(T.mv?(r.mv/T.mv*100).toFixed(1):0)+'%</b></span></div>'+
+      '<div class="bar"><span class="zero" style="left:50%"></span><i style="background:'+cssv(r.pnl)+';'+(r.pnl>=0?'left:50%;width:'+w+'%':'right:50%;width:'+w+'%')+'"></i></div>'+
+      (open?'<div class="h-detail">'+
+        cell('投入成本',fmt(r.cost))+cell('自有資金',fmt(r.own))+
+        cell('融資金額',r.borrow>0?fmt(r.borrow):'—')+
+        cell('個股維持率',r.maint?(r.maint*100).toFixed(0)+'%':'—',r.maint&&r.maint*100<(Number(S.riskCfg.maintPct)||130)?'up':'')+
+        cell('追繳價',r.callPrice?r.callPrice.toFixed(2):'—')+
+        cell('自有報酬率',r.own>0?pct(r.pnl/r.own):'—',r.own>0?cls(r.pnl):'')+
+      '</div>':'')+'</div>';
+  }).join('');
+}
+const cell=(k,v,c='')=>'<div><div class="k">'+k+'</div><div class="v num '+c+'">'+v+'</div></div>';
+
+/* ── 槓桿 ── */
+function renderLeverage(rs,T){
+  const th=Number(S.riskCfg.maintPct)||130;
+  document.getElementById('callMode').textContent='追繳門檻 '+th+'%';
+  const drop=T.debt>0?1-(T.debt*th/100)/T.mv:null;
+  document.getElementById('levKpis').innerHTML=[
+    ['總市值',fmt(T.mv),'含現金 '+fmt(T.cash),''],
+    ['自有權益',fmt(T.equity),'市值−融資＋現金',''],
+    ['融資負債',fmt(T.debt),T.debt>0?'佔市值 '+(T.debt/T.mv*100).toFixed(0)+'%':'未使用槓桿',''],
+    ['槓桿倍數',(T.lev||0).toFixed(2)+'x',T.lev>2?'偏高':'市值÷自有權益',T.lev>2?'up':''],
+    ['整戶維持率',T.maint?(T.maint*100).toFixed(0)+'%':'—',T.maint?(T.maint*100<th?'已低於門檻':'安全'):'無融資',T.maint&&T.maint*100<th?'up':''],
+    ['可跌幅度',drop!==null?(drop*100).toFixed(1)+'%':'—','跌破即追繳','']
+  ].map(k=>'<div class="kpi"><div class="k">'+k[0]+'</div><div class="v num '+k[3]+'">'+k[1]+'</div><div class="s">'+k[2]+'</div></div>').join('');
+  const eq=Math.max(T.equity,0), dt=Math.max(T.debt,0), tot=eq+dt||1;
+  document.getElementById('capStack').innerHTML=
+    '<div style="width:'+(eq/tot*100)+'%;background:var(--accent)">自有 '+(eq/tot*100).toFixed(0)+'%</div>'+
+    (dt>0?'<div style="width:'+(dt/tot*100)+'%;background:var(--purple)">融資 '+(dt/tot*100).toFixed(0)+'%</div>':'');
+  document.getElementById('capCap').textContent=dt>0
+    ?'每 1 元自有資金操作 '+(T.lev||0).toFixed(2)+' 元部位；帳面報酬率 '+pct(T.pnlPct)+' 被放大為自有權益報酬 '+pct(T.roe)+'。'
+    :'目前無融資。在「部位控管」填入融資金額後，這裡會算出槓桿倍數、維持率與追繳價。';
+  renderStress(T);
+}
+function renderStress(T){
+  const d=Number(document.getElementById('stress').value)/100;
+  document.getElementById('stressPctOut').textContent=(d*100).toFixed(0)+'%';
+  const mv2=T.mv*(1-d), eq2=mv2+T.cash-T.debt, loss=mv2-T.mv;
+  const m2=T.debt>0?mv2/T.debt*100:null, th=Number(S.riskCfg.maintPct)||130, hit=m2!==null&&m2<th;
+  document.getElementById('stressOut').innerHTML=[
+    ['市值',fmt(mv2),''],['權益變動',signed(loss),cls(loss)],['自有權益',fmt(eq2),eq2<0?'up':''],
+    ['權益衝擊',T.equity?pct(loss/T.equity):'—',cls(loss)],
+    ['維持率',m2!==null?m2.toFixed(0)+'%':'無融資',hit?'up':''],
+    ['狀態',m2===null?'無追繳風險':(hit?'已觸發追繳':'安全'),hit?'up':'down']
+  ].map(k=>'<div><div class="k">'+k[0]+'</div><div class="v num '+k[2]+'">'+k[1]+'</div></div>').join('');
+}
+
+/* ── 報酬日曆 ── */
+function renderCalendar(){
+  const ds=dailySeries(), map={}; ds.forEach(d=>map[d.date]=d);
+  if(!calCursor){
+    const last=ds.length?ds[ds.length-1].date:new Date().toLocaleDateString('en-CA');
+    calCursor={y:Number(last.slice(0,4)),m:Number(last.slice(5,7))};
+  }
+  const y=calCursor.y, m=calCursor.m;
+  const abs=ds.map(d=>Math.abs(d.pnl)).sort((a,b)=>a-b);
+  const scale=abs.length?(abs[Math.floor(abs.length*0.75)]||1):1;
+  const first=new Date(Date.UTC(y,m-1,1)), days=new Date(Date.UTC(y,m,0)).getUTCDate();
+  const lead=(first.getUTCDay()+6)%7, today=new Date().toLocaleDateString('en-CA');
+  const cells=[]; for(let i=0;i<lead;i++) cells.push(null);
+  for(let d=1;d<=days;d++) cells.push(y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0'));
+  while(cells.length%7) cells.push(null);
+  let html='<thead><tr>'+['一','二','三','四','五','六','日','週損益'].map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>';
+  let sum=0, growth=1;
+  for(let w=0;w<cells.length/7;w++){
+    const week=cells.slice(w*7,w*7+7); let ws=0, has=false;
+    html+='<tr>'+week.map(date=>{
+      if(!date) return '<td class="empty"></td>';
+      const dnum=Number(date.slice(8)), e=map[date];
+      if(!e) return '<td><div class="d num">'+dnum+'</div></td>';
+      ws+=e.pnl; has=true; sum+=e.pnl; growth*=(1+e.pct);
+      const inten=(Math.min(1,Math.abs(e.pnl)/scale)*0.5+0.12)*100;
+      const bg=e.pnl>0?'var(--red)':e.pnl<0?'var(--green)':'var(--text-muted)';
+      return '<td class="'+(date===today?'today':'')+'" style="background:color-mix(in srgb,'+bg+' '+inten.toFixed(0)+'%,var(--surface-alt))">'+
+        '<div class="d num">'+dnum+'</div><div class="p num '+cls(e.pnl)+'">'+signed(e.pnl)+'</div>'+
+        '<div class="pp num '+cls(e.pnl)+'">'+pct(e.pct)+'</div></td>';
+    }).join('')+'<td class="wk">'+(has?'<div class="d num">W'+(w+1)+'</div><div class="p num '+cls(ws)+'">'+signed(ws)+'</div>':'')+'</td></tr>';
+  }
+  document.getElementById('cal').innerHTML=html+'</tbody>';
+  document.getElementById('calTitle').textContent=y+'/'+String(m).padStart(2,'0')+' 報酬';
+  const cs=document.getElementById('calSum'); cs.textContent=signed(sum); cs.className='num '+cls(sum);
+  const cp=document.getElementById('calSumPct'); cp.textContent=growth!==1?pct(growth-1):'—'; cp.className='num '+cls(sum);
+  renderBars(ds);
+}
+function renderBars(ds){
+  const W=640,H=200,pad=26,n=ds.length,el=document.getElementById('barChart');
+  if(!n){ el.innerHTML=''; document.getElementById('barCap').textContent='還沒有每日淨值紀錄，更新報價後會開始累積。'; return; }
+  const maxAbs=Math.max(1,...ds.map(d=>Math.abs(d.pnl)));
+  const sq=v=>Math.sign(v)*Math.sqrt(Math.abs(v)/maxAbs);
+  const mid=H/2, half=(H-pad*2)/2, step=(W-pad*2)/n, bw=Math.max(3,step-3);
+  let g='<line x1="'+pad+'" y1="'+mid+'" x2="'+(W-pad)+'" y2="'+mid+'" stroke="var(--stroke)" stroke-width="1"/>';
+  ds.forEach((d,i)=>{
+    const x=pad+i*step+1.5, h=Math.abs(sq(d.pnl))*half;
+    g+='<rect x="'+x.toFixed(1)+'" y="'+(d.pnl>=0?mid-h:mid).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(1,h).toFixed(1)+'" rx="1.5" fill="'+cssv(d.pnl)+'"><title>'+d.date+' '+signed(d.pnl)+'</title></rect>';
+  });
+  const top=Math.max(...ds.map(d=>d.pnl)), bot=Math.min(...ds.map(d=>d.pnl));
+  g+='<text x="'+pad+'" y="14" fill="var(--text-muted)" font-size="11">'+signed(top)+'</text>'+
+     '<text x="'+pad+'" y="'+(H-4)+'" fill="var(--text-muted)" font-size="11">'+signed(bot)+'</text>';
+  el.innerHTML=g;
+  document.getElementById('barCap').textContent='共 '+n+' 個有紀錄的交易日，最佳 '+signed(top)+'、最差 '+signed(bot)+'。長條採平方根比例，讓極端值不會壓扁其他日子。';
+}
+
+/* ── 權益曲線 ── */
+function renderCurve(){
+  const ch=cleanHistory(), h=ch.h, el=document.getElementById('lineChart');
+  if(h.length<2){ el.innerHTML=''; document.getElementById('lineCap').textContent='淨值紀錄還不夠畫曲線（至少兩天）。'; return; }
+  const W=640,H=240,L=62,R=12,Tp=16,B=26;
+  const vals=h.flatMap(x=>[x.value,x.cost]);
+  let lo=Math.min(...vals), hi=Math.max(...vals); const span=(hi-lo)||1; lo-=span*0.1; hi+=span*0.1;
+  const X=i=>L+i*((W-L-R)/(h.length-1)), Y=v=>Tp+(1-(v-lo)/(hi-lo))*(H-Tp-B);
+  const path=k=>h.map((x,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(x[k]).toFixed(1)).join(' ');
+  const last=h[h.length-1], up=last.value>=last.cost;
+  const line=up?'var(--red)':'var(--green)';
+  let g='';
+  for(let i=0;i<=3;i++){ const v=lo+(hi-lo)*i/3, y=Y(v);
+    g+='<line x1="'+L+'" y1="'+y.toFixed(1)+'" x2="'+(W-R)+'" y2="'+y.toFixed(1)+'" stroke="var(--stroke)" stroke-width="1"/>'+
+       '<text x="'+(L-6)+'" y="'+(y+4).toFixed(1)+'" text-anchor="end" fill="var(--text-muted)" font-size="11">'+fmt(v)+'</text>';
+  }
+  g+='<path d="'+path('value')+' L'+X(h.length-1).toFixed(1)+' '+Y(lo).toFixed(1)+' L'+X(0).toFixed(1)+' '+Y(lo).toFixed(1)+' Z" fill="'+line+'" fill-opacity="0.12" stroke="none"/>'+
+     '<path d="'+path('cost')+'" fill="none" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="4 4"/>'+
+     '<path d="'+path('value')+'" fill="none" stroke="'+line+'" stroke-width="2.5" stroke-linejoin="round"/>'+
+     '<circle cx="'+X(h.length-1).toFixed(1)+'" cy="'+Y(last.value).toFixed(1)+'" r="4" fill="'+line+'"/>'+
+     '<text x="'+L+'" y="'+(H-8)+'" fill="var(--text-muted)" font-size="11">'+h[0].date+'</text>'+
+     '<text x="'+(W-R)+'" y="'+(H-8)+'" text-anchor="end" fill="var(--text-muted)" font-size="11">'+last.date+'</text>';
+  el.innerHTML=g;
+  document.getElementById('lineCap').textContent='實線為淨值、虛線為投入成本；最新 '+fmt(last.value)+' 元，成本 '+fmt(last.cost)+' 元。'+(ch.hidden?'（已隱藏 '+ch.hidden+' 筆異常淨值點）':'');
+}
+
+/* ── 報價：先讀 data/quotes.json（GitHub Actions 每日快照，含昨收），缺的再走 Yahoo 代理 ── */
+const CORS_PROXIES=[
+  u=>'https://corsproxy.io/?url='+encodeURIComponent(u),
+  u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u)
+];
+async function fetchViaProxy(url){
+  let err=new Error('no proxy');
+  for(const wrap of CORS_PROXIES){
+    try{
+      const c=new AbortController(), t=setTimeout(()=>c.abort(),10000);
+      const res=await fetch(wrap(url),{signal:c.signal}); clearTimeout(t);
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      return await res.json();
+    }catch(e){ err=e; }
+  }
+  throw err;
+}
+async function yahooQuote(symbol){
+  const d=await fetchViaProxy('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(symbol)+'?interval=1d&range=5d');
+  const r=d&&d.chart&&d.chart.result&&d.chart.result[0], meta=r&&r.meta;
+  if(!meta) throw new Error('no meta');
+  const price=meta.regularMarketPrice!=null?meta.regularMarketPrice:meta.previousClose;
+  if(price==null||isNaN(price)) throw new Error('no price');
+  return {price:Number(price), prevClose:Number(meta.chartPreviousClose!=null?meta.chartPreviousClose:meta.previousClose)||null};
+}
+async function refreshQuotes(){
+  if(quoteBusy) return;
+  if(!S.positions.length){ setQStat('目前沒有庫存部位，先到「部位控管」加入。'); return; }
+  quoteBusy=true;
+  const btn=document.getElementById('quoteBtn'); btn.disabled=true;
+  setQStat('報價更新中…');
+  let snap=null;
+  try{ const r=await fetch('data/quotes.json',{cache:'no-store'}); if(r.ok) snap=await r.json(); }catch(e){}
+  if(snap&&snap.fx&&snap.fx.USDTWD&&snap.fx.USDTWD.price) S.exchangeRate=Math.round(snap.fx.USDTWD.price*100)/100;
+  const failed=[];
+  for(const p of S.positions){
+    let q=null;
+    if(snap){
+      if(p.market==='TW'&&snap.tw&&snap.tw.stocks&&snap.tw.stocks[p.ticker]){
+        const s=snap.tw.stocks[p.ticker];
+        q={price:s.close, prevClose:(s.close!=null&&s.change!=null)?Math.round((s.close-s.change)*10000)/10000:null};
+        if(s.name) p._name=s.name;
+      }else if(p.market==='US'&&snap.us&&snap.us[p.ticker]){
+        const s=snap.us[p.ticker];
+        q={price:s.price, prevClose:s.prevClose!=null?s.prevClose:null};
+      }
+    }
+    if(!q){
+      try{
+        if(p.market==='US') q=await yahooQuote(p.ticker);
+        else{ try{ q=await yahooQuote(p.ticker+'.TW'); }catch(e){ q=await yahooQuote(p.ticker+'.TWO'); } }
+      }catch(e){ failed.push(p.ticker); }
+    }
+    if(q&&q.price!=null){
+      p.currentPrice=Math.round(q.price*100)/100;
+      if(q.prevClose!=null&&!isNaN(q.prevClose)) p.prevClose=Math.round(q.prevClose*100)/100;
+    }
+  }
+  S.lastQuoteAt=Date.now();
+  recordTodayNetValue();
+  persist();
+  renderAll();
+  const t=new Date().toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'});
+  setQStat(failed.length?('已更新 ('+t+')，這幾檔抓不到：'+failed.join('、')):('報價已更新 ('+t+')'));
+  btn.disabled=false; quoteBusy=false;
+}
+function recordTodayNetValue(){
+  const rs=rows(), T=totals(rs);
+  if(!rs.length) return;
+  const d=new Date().toLocaleDateString('en-CA');
+  const entry={date:d,value:Math.round(T.mv),cost:Math.round(T.cost),netAsset:Math.round(T.equity),borrow:Math.round(T.debt)};
+  const i=S.netHistory.findIndex(h=>h.date===d);
+  if(i!==-1) S.netHistory[i]=entry; else S.netHistory.push(entry);
+}
+function setQStat(msg){
+  const at=S.lastQuoteAt?new Date(S.lastQuoteAt).toLocaleString('zh-TW',{hour12:false}):'尚未更新';
+  document.getElementById('qstat').textContent=(msg?msg+' · ':'')+'上次報價更新：'+at+' · USD/TWD '+S.exchangeRate;
+}
+
+/* ── 事件 ── */
+function renderAll(){
+  const rs=rows(), T=totals(rs);
+  renderOverview(rs,T); renderHoldings(rs,T); renderLeverage(rs,T); renderCalendar(); renderCurve();
+  document.getElementById('fxIn').value=S.exchangeRate;
+  document.getElementById('cashIn').value=S.cash;
+  document.getElementById('maintIn').value=S.riskCfg.maintPct;
+  document.getElementById('stressIn').value=S.riskCfg.stressPct;
+}
+document.getElementById('sorter').addEventListener('click',e=>{
+  const b=e.target.closest('.sortbtn'); if(!b) return;
+  if(sortKey===b.dataset.k) sortDir*=-1; else { sortKey=b.dataset.k; sortDir=-1; }
+  const rs=rows(); renderHoldings(rs,totals(rs));
+});
+function toggleRow(el){
+  openRow=(openRow===el.dataset.id)?null:el.dataset.id;
+  const rs=rows(); renderHoldings(rs,totals(rs));
+}
+document.getElementById('holdings').addEventListener('click',e=>{
+  const h=e.target.closest('.holding'); if(h) toggleRow(h);
+});
+document.getElementById('holdings').addEventListener('keydown',e=>{
+  if(e.key!=='Enter'&&e.key!==' ') return;
+  const h=e.target.closest('.holding'); if(!h) return;
+  e.preventDefault(); toggleRow(h);
+});
+document.getElementById('stress').addEventListener('input',()=>renderStress(totals(rows())));
+document.getElementById('prevM').addEventListener('click',()=>{calCursor.m--;if(calCursor.m<1){calCursor.m=12;calCursor.y--;}renderCalendar();});
+document.getElementById('nextM').addEventListener('click',()=>{calCursor.m++;if(calCursor.m>12){calCursor.m=1;calCursor.y++;}renderCalendar();});
+document.getElementById('clipOutlier').addEventListener('change',renderAll);
+document.getElementById('quoteBtn').addEventListener('click',refreshQuotes);
+document.getElementById('reloadBtn').addEventListener('click',()=>{
+  loadData(); calCursor=null; renderAll(); setQStat('已重新讀取庫存');
+  document.getElementById('stress').value=S.riskCfg.stressPct;
+});
+document.getElementById('saveBtn').addEventListener('click',()=>{
+  S.exchangeRate=Number(document.getElementById('fxIn').value)||S.exchangeRate;
+  S.cash=Number(document.getElementById('cashIn').value)||0;
+  S.riskCfg.maintPct=Number(document.getElementById('maintIn').value)||130;
+  S.riskCfg.stressPct=Number(document.getElementById('stressIn').value)||15;
+  document.getElementById('stress').value=S.riskCfg.stressPct;
+  persist(); renderAll();
+  const m=document.getElementById('saveMsg'); m.textContent='已儲存，部位控管也會沿用。';
+  setTimeout(()=>{m.textContent='';},2500);
+});
+// 其他分頁／模組改動庫存時跟著更新
+window.addEventListener('storage',e=>{ if(e.key===KEY){ loadData(); renderAll(); } });
+if(window.PPTheme) PPTheme.onChange(()=>renderAll());
+
+async function hydrateNames(){
+  try{
+    const r=await fetch('data/quotes.json',{cache:'no-store'});
+    if(!r.ok) return;
+    const snap=await r.json();
+    let hit=false;
+    S.positions.forEach(p=>{
+      if(p.market==='TW'&&snap.tw&&snap.tw.stocks&&snap.tw.stocks[p.ticker]&&snap.tw.stocks[p.ticker].name){
+        p._name=snap.tw.stocks[p.ticker].name; hit=true;
+      }
+    });
+    if(hit) renderAll();
+  }catch(e){}
+}
+
+loadData();
+document.getElementById('stress').value=S.riskCfg.stressPct;
+renderAll();
+setQStat('');
+hydrateNames();
+</script>
+</body>
+</html>
