@@ -111,6 +111,12 @@ table.cal td.today{border-color:var(--accent)}
 .chart{width:100%;height:auto;display:block}
 .cap{font-size:11px;color:var(--text-muted);margin-top:6px}
 .switch{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);cursor:pointer}
+table.edit{width:100%;border-collapse:collapse;min-width:560px}
+table.edit th{font-size:10px;color:var(--text-muted);text-align:left;font-weight:500;padding:6px;border-bottom:1px solid var(--stroke);white-space:nowrap}
+table.edit td{padding:4px 6px;border-bottom:1px solid var(--stroke);white-space:nowrap}
+table.edit input{width:100%;min-width:92px}
+table.edit input.num{text-align:right;font-family:'SF Mono','Menlo','Consolas',monospace}
+table.edit tr.odd td{background:color-mix(in srgb,var(--red) 7%,transparent)}
 .settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
 .field{display:grid;gap:4px}
 .field label{font-size:10px;color:var(--text-muted);letter-spacing:.5px}
@@ -192,8 +198,11 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
       <div class="tblwrap"><table class="cal" id="cal"></table></div>
     </div>
     <div class="panel pad" style="margin-top:12px">
-      <div class="hero-label" style="margin-bottom:8px">每日損益</div>
-      <svg id="barChart" class="chart" viewBox="0 0 640 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="每日損益長條圖"></svg>
+      <div class="hero-label" style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
+        <span>每日損益</span><span style="flex:1"></span>
+        <span class="num" id="barReadout" style="font-size:12px">—</span>
+      </div>
+      <svg id="barChart" class="chart" viewBox="0 0 640 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="每日損益長條圖"></svg>
       <div class="cap" id="barCap">—</div>
     </div>
   </section>
@@ -205,6 +214,24 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
     <div class="panel pad">
       <svg id="lineChart" class="chart" viewBox="0 0 640 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="淨值與成本曲線"></svg>
       <div class="cap" id="lineCap">—</div>
+    </div>
+  </section>
+
+  <section id="sec-nethistory">
+    <div class="sec-head"><div class="sec-title">淨值紀錄</div><div class="sec-note">日曆、曲線與部位控管的每日淨值走勢都來自這份紀錄，改這裡三邊一起更正</div></div>
+    <div class="panel pad">
+      <div class="tblwrap">
+        <table class="edit" id="nhTbl">
+          <thead><tr><th>日期</th><th>市值 (TWD)</th><th>投入成本 (TWD)</th><th>當日損益</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="btnrow">
+        <button class="btn" id="nhAdd">＋ 新增一天</button>
+        <button class="btn btn-primary" id="nhSave">儲存紀錄</button>
+        <span class="msg" id="nhMsg"></span>
+      </div>
+      <div class="cap">標紅底的是明顯偏離中位數的紀錄（多半是誤植），可直接改數字或刪掉整列。</div>
     </div>
   </section>
 
@@ -235,6 +262,7 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
 const KEY='quantPortfolioDataV2';
 let S={exchangeRate:32.5,positions:[],netHistory:[],cash:0,riskCfg:{callMode:'maint',maintPct:130,equityPct:25,stressPct:15},lastQuoteAt:null,history:[]};
 let sortKey='pnl', sortDir=-1, calCursor=null, openRow=null, quoteBusy=false;
+let barData=[], barPick=null;
 
 function loadData(){
   try{
@@ -457,21 +485,38 @@ function renderCalendar(){
   renderBars(ds);
 }
 function renderBars(ds){
-  const W=640,H=200,pad=26,n=ds.length,el=document.getElementById('barChart');
-  if(!n){ el.innerHTML=''; document.getElementById('barCap').textContent='還沒有每日淨值紀錄，更新報價後會開始累積。'; return; }
+  const W=640,H=220,pad=26,base=26,n=ds.length,el=document.getElementById('barChart');
+  barData=ds;
+  if(!n){ el.innerHTML=''; document.getElementById('barCap').textContent='還沒有每日淨值紀錄，更新報價後會開始累積。'; setBarReadout(null); return; }
   const maxAbs=Math.max(1,...ds.map(d=>Math.abs(d.pnl)));
   const sq=v=>Math.sign(v)*Math.sqrt(Math.abs(v)/maxAbs);
-  const mid=H/2, half=(H-pad*2)/2, step=(W-pad*2)/n, bw=Math.max(3,step-3);
+  const mid=(H-base)/2, half=(H-base-pad*2)/2, step=(W-pad*2)/n, bw=Math.max(3,step-3);
   let g='<line x1="'+pad+'" y1="'+mid+'" x2="'+(W-pad)+'" y2="'+mid+'" stroke="var(--stroke)" stroke-width="1"/>';
   ds.forEach((d,i)=>{
     const x=pad+i*step+1.5, h=Math.abs(sq(d.pnl))*half;
-    g+='<rect x="'+x.toFixed(1)+'" y="'+(d.pnl>=0?mid-h:mid).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(1,h).toFixed(1)+'" rx="1.5" fill="'+cssv(d.pnl)+'"><title>'+d.date+' '+signed(d.pnl)+'</title></rect>';
+    g+='<rect class="bar-mark" data-i="'+i+'" x="'+x.toFixed(1)+'" y="'+(d.pnl>=0?mid-h:mid).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(1,h).toFixed(1)+'" rx="1.5" fill="'+cssv(d.pnl)+'"/>';
+  });
+  // 透明感應區：整根柱子的高度都能 hover / 點選，手機上也好按
+  ds.forEach((d,i)=>{
+    const x=pad+i*step;
+    g+='<rect class="bar-hit" data-i="'+i+'" x="'+x.toFixed(1)+'" y="0" width="'+step.toFixed(1)+'" height="'+(H-base)+'" fill="transparent"/>';
   });
   const top=Math.max(...ds.map(d=>d.pnl)), bot=Math.min(...ds.map(d=>d.pnl));
   g+='<text x="'+pad+'" y="14" fill="var(--text-muted)" font-size="11">'+signed(top)+'</text>'+
-     '<text x="'+pad+'" y="'+(H-4)+'" fill="var(--text-muted)" font-size="11">'+signed(bot)+'</text>';
+     '<text x="'+pad+'" y="'+(H-base-4)+'" fill="var(--text-muted)" font-size="11">'+signed(bot)+'</text>'+
+     '<text x="'+pad+'" y="'+(H-6)+'" fill="var(--text-muted)" font-size="11">'+ds[0].date+'</text>'+
+     '<text x="'+(W-pad)+'" y="'+(H-6)+'" text-anchor="end" fill="var(--text-muted)" font-size="11">'+ds[n-1].date+'</text>';
   el.innerHTML=g;
-  document.getElementById('barCap').textContent='共 '+n+' 個有紀錄的交易日，最佳 '+signed(top)+'、最差 '+signed(bot)+'。長條採平方根比例，讓極端值不會壓扁其他日子。';
+  document.getElementById('barCap').textContent='共 '+n+' 個有紀錄的交易日，最佳 '+signed(top)+'、最差 '+signed(bot)+'。長條採平方根比例，讓極端值不會壓扁其他日子；滑過或點一下長條可看是哪一天。';
+  setBarReadout(barPick==null?n-1:Math.min(barPick,n-1));
+}
+function setBarReadout(i){
+  const out=document.getElementById('barReadout');
+  document.querySelectorAll('#barChart .bar-mark').forEach(r=>{ r.setAttribute('opacity', (i==null||Number(r.dataset.i)===i)?'1':'0.42'); });
+  if(i==null||!barData[i]){ out.textContent='—'; return; }
+  const d=barData[i];
+  const week=['日','一','二','三','四','五','六'][new Date(d.date+'T00:00:00').getDay()];
+  out.innerHTML='<span style="color:var(--text-muted)">'+d.date+'（'+week+'）</span> <b class="'+cls(d.pnl)+'">'+signed(d.pnl)+'</b> <span class="'+cls(d.pnl)+'">'+pct(d.pct)+'</span>';
 }
 
 /* ── 權益曲線 ── */
@@ -579,10 +624,45 @@ function setQStat(msg){
   document.getElementById('qstat').textContent=(msg?msg+' · ':'')+'上次報價更新：'+at+' · USD/TWD '+S.exchangeRate;
 }
 
+/* ── 淨值紀錄編輯（修正誤植用） ── */
+function renderNetHistory(){
+  const h=[...(S.netHistory||[])].sort((a,b)=>a.date<b.date?-1:1);
+  const vals=h.map(x=>Number(x.value)||0).sort((a,b)=>a-b);
+  const med=vals.length?vals[Math.floor(vals.length/2)]:0;
+  const tb=document.querySelector('#nhTbl tbody');
+  if(!h.length){ tb.innerHTML='<tr><td colspan="5" style="color:var(--text-muted);padding:14px 6px">還沒有淨值紀錄。按「更新報價」會自動記下今天，或用「＋ 新增一天」手動補。</td></tr>'; return; }
+  tb.innerHTML=h.map((x,i)=>{
+    const prev=i>0?h[i-1]:null;
+    const pnl=prev?((Number(x.value)||0)-(Number(prev.value)||0))-((Number(x.cost)||0)-(Number(prev.cost)||0)):null;
+    const odd=med>0&&Number(x.value)>med*5;
+    return '<tr class="'+(odd?'odd':'')+'" data-date="'+x.date+'">'+
+      '<td><input type="date" class="pp-field" data-f="date" value="'+x.date+'"></td>'+
+      '<td><input type="number" step="1" class="pp-field num" data-f="value" value="'+(Number(x.value)||0)+'"></td>'+
+      '<td><input type="number" step="1" class="pp-field num" data-f="cost" value="'+(Number(x.cost)||0)+'"></td>'+
+      '<td class="num '+(pnl==null?'flat':cls(pnl))+'">'+(pnl==null?'—':signed(pnl))+(odd?' <span class="tag">疑似誤植</span>':'')+'</td>'+
+      '<td><button class="btn btn-sm btn-danger" data-del="'+x.date+'">刪除</button></td></tr>';
+  }).join('');
+}
+function collectNetHistory(){
+  const rows=[...document.querySelectorAll('#nhTbl tbody tr[data-date]')];
+  const byDate={};
+  (S.netHistory||[]).forEach(x=>{ byDate[x.date]=x; });
+  const out=[];
+  rows.forEach(tr=>{
+    const orig=byDate[tr.dataset.date]||{};
+    const get=f=>tr.querySelector('[data-f="'+f+'"]').value;
+    const date=get('date'); if(!date) return;
+    // 保留 netAsset / borrow 等其他欄位，只改動有編輯的三個值
+    out.push(Object.assign({},orig,{date,value:Math.round(Number(get('value'))||0),cost:Math.round(Number(get('cost'))||0)}));
+  });
+  out.sort((a,b)=>a.date<b.date?-1:1);
+  S.netHistory=out;
+}
+
 /* ── 事件 ── */
 function renderAll(){
   const rs=rows(), T=totals(rs);
-  renderOverview(rs,T); renderHoldings(rs,T); renderLeverage(rs,T); renderCalendar(); renderCurve();
+  renderOverview(rs,T); renderHoldings(rs,T); renderLeverage(rs,T); renderCalendar(); renderCurve(); renderNetHistory();
   document.getElementById('fxIn').value=S.exchangeRate;
   document.getElementById('cashIn').value=S.cash;
   document.getElementById('maintIn').value=S.riskCfg.maintPct;
@@ -608,12 +688,44 @@ document.getElementById('holdings').addEventListener('keydown',e=>{
 document.getElementById('stress').addEventListener('input',()=>renderStress(totals(rows())));
 document.getElementById('prevM').addEventListener('click',()=>{calCursor.m--;if(calCursor.m<1){calCursor.m=12;calCursor.y--;}renderCalendar();});
 document.getElementById('nextM').addEventListener('click',()=>{calCursor.m++;if(calCursor.m>12){calCursor.m=1;calCursor.y++;}renderCalendar();});
+(function(){
+  const chart=document.getElementById('barChart');
+  const pick=e=>{
+    const hit=e.target.closest('.bar-hit'); if(!hit) return;
+    barPick=Number(hit.dataset.i); setBarReadout(barPick);
+  };
+  chart.addEventListener('pointermove',pick);
+  chart.addEventListener('pointerdown',pick);
+  chart.addEventListener('pointerleave',()=>{ barPick=null; setBarReadout(barData.length?barData.length-1:null); });
+})();
 document.getElementById('clipOutlier').addEventListener('change',renderAll);
 document.getElementById('quoteBtn').addEventListener('click',refreshQuotes);
 document.getElementById('reloadBtn').addEventListener('click',()=>{
   loadData(); calCursor=null; renderAll(); setQStat('已重新讀取庫存');
   document.getElementById('stress').value=S.riskCfg.stressPct;
 });
+document.querySelector('#nhTbl tbody').addEventListener('click',e=>{
+  const b=e.target.closest('[data-del]'); if(!b) return;
+  collectNetHistory();
+  S.netHistory=S.netHistory.filter(x=>x.date!==b.dataset.del);
+  persist(); calCursor=null; renderAll();
+  nhMsg('已刪除 '+b.dataset.del+' 的紀錄。');
+});
+document.getElementById('nhAdd').addEventListener('click',()=>{
+  collectNetHistory();
+  const rs=rows(), T=totals(rs), d=new Date().toLocaleDateString('en-CA');
+  if(!S.netHistory.some(x=>x.date===d)) S.netHistory.push({date:d,value:Math.round(T.mv),cost:Math.round(T.cost),netAsset:Math.round(T.equity),borrow:Math.round(T.debt)});
+  renderNetHistory();
+  nhMsg('已加入今天（'+d+'），改完數字再按儲存。');
+});
+document.getElementById('nhSave').addEventListener('click',()=>{
+  collectNetHistory(); persist(); calCursor=null; renderAll();
+  nhMsg('已儲存，日曆、曲線與部位控管都會跟著更正。');
+});
+function nhMsg(t){
+  const m=document.getElementById('nhMsg'); m.textContent=t;
+  setTimeout(()=>{ m.textContent=''; },3000);
+}
 document.getElementById('saveBtn').addEventListener('click',()=>{
   S.exchangeRate=Number(document.getElementById('fxIn').value)||S.exchangeRate;
   S.cash=Number(document.getElementById('cashIn').value)||0;
