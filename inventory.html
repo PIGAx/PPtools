@@ -295,23 +295,39 @@ function persist(){
 
 /* ── 計算 ── */
 const fxOf=p=>p.market==='US'?(Number(S.exchangeRate)||1):1;
+function lotsOf(p,borrowO){
+  // 每筆成交的 {股數, 成交價, 倍數}；與庫存合計對不上就退回單筆（同部位控管）
+  const sh=Number(p.shares)||0, avg=Number(p.price)||0, cost=sh*avg, own=cost-borrowO;
+  const single=[{shares:sh,price:avg,lev:(borrowO>0&&own>0)?cost/own:1}];
+  const L=Array.isArray(p.lots)?p.lots:[];
+  if(!L.length) return single;
+  let s1=0,c1=0,b1=0;
+  L.forEach(l=>{s1+=l.shares;c1+=l.shares*l.price;b1+=(l.lev>1?l.shares*l.price*(1-1/l.lev):0)});
+  const ok=Math.abs(s1-sh)<=1e-6*Math.max(1,sh)&&Math.abs(c1-cost)<=sh*1e-4+1&&Math.abs(b1-borrowO)<=Math.max(1,borrowO*1e-4);
+  return ok?L:single;
+}
 function rows(){
   return S.positions.map(p=>{
     const fx=fxOf(p), sh=Number(p.shares)||0, cur=Number(p.currentPrice)||0, avg=Number(p.price)||0;
-    const mv=sh*cur*fx, cost=sh*avg*fx, pnl=mv-cost;
+    const dir=p.dir==='short'?-1:1;
+    const cost=sh*avg*fx, pnl=dir*(cur-avg)*sh*fx, mv=cost+pnl, exp=sh*cur*fx;   // mv：成本＋浮動損益（看多即市值）
     const prev=(p.prevClose==null||p.prevClose==='')?null:Number(p.prevClose);
-    const borrow=(Number(p.borrow)||0)*fx;
-    const lossPct=Math.min(Number(p.lossPct)||Number(S.riskCfg.lossPct)||50,100), trig=1-lossPct/100;
-    return {id:'p'+p._i, ticker:p.ticker, name:p._name||p.name||p.ticker, market:p.market, shares:sh,
-      price:avg, currentPrice:cur, fx, mv, cost, pnl, pnlPct:cost?pnl/cost:0,
-      day:prev!==null?sh*(cur-prev)*fx:null, dayPct:prev?(cur-prev)/prev:null,
-      borrow, own:cost-borrow, lossPct, trig, eqRatio:borrow>0&&cost>borrow?(mv-borrow)/(cost-borrow):null,
-      // 預估停損價 = 成本 × (1 − 虧損上限 ÷ 槓桿)
-      callPrice:borrow>0&&sh&&cost>borrow?(borrow+(cost-borrow)*trig)/(sh*fx):null};
+    const borrowO=Math.min(Math.max(Number(p.borrow)||0,0),sh*avg), borrow=borrowO*fx;
+    const lossPct=Math.min(Number(p.lossPct)||Number(S.riskCfg.lossPct)||50,100), L=lossPct/100;
+    const lots=lotsOf(p,borrowO).filter(l=>l.lev>1&&l.shares>0&&l.price>0);
+    // 預估停損價（逐筆）：做多 = 成交價 − 價格÷倍數×虧損上限；做空 = 成交價 + 價格÷倍數×虧損上限
+    const stops=lots.map(l=>l.price-dir*l.price/l.lev*L);
+    const callPrice=stops.length?(dir>0?Math.max(...stops):Math.min(...stops)):null;
+    const eqAt=px=>lots.length?Math.min(...lots.map(l=>1+dir*l.lev*(px-l.price)/l.price)):null;
+    return {id:'p'+p._i, ticker:p.ticker, name:p._name||p.name||p.ticker, market:p.market, shares:sh, dir,
+      price:avg, currentPrice:cur, fx, mv, exp, cost, pnl, pnlPct:cost?pnl/cost:0,
+      day:prev!==null?dir*sh*(cur-prev)*fx:null, dayPct:prev?dir*(cur-prev)/prev:null,
+      borrow, own:cost-borrow, lossPct, trig:1-L, eqAt, eqRatio:eqAt(cur), callPrice,
+      buffer:callPrice&&cur?dir*(cur-callPrice)/cur:null};
   });
 }
 function totals(rs){
-  const mv=rs.reduce((a,r)=>a+r.mv,0), cost=rs.reduce((a,r)=>a+r.cost,0);
+  const mv=rs.reduce((a,r)=>a+r.mv,0), cost=rs.reduce((a,r)=>a+r.cost,0), netExp=rs.reduce((a,r)=>a+r.dir*r.exp,0), exp=rs.reduce((a,r)=>a+r.exp,0);
   const debt=rs.reduce((a,r)=>a+r.borrow,0), cash=Number(S.cash)||0;
   const known=rs.filter(r=>r.day!==null);
   const ds=dailySeries(), last=ds.length?ds[ds.length-1]:null;
@@ -319,9 +335,9 @@ function totals(rs){
   const daySrc=known.length?(known.length===rs.length?'逐檔即時':'部分即時'):'淨值推算';
   const base=known.length?known.reduce((a,r)=>a+r.mv-r.day,0):(last?last.base:0);
   const equity=mv+cash-debt;
-  return {mv,cost,debt,cash,equity,day,daySrc,dayPct:base?day/base:0,
+  return {mv,cost,debt,cash,equity,netExp,exp,day,daySrc,dayPct:base?day/base:0,
     pnl:mv-cost,pnlPct:cost?(mv-cost)/cost:0,ownCost:cost-debt,
-    roe:(cost-debt)?(mv-cost)/(cost-debt):0,lev:equity>0?mv/equity:0};
+    roe:(cost-debt)?(mv-cost)/(cost-debt):0,lev:equity>0?exp/equity:0};
 }
 function cleanHistory(){
   let h=[...(S.netHistory||[])].sort((a,b)=>a.date<b.date?-1:1);
@@ -396,7 +412,7 @@ function renderHoldings(rs,T){
     const w=Math.abs(r.pnl)/maxAbs*50, open=openRow===r.id;
     return '<div class="holding" data-id="'+r.id+'" role="button" tabindex="0" aria-expanded="'+open+'">'+
       '<div class="h-top"><div><div class="h-name">'+r.name+
-        (r.borrow>0?' <span class="tag lev">槓桿</span>':'')+(r.market==='US'?' <span class="tag">US</span>':'')+'</div>'+
+        (r.dir<0?' <span class="tag">看空</span>':'')+(r.borrow>0?' <span class="tag lev">槓桿</span>':'')+(r.market==='US'?' <span class="tag">US</span>':'')+'</div>'+
         '<div class="h-ticker num">'+r.ticker+' · 市值 '+fmt(r.mv)+'</div></div>'+
         '<div class="h-right"><div class="h-total num '+cls(r.pnl)+'">'+signed(r.pnl)+'</div>'+
         '<div class="h-pct num '+cls(r.pnl)+'">'+pct(r.pnlPct)+'</div></div></div>'+
@@ -409,7 +425,7 @@ function renderHoldings(rs,T){
       (open?'<div class="h-detail">'+
         cell('投入成本',fmt(r.cost))+cell('自有資金',fmt(r.own))+
         cell('借款金額',r.borrow>0?fmt(r.borrow):'—')+
-        cell('權益比',r.eqRatio!==null?(r.eqRatio*100).toFixed(0)+'%':'—',r.eqRatio!==null&&r.eqRatio<r.trig?'up':'')+
+        cell('最低權益比',r.eqRatio!==null?(r.eqRatio*100).toFixed(0)+'%':'—',r.eqRatio!==null&&r.eqRatio<r.trig?'up':'')+
         cell('預估停損價',r.callPrice?r.callPrice.toFixed(2):'—')+
         cell('自有報酬率',r.own>0?pct(r.pnl/r.own):'—',r.own>0?cls(r.pnl):'')+
       '</div>':'')+'</div>';
@@ -419,25 +435,25 @@ const cell=(k,v,c='')=>'<div><div class="k">'+k+'</div><div class="v num '+c+'">
 
 /* ── 槓桿 ── */
 function levAgg(rs,d){
-  // 只看有槓桿的部位：整體權益比與各檔是否已觸發停損
-  const L=rs.filter(r=>r.borrow>0&&r.own>0);
-  const mv=L.reduce((a,r)=>a+r.mv,0)*(1-(d||0)), borrow=L.reduce((a,r)=>a+r.borrow,0), own=L.reduce((a,r)=>a+r.own,0);
-  const hit=L.filter(r=>(r.mv*(1-(d||0))-r.borrow)/r.own<r.trig);
-  return {L,mv,borrow,own,ratio:own?(mv-borrow)/own:null,hit};
+  // 只看有槓桿的部位：d＝全部標的同步下跌幅度（看空部位反而獲利）；回傳整體權益比與已觸發停損的部位
+  const L=rs.filter(r=>r.eqAt&&r.own>0);
+  const eq=L.reduce((a,r)=>a+r.own+r.pnl-r.dir*r.exp*(d||0),0), own=L.reduce((a,r)=>a+r.own,0);
+  const hit=L.filter(r=>r.eqAt(r.currentPrice*(1-(d||0)))<r.trig);
+  return {L,own,ratio:own?eq/own:null,hit};
 }
 function renderLeverage(rs,T){
   const lp=Number(S.riskCfg.lossPct)||50;
   document.getElementById('callMode').textContent='虧損上限 '+lp+'% 自備保證金';
   const A=levAgg(rs,0);
   // 所有槓桿部位同步下跌多少，第一檔會觸發停損
-  const drop=A.L.length?Math.min(...A.L.map(r=>1-(r.borrow+r.own*r.trig)/r.mv)):null;
+  const bufs=A.L.map(r=>r.buffer).filter(x=>x!==null), drop=bufs.length?Math.min(...bufs):null;
   document.getElementById('levKpis').innerHTML=[
     ['總市值',fmt(T.mv),'含現金 '+fmt(T.cash),''],
     ['自有權益',fmt(T.equity),'市值−借款＋現金',''],
     ['借款負債',fmt(T.debt),T.debt>0?'佔市值 '+(T.debt/T.mv*100).toFixed(0)+'%':'未使用槓桿',''],
     ['槓桿倍數',(T.lev||0).toFixed(2)+'x',T.lev>2?'偏高':'市值÷自有權益',T.lev>2?'up':''],
     ['槓桿部位權益比',A.ratio!==null?(A.ratio*100).toFixed(0)+'%':'—',A.L.length?(A.hit.length?'已有部位觸發停損':'相對自備保證金'):'無槓桿部位',A.hit.length?'up':''],
-    ['最先觸發的跌幅',drop!==null?(Math.max(drop,0)*100).toFixed(1)+'%':'—','股價跌到停損價','']
+    ['最先觸發的距離',drop!==null?(Math.max(drop,0)*100).toFixed(1)+'%':'—','現價到最近的停損價','']
   ].map(k=>'<div class="kpi"><div class="k">'+k[0]+'</div><div class="v num '+k[3]+'">'+k[1]+'</div><div class="s">'+k[2]+'</div></div>').join('');
   const eq=Math.max(T.equity,0), dt=Math.max(T.debt,0), tot=eq+dt||1;
   document.getElementById('capStack').innerHTML=
@@ -451,13 +467,13 @@ function renderLeverage(rs,T){
 function renderStress(T){
   const d=Number(document.getElementById('stress').value)/100;
   document.getElementById('stressPctOut').textContent=(d*100).toFixed(0)+'%';
-  const mv2=T.mv*(1-d), eq2=mv2+T.cash-T.debt, loss=mv2-T.mv;
+  const loss=-d*T.netExp, mv2=T.mv+loss, eq2=mv2+T.cash-T.debt;
   const A=levAgg(S.positions.length?rows():[],d), m2=A.ratio!==null?A.ratio*100:null, hit=A.hit.length>0;
   document.getElementById('stressOut').innerHTML=[
     ['市值',fmt(mv2),''],['權益變動',signed(loss),cls(loss)],['自有權益',fmt(eq2),eq2<0?'up':''],
     ['權益衝擊',T.equity?pct(loss/T.equity):'—',cls(loss)],
     ['槓桿部位權益比',m2!==null?m2.toFixed(0)+'%':'無槓桿',hit?'up':''],
-    ['狀態',m2===null?'無停損風險':(hit?'已觸發停損（'+A.hit.map(r=>r.ticker).join('、')+'）':'安全'),hit?'up':'down']
+    ['狀態',m2===null?'無停損風險':(hit?'已觸發停損（'+A.hit.map(r=>r.ticker+(r.dir<0?'空':'')).join('、')+'）':'安全'),hit?'up':'down']
   ].map(k=>'<div><div class="k">'+k[0]+'</div><div class="v num '+k[2]+'">'+k[1]+'</div></div>').join('');
 }
 

@@ -259,12 +259,12 @@
                                 </tbody>
                             </table>
                         </div>
-                        <p class="text-[11px] text-gray-400 mt-1.5">假設所有持股同步下跌，借款金額不變 —— 槓桿會把跌幅放大 {{ grossLeverage.toFixed(2) }} 倍反映到淨資產。</p>
+                        <p class="text-[11px] text-gray-400 mt-1.5">假設所有標的同步下跌（看多虧損、看空獲利，以名目曝險淨額計算）—— 整體槓桿約 {{ grossLeverage.toFixed(2) }} 倍。</p>
                     </div>
 
                     <!-- 追繳距離 -->
                     <div>
-                        <h3 class="text-sm font-bold mb-2">⚠️ 槓桿部位追繳距離</h3>
+                        <h3 class="text-sm font-bold mb-2">⚠️ 槓桿部位停損距離</h3>
                         <div v-if="leveragedPositions.length === 0" class="text-gray-500 text-xs py-4 text-center border border-dashed rounded">目前沒有使用槓桿的部位。</div>
                         <div v-else class="overflow-x-auto border border-gray-200 rounded">
                             <table class="w-full text-xs">
@@ -273,14 +273,14 @@
                                         <th class="text-left px-2 py-1.5 font-semibold">標的</th>
                                         <th class="text-right px-2 py-1.5 font-semibold">槓桿</th>
                                         <th class="text-right px-2 py-1.5 font-semibold">市價</th>
-                                        <th class="text-right px-2 py-1.5 font-semibold">追繳價</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">停損價</th>
                                         <th class="text-right px-2 py-1.5 font-semibold">門檻</th>
                                         <th class="text-right px-2 py-1.5 font-semibold">緩衝</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="pos in leveragedPositions" :key="pos.ticker + pos.market" class="border-t border-gray-200">
-                                        <td class="px-2 py-1.5 font-bold">{{ pos.ticker }}<span class="text-[10px] text-gray-400 ml-1">{{ pos.market }}</span></td>
+                                    <tr v-for="pos in leveragedPositions" :key="pos.ticker + pos.market + (pos.dir || 'long')" class="border-t border-gray-200">
+                                        <td class="px-2 py-1.5 font-bold">{{ pos.ticker }}<span class="text-[10px] text-gray-400 ml-1">{{ pos.market }}</span><span class="text-[10px] ml-1" :class="isShort(pos) ? 'text-green-600' : 'text-red-600'">{{ isShort(pos) ? '空' : '多' }}</span></td>
                                         <td class="px-2 py-1.5 text-right">{{ posLevLabel(pos) }}x</td>
                                         <td class="px-2 py-1.5 text-right">{{ formatNumber(pos.currentPrice || pos.price) }}</td>
                                         <td class="px-2 py-1.5 text-right">{{ formatNumber(posCallPrice(pos)) }}</td>
@@ -291,7 +291,7 @@
                             </table>
                         </div>
                         <p v-if="leveragedPositions.length" class="text-[11px] text-gray-400 mt-1.5">
-                            最先觸及追繳的是 <span class="font-bold text-gray-600">{{ weakestPosition.ticker }}</span>，再跌 {{ minBufferPct.toFixed(1) }}% 就會進入追繳。
+                            最先觸及停損的是 <span class="font-bold text-gray-600">{{ weakestPosition.ticker }}（{{ isShort(weakestPosition) ? '看空' : '看多' }}）</span>，再{{ isShort(weakestPosition) ? '漲' : '跌' }} {{ minBufferPct.toFixed(1) }}% 就會觸發停損。
                         </p>
                     </div>
                 </div>
@@ -343,12 +343,16 @@
                             <option value="TW">台股 (TW)</option>
                             <option value="US">美股 (US)</option>
                         </select>
+                        <select v-model="newPosition.dir" class="border p-2 rounded text-sm w-full bg-white">
+                            <option value="long">看多（買入買權）</option>
+                            <option value="short">看空（買入賣權）</option>
+                        </select>
                         <input v-model.number="newPosition.shares" type="number" placeholder="股數" class="border p-2 rounded text-sm w-full">
-                        <input v-model.number="newPosition.price" type="number" step="0.01" placeholder="買進價格" class="border p-2 rounded text-sm w-full">
+                        <input v-model.number="newPosition.price" type="number" step="0.01" placeholder="成交價格" class="border p-2 rounded text-sm w-full">
                         <input v-model.number="newPosition.lev" type="number" step="0.1" min="1" placeholder="槓桿倍數（現股填 1）" class="border p-2 rounded text-sm w-full">
                         <input v-model.number="newPosition.carryFee" type="number" step="0.01" placeholder="庫存費 %／年（槓桿用）" class="border p-2 rounded text-sm w-full">
                     </div>
-                    <p class="text-[11px] text-gray-400 mb-3 leading-relaxed">槓桿倍數是「這一筆」的槓桿：買進金額 ÷ 槓桿算自有資金，其餘計入借款。對已有的部位加碼時只會加上這筆的借款，原有股數的融資條件不受影響。細部費率（作業處理費、追繳維持率）與借款餘額可在庫存卡片內調整。</p>
+                    <p class="text-[11px] text-gray-400 mb-3 leading-relaxed">槓桿倍數是「這一筆」的槓桿：買進金額 ÷ 槓桿算自有資金，其餘計入借款。對已有的部位加碼時只會加上這筆的借款，原有股數的融資條件不受影響。看多與看空是不同部位，同一檔可以各自持有。停損價依每一筆成交價與倍數各自計算（做多：成交價 − 價格÷倍數×虧損上限；做空：成交價 ＋ 價格÷倍數×虧損上限）。細部費率與借款餘額可在庫存卡片內調整。</p>
                     <button @click="addPosition" class="w-full bg-blue-600 text-white p-2.5 rounded hover:bg-blue-700 font-bold transition text-sm shadow-sm">加入庫存</button>
                 </div>
 
@@ -360,6 +364,7 @@
                         <div class="flex justify-between items-center mb-3">
                             <span class="font-bold text-lg flex items-center">{{ pos.ticker }} 
                                 <span class="text-[10px] px-1.5 py-0.5 rounded ml-1.5 font-normal" :class="pos.market === 'US' ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-800'">{{ pos.market }}</span>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded ml-1 font-bold" :class="isShort(pos) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">{{ isShort(pos) ? '看空' : '看多' }}</span>
                             </span>
                             <div class="flex space-x-2">
                                 <button @click="selectForCalc(pos)" class="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded hover:bg-indigo-200 font-semibold transition">選取試算</button>
@@ -373,7 +378,7 @@
                                 <input v-model.number="pos.shares" type="number" class="border border-gray-300 rounded w-24 px-1 text-center bg-white" @change="saveData">
                             </div>
                             <div class="flex justify-between sm:justify-start items-center">
-                                <span class="text-gray-500 sm:w-16">平均成本:</span>
+                                <span class="text-gray-500 sm:w-16">平均成交價:</span>
                                 <input v-model.number="pos.price" type="number" step="0.0001" class="border border-gray-300 rounded w-24 px-1 text-center bg-white" @change="saveData">
                             </div>
                             <div class="flex justify-between sm:justify-start items-center">
@@ -429,14 +434,14 @@
                                 <div class="flex justify-between"><span class="text-gray-500">借款金額</span><span class="font-semibold text-indigo-600">{{ formatNumber(posBorrowTWD(pos)) }}</span></div>
                                 <div class="flex justify-between"><span class="text-gray-500">部位權益</span><span class="font-semibold" :class="posEquityTWD(pos) >= posMarginTWD(pos) ? 'text-red-600' : 'text-green-600'">{{ formatNumber(posEquityTWD(pos)) }}</span></div>
                                 <div class="flex justify-between"><span class="text-gray-500">{{ posHealthLabel(pos) }}</span><span class="font-semibold" :class="posHealthPct(pos) < posTriggerPct(pos) ? 'text-green-600' : ''">{{ posHealthPct(pos).toFixed(0) }}%</span></div>
-                                <div class="flex justify-between"><span class="text-gray-500">追繳價</span><span class="font-semibold">{{ formatNumber(posCallPrice(pos)) }}</span></div>
-                                <div class="flex justify-between"><span class="text-gray-500">下跌緩衝</span><span class="font-bold" :class="bufferClass(posBufferPct(pos))">{{ posBufferPct(pos).toFixed(1) }}%</span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">停損價</span><span class="font-semibold">{{ formatNumber(posCallPrice(pos)) }}</span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">{{ isShort(pos) ? '上漲緩衝' : '下跌緩衝' }}</span><span class="font-bold" :class="bufferClass(posBufferPct(pos))">{{ posBufferPct(pos).toFixed(1) }}%</span></div>
                                 <div class="flex justify-between"><span class="text-gray-500">槓桿後報酬</span><span class="font-semibold" :class="posLevROI(pos) >= 0 ? 'text-red-600' : 'text-green-600'">{{ posLevROI(pos) >= 0 ? '+' : '' }}{{ posLevROI(pos).toFixed(2) }}%</span></div>
                                 <div class="flex justify-between"><span class="text-gray-500">每日持有成本</span><span class="font-semibold">{{ formatNumber(posDailyCostTWD(pos)) }}</span></div>
                                 <p class="col-span-2 sm:col-span-3 text-[10px] text-gray-400 border-t border-gray-200 pt-1 mt-0.5">
-                                    借款餘額由各次買進累加（每筆 = 買進金額 × (1 − 1/該筆槓桿)），賣出時按股數比例償還；
+                                    借款餘額由各次成交累加（每筆 = 成交金額 × (1 − 1/該筆槓桿)），平倉時各筆按比例減少；停損價以每一筆各自計算，卡片顯示最先觸發的那一筆；
                                     實質槓桿 = 總成本 ÷ 自有資金，庫存費對借款計息。
-                                    權益 = 市值 − 借款，自備保證金虧損達 {{ posLossPct(pos) }}%（權益剩 {{ posEquityTriggerPct(pos) }}%）視為停損／追繳。
+                                    權益 = 自備保證金 ＋ 浮動損益，自備保證金虧損達 {{ posLossPct(pos) }}%（權益剩 {{ posEquityTriggerPct(pos) }}%）視為停損／追繳。
                                     一次性作業處理費約 {{ formatNumber(posHandlingCostTWD(pos)) }} TWD。
                                 </p>
                             </div>
@@ -463,7 +468,7 @@
                 <div class="bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500">
                     <h2 class="text-lg font-bold mb-3">⚖️ 加碼 / 攤平試算器</h2>
                     <div v-if="calc.selectedTicker" class="bg-indigo-50 p-3 rounded mb-3 border border-indigo-100 text-sm">
-                        <p class="font-bold text-indigo-800 text-base mb-0.5">正在試算: {{ calc.selectedTicker }}</p>
+                        <p class="font-bold text-indigo-800 text-base mb-0.5">正在試算: {{ calc.selectedTicker }}（{{ calc.dir === 'short' ? '看空' : '看多' }}）</p>
                         <p class="text-xs text-indigo-600">原持有股數: {{ calc.currentShares }} | 原均價: {{ calc.currentPrice }}</p>
                     </div>
                     <div v-else class="text-gray-400 text-sm mb-4 p-4 border border-dashed rounded text-center">請先從左側庫存點選「選取試算」</div>
@@ -693,7 +698,7 @@
                                         :class="row.isCustom ? 'bg-indigo-50 font-semibold' : ''">
                                         <td class="px-1 py-1.5 whitespace-nowrap">
                                             {{ formatNumber(row.price) }}
-                                            <span v-if="row.belowCall" class="text-[10px] text-indigo-600 font-bold">⚠追繳</span>
+                                            <span v-if="row.belowCall" class="text-[10px] text-indigo-600 font-bold">⚠停損</span>
                                         </td>
                                         <td class="px-2 py-1.5 text-right text-gray-500">{{ row.pct >= 0 ? '+' : '' }}{{ row.pct.toFixed(0) }}%</td>
                                         <td class="px-2 py-1.5 text-right font-bold" :class="row.after.net >= 0 ? 'text-red-600' : 'text-green-600'">
@@ -733,15 +738,16 @@
                                 <div class="flex items-center mb-1">
                                     <span class="px-1.5 py-0.5 rounded text-[10px] font-bold mr-2" 
                                           :class="record.type === 'BUY' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'">
-                                        {{ record.type === 'BUY' ? '買進' : '賣出' }}
+                                        {{ record.dir === 'short' ? (record.type === 'BUY' ? '建空' : '回補') : (record.type === 'BUY' ? '買進' : '賣出') }}
                                     </span>
                                     <span class="font-bold text-base text-gray-900">{{ record.ticker }}</span> 
                                     <span class="text-[10px] bg-gray-200 text-gray-600 px-1 rounded ml-1">{{ record.market }}</span>
+                                    <span v-if="record.dir === 'short'" class="text-[10px] bg-green-100 text-green-700 px-1 rounded ml-1 font-bold">看空</span>
                                 </div>
                                 <div class="text-xs text-gray-500 space-y-0.5">
                                     <p>{{ record.date }}</p>
                                     <p>異動股數: <span class="font-semibold text-gray-700">{{ record.shares }} 股</span></p>
-                                    <p v-if="record.type === 'SELL'">賣出價格: {{ record.sellPrice }} | 原買入均價: {{ record.buyPrice }}</p>
+                                    <p v-if="record.type === 'SELL'">平倉價格: {{ record.sellPrice }} | 原成交均價: {{ record.buyPrice }}</p>
                                     <p v-if="record.type === 'BUY'">成交價格: {{ record.buyPrice }}</p>
                                 </div>
                             </div>
@@ -800,7 +806,7 @@
             data() {
                 return {
                     exchangeRate: 32.50,
-                    newPosition: { ticker: '', market: 'TW', shares: null, price: null, lev: null, carryFee: null },
+                    newPosition: { ticker: '', market: 'TW', dir: 'long', shares: null, price: null, lev: null, carryFee: null },
                     positions: [],
                     cash: 0,
                     riskCfg: { lossPct: 50, stressPct: 15 },
@@ -813,6 +819,7 @@
                     chartTab: 'net',
                     calc: {
                         selectedIndex: null,
+                        dir: 'long',
                         selectedTicker: '',
                         market: '',
                         currentShares: 0,
@@ -834,11 +841,8 @@
                     }, 0);
                 },
                 totalValueTWD() {
-                    return this.positions.reduce((sum, pos) => {
-                        const currentP = pos.currentPrice || pos.price || 0;
-                        const value = (pos.shares || 0) * currentP;
-                        return sum + (pos.market === 'US' ? value * this.exchangeRate : value);
-                    }, 0);
+                    // 部位價值 = 成本 + 浮動損益（看多即市值；看空為建倉金額加上空單損益）
+                    return this.positions.reduce((sum, pos) => sum + this.posValueTWD(pos), 0);
                 },
                 totalROI() {
                     if (this.totalCostTWD === 0) return 0.00;
@@ -903,6 +907,7 @@
                             shares: (pos.shares || 0) + shares,
                             price: avgAfter,
                             borrow: borrowNow + borrowAdd,
+                            lots: vm.lotsWith(pos, shares, price, lev),
                             currentPrice: pos.currentPrice || price
                         });
                         return {
@@ -928,6 +933,7 @@
                     if (!pos || !this.calc.selectedTicker) return null;
 
                     const fx = this.fxRate(pos);
+                    const dirSign = this.isShort(pos) ? -1 : 1;
                     const days = Math.max(0, Number(this.calc.holdDays) || 0);
                     const feePct = Number(pos.carryFee) || 0;
                     const addShares = this.calc.addShares || 0;
@@ -953,7 +959,7 @@
                         : before;
 
                     function evalAt(sc, target) {
-                        const gross = (target - sc.avg) * sc.shares;
+                        const gross = dirSign * (target - sc.avg) * sc.shares;
                         const net = gross - sc.carry;
                         return {
                             gross: gross * fx,
@@ -967,10 +973,11 @@
                     const anchor = addPrice || pos.currentPrice || pos.price || 0;
                     if (anchor <= 0 || after.shares <= 0) return null;
 
-                    const beAfter = after.avg + after.carry / after.shares;
-                    const beBefore = before.shares > 0 ? before.avg + before.carry / before.shares : 0;
+                    const beAfter = after.avg + dirSign * after.carry / after.shares;
+                    const beBefore = before.shares > 0 ? before.avg + dirSign * before.carry / before.shares : 0;
                     const callAfter = this.posCallPrice(Object.assign({}, pos, {
-                        shares: after.shares, price: after.avg, borrow: after.borrow
+                        shares: after.shares, price: after.avg, borrow: after.borrow,
+                        lots: hasAdd ? this.lotsWith(pos, addShares, addPrice, this.addExecLev) : this.posLots(pos)
                     }));
 
                     const rawTarget = Number(this.calc.targetPrice);
@@ -991,7 +998,7 @@
                             before: b,
                             diff: a.net - b.net,
                             isCustom: custom > 0 && t === custom,
-                            belowCall: callAfter > 0 && t <= callAfter
+                            belowCall: callAfter > 0 && (dirSign > 0 ? t <= callAfter : t >= callAfter)
                         };
                     });
 
@@ -999,7 +1006,7 @@
                         hasAdd, fx, days, feePct, anchor, before, after, rows,
                         customRow: custom > 0 ? rows.find(r => r.isCustom) : null,
                         beAfter, beBefore, callAfter,
-                        upToBreakeven: (beAfter - anchor) / anchor * 100
+                        upToBreakeven: dirSign * (beAfter - anchor) / anchor * 100
                     };
                 },
 
@@ -1011,7 +1018,11 @@
                     return this.positions.reduce((s, p) => s + this.posBorrowTWD(p), 0);
                 },
                 totalPosEquityTWD() {
-                    return this.totalExposureTWD - this.totalBorrowTWD;
+                    return this.positions.reduce((s, p) => s + this.posEquityTWD(p), 0);
+                },
+                netDirExposureTWD() {
+                    // 看多為正、看空為負的名目曝險淨額，壓力測試用
+                    return this.positions.reduce((s, p) => s + (this.isShort(p) ? -1 : 1) * this.posExposureTWD(p), 0);
                 },
                 netAssetTWD() {
                     return this.totalPosEquityTWD + (Number(this.cash) || 0);
@@ -1040,7 +1051,7 @@
                     const drops = [...new Set([5, 10, 20, custom].filter(d => d > 0))].sort((a, b) => a - b);
                     const net = this.netAssetTWD;
                     return drops.map(d => {
-                        const pnl = -this.totalExposureTWD * d / 100;
+                        const pnl = -this.netDirExposureTWD * d / 100;
                         const netAfter = net + pnl;
                         return { drop: d, pnl: pnl, netAfter: netAfter, netPct: net > 0 ? pnl / net * 100 : 0 };
                     });
@@ -1185,12 +1196,14 @@
                         market: this.newPosition.market,
                         shares: this.newPosition.shares,
                         buyPrice: this.newPosition.price,
+                        dir: this.newPosition.dir,
                         date: new Date().toLocaleString('zh-TW', { hour12: false })
                     });
 
-                    const existingIndex = this.positions.findIndex(p => p.ticker === this.newPosition.ticker && p.market === this.newPosition.market);
+                    const existingIndex = this.positions.findIndex(p => p.ticker === this.newPosition.ticker && p.market === this.newPosition.market && this.isShort(p) === (this.newPosition.dir === 'short'));
                     if (existingIndex !== -1) {
                         const ep = this.positions[existingIndex];
+                        const lotsNext = this.lotsWith(ep, this.newPosition.shares, this.newPosition.price, this.newPosition.lev);
                         // 只把「這一筆」的借款加進去，原有股數的融資條件不受影響
                         ep.borrow = this.posBorrowOrig(ep) +
                             this.lotBorrow(this.newPosition.shares, this.newPosition.price, this.newPosition.lev);
@@ -1200,11 +1213,13 @@
                         const newAvgPrice = ((ep.shares * ep.price) + (this.newPosition.shares * this.newPosition.price)) / newTotalShares;
                         ep.shares = newTotalShares;
                         ep.price = parseFloat(newAvgPrice.toFixed(4));
+                        ep.lots = lotsNext;
                     } else {
                         this.positions.push({
                             ...this.newPosition,
                             lev: undefined, // 槓桿倍數不落地，一律以借款餘額為準
                             borrow: this.lotBorrow(this.newPosition.shares, this.newPosition.price, this.newPosition.lev),
+                            lots: [{ shares: this.newPosition.shares, price: this.newPosition.price, lev: this.normLev(this.newPosition.lev) }],
                             carryFee: this.newPosition.carryFee || 0,
                             handlingFee: 0,
                             lossPct: null,
@@ -1213,7 +1228,7 @@
                             closePrice: null
                         });
                     }
-                    this.newPosition = { ticker: '', market: 'TW', shares: null, price: null, lev: null, carryFee: null };
+                    this.newPosition = { ticker: '', market: 'TW', dir: 'long', shares: null, price: null, lev: null, carryFee: null };
                     this.saveData();
                 },
                 executeAddOn() {
@@ -1227,15 +1242,18 @@
                         market: pos.market,
                         shares: this.calc.addShares,
                         buyPrice: this.calc.addPrice,
+                        dir: pos.dir || 'long',
                         date: new Date().toLocaleString('zh-TW', { hour12: false })
                     });
 
+                    const lotsNext = this.lotsWith(pos, this.calc.addShares, this.calc.addPrice, this.addExecLev);
                     pos.borrow = this.posBorrowOrig(pos) +
                         this.lotBorrow(this.calc.addShares, this.calc.addPrice, this.addExecLev);
                     pos.shares = this.newTotalShares;
                     pos.price = parseFloat(this.newAveragePrice.toFixed(4));
+                    pos.lots = lotsNext;
                     
-                    this.calc = { selectedIndex: null, selectedTicker: '', market: '', currentShares: 0, currentPrice: 0, addShares: null, addPrice: null, addLev: null, useLev: false, targetPrice: null, holdDays: this.calc.holdDays };
+                    this.calc = { selectedIndex: null, dir: 'long', selectedTicker: '', market: '', currentShares: 0, currentPrice: 0, addShares: null, addPrice: null, addLev: null, useLev: false, targetPrice: null, holdDays: this.calc.holdDays };
                     this.saveData();
                 },
                 closePosition(index) {
@@ -1249,7 +1267,7 @@
                         return;
                     }
 
-                    const pnlOrig = (pos.closePrice - pos.price) * pos.closeShares;
+                    const pnlOrig = (this.isShort(pos) ? -1 : 1) * (pos.closePrice - pos.price) * pos.closeShares;
                     const pnlTWD = pos.market === 'US' ? pnlOrig * this.exchangeRate : pnlOrig;
                     
                     this.history.push({
@@ -1258,6 +1276,7 @@
                         ticker: pos.ticker,
                         market: pos.market,
                         buyPrice: pos.price,
+                        dir: pos.dir || 'long',
                         sellPrice: pos.closePrice,
                         shares: pos.closeShares,
                         pnlOrig: parseFloat(pnlOrig.toFixed(2)),
@@ -1268,8 +1287,14 @@
                     // 賣掉多少比例的股數，就償還多少比例的借款
                     const borrowBefore = this.posBorrowOrig(pos);
                     const sharesBefore = pos.shares;
+                    const lotsBefore = this.posLots(pos);
                     pos.shares -= pos.closeShares;
-                    if (sharesBefore > 0) pos.borrow = borrowBefore * (pos.shares / sharesBefore);
+                    if (sharesBefore > 0) {
+                        const f = pos.shares / sharesBefore;
+                        pos.borrow = borrowBefore * f;
+                        // 各筆成交按比例減少，均價與各筆倍數維持不變
+                        pos.lots = lotsBefore.map(l => ({ shares: l.shares * f, price: l.price, lev: l.lev }));
+                    }
                     pos.closeShares = null;
                     pos.closePrice = null;
 
@@ -1299,12 +1324,12 @@
                 },
                 getUnrealizedPnL(pos) {
                     const current = pos.currentPrice || pos.price || 0;
-                    return (current - (pos.price || 0)) * (pos.shares || 0);
+                    return (this.isShort(pos) ? -1 : 1) * (current - (pos.price || 0)) * (pos.shares || 0);
                 },
                 getROI(pos) {
                     const current = pos.currentPrice || pos.price || 0;
                     if (!pos.price || pos.price === 0) return 0;
-                    return (((current - pos.price) / pos.price) * 100).toFixed(2);
+                    return ((((this.isShort(pos) ? -1 : 1) * (current - pos.price)) / pos.price) * 100).toFixed(2);
                 },
 
                 /* ══════════ 單一部位的槓桿帳務 ══════════
@@ -1357,7 +1382,57 @@
                     return (this.posCostOrig(pos) - this.posBorrowOrig(pos)) * this.fxRate(pos);
                 },
                 posEquityTWD(pos) {
-                    return this.posExposureTWD(pos) - this.posBorrowTWD(pos);
+                    // 權益 = 自備保證金 + 浮動損益（多空通用）
+                    return this.posMarginTWD(pos) + this.getUnrealizedPnL(pos) * this.fxRate(pos);
+                },
+                posValueTWD(pos) {
+                    return this.posCostOrig(pos) * this.fxRate(pos) + this.getUnrealizedPnL(pos) * this.fxRate(pos);
+                },
+                isShort(pos) {
+                    return !!pos && pos.dir === 'short';
+                },
+                normLev(lev) {
+                    const l = Number(lev);
+                    return (!l || l <= 1 || isNaN(l)) ? 1 : l;
+                },
+                posLots(pos) {
+                    // 每一筆成交的 {股數, 成交價, 倍數}；與庫存合計對不上（例如手動改過股數或借款）就退回單筆
+                    const shares = Number(pos.shares) || 0, avg = Number(pos.price) || 0;
+                    const borrow = this.posBorrowOrig(pos);
+                    const single = () => {
+                        const cost = shares * avg, own = cost - borrow;
+                        return [{ shares, price: avg, lev: (borrow > 0 && own > 0) ? cost / own : 1 }];
+                    };
+                    const lots = Array.isArray(pos.lots) ? pos.lots : [];
+                    if (!lots.length) return single();
+                    let s = 0, c = 0, b = 0;
+                    for (const l of lots) {
+                        s += l.shares; c += l.shares * l.price;
+                        b += this.lotBorrow(l.shares, l.price, l.lev);
+                    }
+                    const ok = Math.abs(s - shares) <= 1e-6 * Math.max(1, shares)
+                        && Math.abs(c - shares * avg) <= shares * 1e-4 + 1
+                        && Math.abs(b - borrow) <= Math.max(1, borrow * 1e-4);
+                    return ok ? lots : single();
+                },
+                lotsWith(pos, shares, price, lev) {
+                    return this.posLots(pos).map(l => ({ shares: l.shares, price: l.price, lev: l.lev }))
+                        .concat([{ shares: shares, price: price, lev: this.normLev(lev) }]);
+                },
+                lotStopPrice(pos, lot) {
+                    // 他們的公式：做多 = 成交價 − (價格 ÷ 倍數) × 虧損上限；做空 = 成交價 + (價格 ÷ 倍數) × 虧損上限
+                    const loss = this.posLossPct(pos) / 100;
+                    const d = lot.price / lot.lev * loss;
+                    return this.isShort(pos) ? lot.price + d : lot.price - d;
+                },
+                lotEquityRatio(pos, lot) {
+                    // 該筆目前權益 ÷ 該筆自備保證金
+                    const cur = pos.currentPrice || pos.price || 0;
+                    const sign = this.isShort(pos) ? -1 : 1;
+                    return 1 + sign * lot.lev * (cur - lot.price) / lot.price;
+                },
+                posLeveragedLots(pos) {
+                    return this.posLots(pos).filter(l => l.lev > 1 && l.shares > 0 && l.price > 0);
                 },
                 posLossPct(pos) {
                     const l = Number(pos.lossPct);
@@ -1371,27 +1446,31 @@
                 posCallMode() { return 'equity'; },
                 posTriggerPct(pos) { return this.posEquityTriggerPct(pos); },
                 posEquityRatio(pos) {
-                    // 目前權益（市值 − 借款）相對於初始自備保證金的比率
+                    // 整個部位目前權益相對於初始自備保證金的比率
                     const margin = this.posCostOrig(pos) - this.posBorrowOrig(pos);
                     if (margin <= 0) return 0;
-                    const cur = pos.currentPrice || pos.price || 0;
-                    return ((pos.shares || 0) * cur - this.posBorrowOrig(pos)) / margin * 100;
+                    return (margin + this.getUnrealizedPnL(pos)) / margin * 100;
                 },
-                posHealthPct(pos) { return this.posEquityRatio(pos); },
-                posHealthLabel() { return '目前權益比'; },
+                posHealthPct(pos) {
+                    // 各筆中最低的權益比（最先觸發停損的那一筆）
+                    const lots = this.posLeveragedLots(pos);
+                    if (!lots.length) return this.posEquityRatio(pos);
+                    return Math.min(...lots.map(l => this.lotEquityRatio(pos, l))) * 100;
+                },
+                posHealthLabel() { return '最低權益比'; },
                 posCallPrice(pos) {
-                    // 預估停損價 = (借款 + 自備保證金 × 剩餘權益比) ÷ 股數
-                    //            = 成本 × (1 − 虧損上限 ÷ 槓桿)
-                    const borrow = this.posBorrowOrig(pos);
-                    if (borrow <= 0 || !pos.shares) return 0;
-                    const margin = this.posCostOrig(pos) - borrow;
-                    return (borrow + margin * this.posEquityTriggerPct(pos) / 100) / pos.shares;
+                    // 各筆各自的停損價中，離現價最近（最先觸發）的那一筆
+                    const lots = this.posLeveragedLots(pos);
+                    if (!lots.length) return 0;
+                    const stops = lots.map(l => this.lotStopPrice(pos, l));
+                    return this.isShort(pos) ? Math.min(...stops) : Math.max(...stops);
                 },
                 posBufferPct(pos) {
                     const cur = pos.currentPrice || pos.price || 0;
                     const call = this.posCallPrice(pos);
                     if (!cur || call <= 0) return 100;
-                    return Math.max(-100, (cur - call) / cur * 100);
+                    const dist = this.isShort(pos) ? (call - cur) : (cur - call);
+                    return Math.max(-100, dist / cur * 100);
                 },
                 posLevROI(pos) {
                     // 自備保證金的報酬率（槓桿放大後）
@@ -1413,7 +1492,7 @@
                     return this.posCostOrig(pos) * this.fxRate(pos) * fee / 100;
                 },
                 levKey(pos) {
-                    return pos.ticker + '|' + pos.market;
+                    return pos.ticker + '|' + pos.market + '|' + (pos.dir || 'long');
                 },
                 isLevOpen(pos) {
                     return !!this.levOpen[this.levKey(pos)];
@@ -1443,8 +1522,9 @@
                     if (this.calc.useLev && !this.calc.addLev) this.calc.addLev = 2;
                 },
                 selectForCalc(pos) {
-                    const index = this.positions.findIndex(p => p.ticker === pos.ticker && p.market === pos.market);
+                    const index = this.positions.indexOf(pos);
                     this.calc.selectedIndex = index;
+                    this.calc.dir = pos.dir === 'short' ? 'short' : 'long';
                     this.calc.selectedTicker = pos.ticker;
                     this.calc.market = pos.market;
                     this.calc.currentShares = pos.shares;
@@ -1715,7 +1795,7 @@
                         const valueTWD = (pos.shares || 0) * currentP * (pos.market === 'US' ? this.exchangeRate : 1);
                         if (valueTWD <= 0) return;
                         if (i < VIZ_COLORS.length) {
-                            labels.push(pos.ticker + (pos.market === 'US' ? ' (US)' : ''));
+                            labels.push(pos.ticker + (pos.market === 'US' ? ' (US)' : '') + (this.isShort(pos) ? ' 空' : ''));
                             values.push(Math.round(valueTWD));
                             colors.push(VIZ_COLORS[i]);
                         } else {
