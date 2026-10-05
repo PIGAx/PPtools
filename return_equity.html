@@ -319,6 +319,56 @@
                     </div>
                 </div>
 
+                <!-- 資金成本 -->
+                <div v-if="totalBorrowTWD > 0" class="mt-5">
+                    <h3 class="text-sm font-bold mb-2">💸 借款資金成本</h3>
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                        <div class="bg-gray-50 p-3 rounded border border-gray-200">
+                            <h4 class="text-[10px] text-gray-500 font-semibold mb-1">加權平均年息</h4>
+                            <p class="text-base font-bold text-indigo-600">{{ fundingAvgRatePct.toFixed(2) }}%</p>
+                            <p class="text-[10px] text-gray-400 mt-0.5">借款 {{ formatNumber(totalBorrowTWD) }}</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded border border-gray-200">
+                            <h4 class="text-[10px] text-gray-500 font-semibold mb-1">年化利息</h4>
+                            <p class="text-base font-bold">{{ formatNumber(annualCarryCostTWD) }}</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded border border-gray-200">
+                            <h4 class="text-[10px] text-gray-500 font-semibold mb-1">每月利息</h4>
+                            <p class="text-base font-bold">{{ formatNumber(annualCarryCostTWD / 12) }}</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded border border-gray-200">
+                            <h4 class="text-[10px] text-gray-500 font-semibold mb-1">每日利息</h4>
+                            <p class="text-base font-bold">{{ formatNumber(annualCarryCostTWD / 365) }}</p>
+                            <p v-if="totalHandlingCostTWD > 0" class="text-[10px] text-gray-400 mt-0.5">另有一次性處理費 {{ formatNumber(totalHandlingCostTWD) }}</p>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto border border-gray-200 rounded">
+                        <table class="w-full text-xs">
+                            <thead class="bg-gray-50 text-gray-500">
+                                <tr>
+                                    <th class="text-left px-2 py-1.5 font-semibold">資金來源</th>
+                                    <th class="text-right px-2 py-1.5 font-semibold">借款</th>
+                                    <th class="text-right px-2 py-1.5 font-semibold">年息</th>
+                                    <th class="text-right px-2 py-1.5 font-semibold">年利息</th>
+                                    <th class="text-right px-2 py-1.5 font-semibold">每日</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="g in fundingBySource" :key="g.name" class="border-t border-gray-200">
+                                    <td class="px-2 py-1.5 font-bold">{{ g.name }}<span class="text-[10px] text-gray-400 ml-1">{{ g.n }} 檔</span></td>
+                                    <td class="px-2 py-1.5 text-right">{{ formatNumber(g.borrow) }}</td>
+                                    <td class="px-2 py-1.5 text-right font-semibold" :class="g.rate > 0 ? 'text-indigo-600' : 'text-gray-400'">{{ g.rate.toFixed(2) }}%</td>
+                                    <td class="px-2 py-1.5 text-right">{{ formatNumber(g.annual) }}</td>
+                                    <td class="px-2 py-1.5 text-right text-gray-500">{{ formatNumber(g.annual / 365) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                        年息填在各部位「槓桿／費用設定」的「借款年息／庫存費」，利息以借款餘額單利計算（借款 × 年息 ÷ 365 ＝ 每日利息）；資金來源可填券商名稱，自動依來源彙總。未填年息的部位會把平均年息拉低。
+                    </p>
+                </div>
+
                 <!-- 風險燈號 -->
                 <div class="mt-5 p-4 rounded border" :class="riskBoxClass">
                     <div class="flex items-center gap-2 mb-1.5">
@@ -350,7 +400,9 @@
                         <input v-model.number="newPosition.shares" type="number" placeholder="股數" class="border p-2 rounded text-sm w-full">
                         <input v-model.number="newPosition.price" type="number" step="0.01" placeholder="成交價格" class="border p-2 rounded text-sm w-full">
                         <input v-model.number="newPosition.lev" type="number" step="0.1" min="1" placeholder="槓桿倍數（現股填 1）" class="border p-2 rounded text-sm w-full">
-                        <input v-model.number="newPosition.carryFee" type="number" step="0.01" placeholder="庫存費 %／年（槓桿用）" class="border p-2 rounded text-sm w-full">
+                        <input v-model.number="newPosition.carryFee" type="number" step="0.01" placeholder="借款年息／庫存費 %／年（槓桿用）" class="border p-2 rounded text-sm w-full">
+                        <input v-model="newPosition.source" type="text" list="fundingSources" placeholder="資金來源（券商，例：康和）" class="border p-2 rounded text-sm w-full">
+                        <datalist id="fundingSources"><option v-for="n in fundingSourceNames" :key="n" :value="n"></option></datalist>
                     </div>
                     <p class="text-[11px] text-gray-400 mb-3 leading-relaxed">槓桿倍數是「這一筆」的槓桿：買進金額 ÷ 槓桿算自有資金，其餘計入借款。對已有的部位加碼時只會加上這筆的借款，原有股數的融資條件不受影響。看多與看空是不同部位，同一檔可以各自持有。停損價依每一筆成交價與倍數各自計算（做多：成交價 − 價格÷倍數×虧損上限；做空：成交價 ＋ 價格÷倍數×虧損上限）。細部費率與借款餘額可在庫存卡片內調整。</p>
                     <button @click="addPosition" class="w-full bg-blue-600 text-white p-2.5 rounded hover:bg-blue-700 font-bold transition text-sm shadow-sm">加入庫存</button>
@@ -414,8 +466,12 @@
                                     <input v-model.number="pos.borrow" type="number" step="1" min="0" placeholder="0" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="saveData">
                                 </div>
                                 <div>
-                                    <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">庫存費 %／年</label>
+                                    <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">借款年息／庫存費 %／年</label>
                                     <input v-model.number="pos.carryFee" type="number" step="0.01" placeholder="0" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="saveData">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">資金來源</label>
+                                    <input v-model="pos.source" type="text" list="fundingSources" placeholder="例：康和" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="saveData">
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">作業處理費 %</label>
@@ -806,7 +862,7 @@
             data() {
                 return {
                     exchangeRate: 32.50,
-                    newPosition: { ticker: '', market: 'TW', dir: 'long', shares: null, price: null, lev: null, carryFee: null },
+                    newPosition: { ticker: '', market: 'TW', dir: 'long', shares: null, price: null, lev: null, carryFee: null, source: '' },
                     positions: [],
                     cash: 0,
                     riskCfg: { lossPct: 50, stressPct: 15 },
@@ -1108,6 +1164,32 @@
                     return this.annualCarryCostTWD / this.totalExposureTWD * 100;
                 },
 
+                /* ══ 資金成本：依資金來源彙總借款年息 ══ */
+                fundingSourceNames() {
+                    return [...new Set(this.positions.map(p => (p.source || '').trim()).filter(Boolean))];
+                },
+                fundingBySource() {
+                    const map = {};
+                    this.positions.filter(p => this.hasLeverage(p)).forEach(p => {
+                        const k = (p.source || '').trim() || '未分類';
+                        const g = map[k] || (map[k] = { name: k, borrow: 0, annual: 0, handling: 0, n: 0 });
+                        g.borrow += this.posBorrowTWD(p);
+                        g.annual += this.posAnnualCostTWD(p);
+                        g.handling += this.posHandlingCostTWD(p);
+                        g.n += 1;
+                    });
+                    return Object.values(map)
+                        .map(g => Object.assign(g, { rate: g.borrow > 0 ? g.annual / g.borrow * 100 : 0 }))
+                        .sort((a, b) => b.borrow - a.borrow);
+                },
+                fundingAvgRatePct() {
+                    // 加權平均年息 = 年化利息 ÷ 借款總額
+                    return this.totalBorrowTWD > 0 ? this.annualCarryCostTWD / this.totalBorrowTWD * 100 : 0;
+                },
+                totalHandlingCostTWD() {
+                    return this.positions.reduce((s, p) => s + this.posHandlingCostTWD(p), 0);
+                },
+
                 /* ══ 風險燈號 ══ */
                 riskAssessment() {
                     const notes = [];
@@ -1209,6 +1291,7 @@
                             this.lotBorrow(this.newPosition.shares, this.newPosition.price, this.newPosition.lev);
                         // 費率只在原本沒設定時才帶入，避免加碼順手改掉整檔的費率
                         if (!Number(ep.carryFee) && Number(this.newPosition.carryFee)) ep.carryFee = this.newPosition.carryFee;
+                        if (!ep.source && this.newPosition.source) ep.source = this.newPosition.source;
                         const newTotalShares = ep.shares + this.newPosition.shares;
                         const newAvgPrice = ((ep.shares * ep.price) + (this.newPosition.shares * this.newPosition.price)) / newTotalShares;
                         ep.shares = newTotalShares;
@@ -1221,6 +1304,7 @@
                             borrow: this.lotBorrow(this.newPosition.shares, this.newPosition.price, this.newPosition.lev),
                             lots: [{ shares: this.newPosition.shares, price: this.newPosition.price, lev: this.normLev(this.newPosition.lev) }],
                             carryFee: this.newPosition.carryFee || 0,
+                            source: (this.newPosition.source || '').trim(),
                             handlingFee: 0,
                             lossPct: null,
                             currentPrice: this.newPosition.price,
@@ -1228,7 +1312,7 @@
                             closePrice: null
                         });
                     }
-                    this.newPosition = { ticker: '', market: 'TW', dir: 'long', shares: null, price: null, lev: null, carryFee: null };
+                    this.newPosition = { ticker: '', market: 'TW', dir: 'long', shares: null, price: null, lev: null, carryFee: null, source: '' };
                     this.saveData();
                 },
                 executeAddOn() {
