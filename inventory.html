@@ -9,7 +9,7 @@
 <style>
 /* ══════════════════════════════════════════════════════════════
    庫存戰情室：把「部位控管」的同一份庫存資料（quantPortfolioDataV2）
-   換成以視覺化損益為主的呈現，另加槓桿水位與追繳風險試算。
+   換成以視覺化損益為主的呈現，另加槓桿水位與停損風險試算。
    本頁不做部位增刪（交給部位控管），只讀資料 + 更新報價 + 風險參數。
    顏色全部走 pp-ui.css 代幣，深淺色自動跟著 PPTheme 切換。
    ══════════════════════════════════════════════════════════════ */
@@ -167,7 +167,7 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
   </section>
 
   <section id="sec-holdings">
-    <div class="sec-head"><div class="sec-title">持股明細</div><div class="sec-note">點一列展開成本、槓桿與追繳資訊</div></div>
+    <div class="sec-head"><div class="sec-title">持股明細</div><div class="sec-note">點一列展開成本、槓桿與停損資訊</div></div>
     <div class="sorter" id="sorter"></div>
     <div class="panel" id="holdings"></div>
     <div class="cap">長條為各檔總損益佔整體絕對損益的比重，紅漲綠跌（台股慣例）。部位增刪請到「部位控管」。</div>
@@ -177,7 +177,7 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
     <div class="sec-head"><div class="sec-title">槓桿與風險</div><div class="sec-note" id="callMode">—</div></div>
     <div class="kpis" id="levKpis"></div>
     <div class="panel pad" style="margin-top:12px">
-      <div class="hero-label" style="margin-bottom:8px">資金結構（市值 ＝ 自有權益 ＋ 融資負債）</div>
+      <div class="hero-label" style="margin-bottom:8px">資金結構（市值 ＝ 自有權益 ＋ 借款負債）</div>
       <div class="stack" id="capStack"></div>
       <div class="cap" id="capCap">—</div>
       <div class="hero-label" style="margin:16px 0 4px">壓力測試：全倉下跌 <b class="num" id="stressPctOut">15%</b></div>
@@ -244,7 +244,7 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
       <div class="settings">
         <div class="field"><label for="fxIn">USD/TWD 匯率</label><input class="pp-field num" type="number" id="fxIn" step="0.01"></div>
         <div class="field"><label for="cashIn">可動用現金 (TWD)</label><input class="pp-field num" type="number" id="cashIn" step="1"></div>
-        <div class="field"><label for="maintIn">追繳維持率 (%)</label><input class="pp-field num" type="number" id="maintIn" step="1"></div>
+        <div class="field"><label for="maintIn">虧損上限 (% 自備保證金)</label><input class="pp-field num" type="number" id="maintIn" step="1"></div>
         <div class="field"><label for="stressIn">預設壓力測試跌幅 (%)</label><input class="pp-field num" type="number" id="stressIn" step="1"></div>
       </div>
       <div class="btnrow">
@@ -255,7 +255,7 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
   </section>
 
   <footer>
-    庫存戰情室 · 紅漲綠跌（台股慣例）· 融資維持率 ＝ 市值 ÷ 融資金額<br>
+    庫存戰情室 · 紅漲綠跌（台股慣例）· 停損點 ＝ 自備保證金虧損達上限<br>
     僅供個人庫存分析，不構成投資建議。
   </footer>
 </div>
@@ -263,7 +263,7 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
 <script>
 /* ── 狀態：直接讀寫部位控管的 quantPortfolioDataV2 ── */
 const KEY='quantPortfolioDataV2';
-let S={exchangeRate:32.5,positions:[],netHistory:[],cash:0,riskCfg:{callMode:'maint',maintPct:130,equityPct:25,stressPct:15},lastQuoteAt:null,history:[]};
+let S={exchangeRate:32.5,positions:[],netHistory:[],cash:0,riskCfg:{lossPct:50,stressPct:15},lastQuoteAt:null,history:[]};
 let sortKey='pnl', sortDir=-1, calCursor=null, openRow=null, quoteBusy=false;
 let barData=[], barPick=null;
 
@@ -275,7 +275,7 @@ function loadData(){
       S=Object.assign(S,p);
       S.positions=(p.positions||[]).map((x,i)=>Object.assign({_i:i},x));
       S.netHistory=p.netHistory||[];
-      S.riskCfg=Object.assign({callMode:'maint',maintPct:130,equityPct:25,stressPct:15},p.riskCfg||{});
+      S.riskCfg=Object.assign({lossPct:50,stressPct:15},{lossPct:(p.riskCfg||{}).lossPct,stressPct:(p.riskCfg||{}).stressPct});
       S.cash=Number(p.cash)||0;
     }
   }catch(e){}
@@ -300,12 +300,14 @@ function rows(){
     const fx=fxOf(p), sh=Number(p.shares)||0, cur=Number(p.currentPrice)||0, avg=Number(p.price)||0;
     const mv=sh*cur*fx, cost=sh*avg*fx, pnl=mv-cost;
     const prev=(p.prevClose==null||p.prevClose==='')?null:Number(p.prevClose);
-    const borrow=Number(p.borrow)||0;
+    const borrow=(Number(p.borrow)||0)*fx;
+    const lossPct=Math.min(Number(p.lossPct)||Number(S.riskCfg.lossPct)||50,100), trig=1-lossPct/100;
     return {id:'p'+p._i, ticker:p.ticker, name:p._name||p.name||p.ticker, market:p.market, shares:sh,
       price:avg, currentPrice:cur, fx, mv, cost, pnl, pnlPct:cost?pnl/cost:0,
       day:prev!==null?sh*(cur-prev)*fx:null, dayPct:prev?(cur-prev)/prev:null,
-      borrow, own:cost-borrow, maint:borrow>0?mv/borrow:null,
-      callPrice:borrow>0&&sh?borrow*(Number(S.riskCfg.maintPct)||130)/100/(sh*fx):null};
+      borrow, own:cost-borrow, lossPct, trig, eqRatio:borrow>0&&cost>borrow?(mv-borrow)/(cost-borrow):null,
+      // 預估停損價 = 成本 × (1 − 虧損上限 ÷ 槓桿)
+      callPrice:borrow>0&&sh&&cost>borrow?(borrow+(cost-borrow)*trig)/(sh*fx):null};
   });
 }
 function totals(rs){
@@ -319,7 +321,7 @@ function totals(rs){
   const equity=mv+cash-debt;
   return {mv,cost,debt,cash,equity,day,daySrc,dayPct:base?day/base:0,
     pnl:mv-cost,pnlPct:cost?(mv-cost)/cost:0,ownCost:cost-debt,
-    roe:(cost-debt)?(mv-cost)/(cost-debt):0,lev:equity>0?mv/equity:0,maint:debt>0?mv/debt:null};
+    roe:(cost-debt)?(mv-cost)/(cost-debt):0,lev:equity>0?mv/equity:0};
 }
 function cleanHistory(){
   let h=[...(S.netHistory||[])].sort((a,b)=>a.date<b.date?-1:1);
@@ -364,7 +366,7 @@ function renderOverview(rs,T){
   document.getElementById('costVal').textContent='成本 '+fmt(T.cost);
   const roe=document.getElementById('roeVal');
   roe.textContent=pct(T.roe); roe.className='v num '+cls(T.roe);
-  document.getElementById('roeSub').textContent='自有 '+fmt(T.ownCost)+(T.debt>0?' · 融資 '+fmt(T.debt):'');
+  document.getElementById('roeSub').textContent='自有 '+fmt(T.ownCost)+(T.debt>0?' · 借款 '+fmt(T.debt):'');
 
   const win=rs.filter(r=>r.pnl>0), lose=rs.filter(r=>r.pnl<0);
   const wMv=win.reduce((a,r)=>a+r.mv,0), lMv=lose.reduce((a,r)=>a+r.mv,0), all=T.mv||1;
@@ -383,7 +385,7 @@ function renderOverview(rs,T){
 const lg=(c,k,v,cl='')=>'<div class="legend-row"><span class="dot" style="background:'+c+'"></span><span class="lbl">'+k+'</span><span class="val num '+cl+'">'+v+'</span></div>';
 
 /* ── 持股 ── */
-const SORTS=[['pnl','總損益'],['pnlPct','報酬率'],['day','今日損益'],['mv','市值'],['borrow','融資']];
+const SORTS=[['pnl','總損益'],['pnlPct','報酬率'],['day','今日損益'],['mv','市值'],['borrow','借款']];
 function renderHoldings(rs,T){
   document.getElementById('sorter').innerHTML=SORTS.map(s=>
     '<button class="sortbtn" data-k="'+s[0]+'" aria-pressed="'+(sortKey===s[0])+'">'+s[1]+(sortKey===s[0]?(sortDir<0?' ↓':' ↑'):'')+'</button>').join('');
@@ -394,7 +396,7 @@ function renderHoldings(rs,T){
     const w=Math.abs(r.pnl)/maxAbs*50, open=openRow===r.id;
     return '<div class="holding" data-id="'+r.id+'" role="button" tabindex="0" aria-expanded="'+open+'">'+
       '<div class="h-top"><div><div class="h-name">'+r.name+
-        (r.borrow>0?' <span class="tag lev">融資</span>':'')+(r.market==='US'?' <span class="tag">US</span>':'')+'</div>'+
+        (r.borrow>0?' <span class="tag lev">槓桿</span>':'')+(r.market==='US'?' <span class="tag">US</span>':'')+'</div>'+
         '<div class="h-ticker num">'+r.ticker+' · 市值 '+fmt(r.mv)+'</div></div>'+
         '<div class="h-right"><div class="h-total num '+cls(r.pnl)+'">'+signed(r.pnl)+'</div>'+
         '<div class="h-pct num '+cls(r.pnl)+'">'+pct(r.pnlPct)+'</div></div></div>'+
@@ -406,9 +408,9 @@ function renderHoldings(rs,T){
       '<div class="bar"><span class="zero" style="left:50%"></span><i style="background:'+cssv(r.pnl)+';'+(r.pnl>=0?'left:50%;width:'+w+'%':'right:50%;width:'+w+'%')+'"></i></div>'+
       (open?'<div class="h-detail">'+
         cell('投入成本',fmt(r.cost))+cell('自有資金',fmt(r.own))+
-        cell('融資金額',r.borrow>0?fmt(r.borrow):'—')+
-        cell('個股維持率',r.maint?(r.maint*100).toFixed(0)+'%':'—',r.maint&&r.maint*100<(Number(S.riskCfg.maintPct)||130)?'up':'')+
-        cell('追繳價',r.callPrice?r.callPrice.toFixed(2):'—')+
+        cell('借款金額',r.borrow>0?fmt(r.borrow):'—')+
+        cell('權益比',r.eqRatio!==null?(r.eqRatio*100).toFixed(0)+'%':'—',r.eqRatio!==null&&r.eqRatio<r.trig?'up':'')+
+        cell('預估停損價',r.callPrice?r.callPrice.toFixed(2):'—')+
         cell('自有報酬率',r.own>0?pct(r.pnl/r.own):'—',r.own>0?cls(r.pnl):'')+
       '</div>':'')+'</div>';
   }).join('');
@@ -416,17 +418,26 @@ function renderHoldings(rs,T){
 const cell=(k,v,c='')=>'<div><div class="k">'+k+'</div><div class="v num '+c+'">'+v+'</div></div>';
 
 /* ── 槓桿 ── */
+function levAgg(rs,d){
+  // 只看有槓桿的部位：整體權益比與各檔是否已觸發停損
+  const L=rs.filter(r=>r.borrow>0&&r.own>0);
+  const mv=L.reduce((a,r)=>a+r.mv,0)*(1-(d||0)), borrow=L.reduce((a,r)=>a+r.borrow,0), own=L.reduce((a,r)=>a+r.own,0);
+  const hit=L.filter(r=>(r.mv*(1-(d||0))-r.borrow)/r.own<r.trig);
+  return {L,mv,borrow,own,ratio:own?(mv-borrow)/own:null,hit};
+}
 function renderLeverage(rs,T){
-  const th=Number(S.riskCfg.maintPct)||130;
-  document.getElementById('callMode').textContent='追繳門檻 '+th+'%';
-  const drop=T.debt>0?1-(T.debt*th/100)/T.mv:null;
+  const lp=Number(S.riskCfg.lossPct)||50;
+  document.getElementById('callMode').textContent='虧損上限 '+lp+'% 自備保證金';
+  const A=levAgg(rs,0);
+  // 所有槓桿部位同步下跌多少，第一檔會觸發停損
+  const drop=A.L.length?Math.min(...A.L.map(r=>1-(r.borrow+r.own*r.trig)/r.mv)):null;
   document.getElementById('levKpis').innerHTML=[
     ['總市值',fmt(T.mv),'含現金 '+fmt(T.cash),''],
-    ['自有權益',fmt(T.equity),'市值−融資＋現金',''],
-    ['融資負債',fmt(T.debt),T.debt>0?'佔市值 '+(T.debt/T.mv*100).toFixed(0)+'%':'未使用槓桿',''],
+    ['自有權益',fmt(T.equity),'市值−借款＋現金',''],
+    ['借款負債',fmt(T.debt),T.debt>0?'佔市值 '+(T.debt/T.mv*100).toFixed(0)+'%':'未使用槓桿',''],
     ['槓桿倍數',(T.lev||0).toFixed(2)+'x',T.lev>2?'偏高':'市值÷自有權益',T.lev>2?'up':''],
-    ['整戶維持率',T.maint?(T.maint*100).toFixed(0)+'%':'—',T.maint?(T.maint*100<th?'已低於門檻':'安全'):'無融資',T.maint&&T.maint*100<th?'up':''],
-    ['可跌幅度',drop!==null?(drop*100).toFixed(1)+'%':'—','跌破即追繳','']
+    ['槓桿部位權益比',A.ratio!==null?(A.ratio*100).toFixed(0)+'%':'—',A.L.length?(A.hit.length?'已有部位觸發停損':'相對自備保證金'):'無槓桿部位',A.hit.length?'up':''],
+    ['最先觸發的跌幅',drop!==null?(Math.max(drop,0)*100).toFixed(1)+'%':'—','股價跌到停損價','']
   ].map(k=>'<div class="kpi"><div class="k">'+k[0]+'</div><div class="v num '+k[3]+'">'+k[1]+'</div><div class="s">'+k[2]+'</div></div>').join('');
   const eq=Math.max(T.equity,0), dt=Math.max(T.debt,0), tot=eq+dt||1;
   document.getElementById('capStack').innerHTML=
@@ -434,19 +445,19 @@ function renderLeverage(rs,T){
     (dt>0?'<div style="width:'+(dt/tot*100)+'%;background:var(--purple)">融資 '+(dt/tot*100).toFixed(0)+'%</div>':'');
   document.getElementById('capCap').textContent=dt>0
     ?'每 1 元自有資金操作 '+(T.lev||0).toFixed(2)+' 元部位；帳面報酬率 '+pct(T.pnlPct)+' 被放大為自有權益報酬 '+pct(T.roe)+'。'
-    :'目前無融資。在「部位控管」填入融資金額後，這裡會算出槓桿倍數、維持率與追繳價。';
+    :'目前無槓桿部位。在「部位控管」加入槓桿部位後，這裡會算出槓桿倍數、權益比與預估停損價。';
   renderStress(T);
 }
 function renderStress(T){
   const d=Number(document.getElementById('stress').value)/100;
   document.getElementById('stressPctOut').textContent=(d*100).toFixed(0)+'%';
   const mv2=T.mv*(1-d), eq2=mv2+T.cash-T.debt, loss=mv2-T.mv;
-  const m2=T.debt>0?mv2/T.debt*100:null, th=Number(S.riskCfg.maintPct)||130, hit=m2!==null&&m2<th;
+  const A=levAgg(S.positions.length?rows():[],d), m2=A.ratio!==null?A.ratio*100:null, hit=A.hit.length>0;
   document.getElementById('stressOut').innerHTML=[
     ['市值',fmt(mv2),''],['權益變動',signed(loss),cls(loss)],['自有權益',fmt(eq2),eq2<0?'up':''],
     ['權益衝擊',T.equity?pct(loss/T.equity):'—',cls(loss)],
-    ['維持率',m2!==null?m2.toFixed(0)+'%':'無融資',hit?'up':''],
-    ['狀態',m2===null?'無追繳風險':(hit?'已觸發追繳':'安全'),hit?'up':'down']
+    ['槓桿部位權益比',m2!==null?m2.toFixed(0)+'%':'無槓桿',hit?'up':''],
+    ['狀態',m2===null?'無停損風險':(hit?'已觸發停損（'+A.hit.map(r=>r.ticker).join('、')+'）':'安全'),hit?'up':'down']
   ].map(k=>'<div><div class="k">'+k[0]+'</div><div class="v num '+k[2]+'">'+k[1]+'</div></div>').join('');
 }
 
@@ -761,7 +772,7 @@ function renderAll(){
   renderOverview(rs,T); renderHoldings(rs,T); renderLeverage(rs,T); renderCalendar(); renderCurve(); renderNetHistory();
   document.getElementById('fxIn').value=S.exchangeRate;
   document.getElementById('cashIn').value=S.cash;
-  document.getElementById('maintIn').value=S.riskCfg.maintPct;
+  document.getElementById('maintIn').value=S.riskCfg.lossPct;
   document.getElementById('stressIn').value=S.riskCfg.stressPct;
 }
 document.getElementById('sorter').addEventListener('click',e=>{
@@ -829,7 +840,7 @@ function nhMsg(t){
 document.getElementById('saveBtn').addEventListener('click',()=>{
   S.exchangeRate=Number(document.getElementById('fxIn').value)||S.exchangeRate;
   S.cash=Number(document.getElementById('cashIn').value)||0;
-  S.riskCfg.maintPct=Number(document.getElementById('maintIn').value)||130;
+  S.riskCfg.lossPct=Math.min(Number(document.getElementById('maintIn').value)||50,100);
   S.riskCfg.stressPct=Number(document.getElementById('stressIn').value)||15;
   document.getElementById('stress').value=S.riskCfg.stressPct;
   persist(); renderAll();

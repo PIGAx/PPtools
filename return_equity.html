@@ -176,19 +176,8 @@
                     <input v-model.number="cash" type="number" step="1000" class="border p-2 rounded w-full text-sm" @change="saveData">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">預設追繳模型</label>
-                    <select v-model="riskCfg.callMode" class="border p-2 rounded w-full text-sm bg-white" @change="saveData">
-                        <option value="maint">融資維持率（市值 ÷ 借款）</option>
-                        <option value="equity">保證金比例（權益 ÷ 初始保證金）</option>
-                    </select>
-                </div>
-                <div v-if="riskCfg.callMode !== 'equity'">
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">預設追繳維持率 (%)</label>
-                    <input v-model.number="riskCfg.maintPct" type="number" step="1" class="border p-2 rounded w-full text-sm" @change="saveData">
-                </div>
-                <div v-else>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">預設權益門檻 (%)</label>
-                    <input v-model.number="riskCfg.equityPct" type="number" step="1" class="border p-2 rounded w-full text-sm" @change="saveData">
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">預設虧損上限 (% 自備保證金)</label>
+                    <input v-model.number="riskCfg.lossPct" type="number" step="1" min="1" max="100" class="border p-2 rounded w-full text-sm" @change="saveData">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">自訂壓力測試跌幅 (%)</label>
@@ -196,8 +185,8 @@
                 </div>
             </div>
             <p class="text-[11px] text-gray-400 mb-5 leading-relaxed">
-                追繳模型是全站預設值，個別部位可在庫存卡片的「槓桿／費用設定」單獨指定。
-                融資維持率＝台股融資慣例；保證金比例＝券商槓桿商品常見的損失比例式門檻（權益跌到初始自備保證金的 X% 就追繳）。
+                虧損上限是全站預設值，個別部位可在庫存卡片的「槓桿／費用設定」單獨指定。
+                新金鑽等槓桿商品以「自備保證金虧損到 X%」為停損／追繳點，預估停損價 ＝ 成本 × (1 − X% ÷ 槓桿)，例如 2 倍、虧損上限 50% → 成本下跌 25% 即觸發。
             </p>
 
             <div v-if="positions.length === 0" class="text-gray-500 text-sm py-6 text-center border border-dashed rounded">尚無庫存部位，加入庫存後這裡會自動計算。</div>
@@ -295,7 +284,7 @@
                                         <td class="px-2 py-1.5 text-right">{{ posLevLabel(pos) }}x</td>
                                         <td class="px-2 py-1.5 text-right">{{ formatNumber(pos.currentPrice || pos.price) }}</td>
                                         <td class="px-2 py-1.5 text-right">{{ formatNumber(posCallPrice(pos)) }}</td>
-                                        <td class="px-2 py-1.5 text-right text-gray-500">{{ posCallMode(pos) === 'equity' ? '權益 ' : '維持 ' }}{{ posTriggerPct(pos) }}%</td>
+                                        <td class="px-2 py-1.5 text-right text-gray-500">虧損 {{ posLossPct(pos) }}%</td>
                                         <td class="px-2 py-1.5 text-right font-bold" :class="bufferClass(posBufferPct(pos))">{{ posBufferPct(pos).toFixed(1) }}%</td>
                                     </tr>
                                 </tbody>
@@ -428,20 +417,8 @@
                                     <input v-model.number="pos.handlingFee" type="number" step="0.01" placeholder="0" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="saveData">
                                 </div>
                                 <div>
-                                    <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">追繳模型</label>
-                                    <select v-model="pos.callMode" class="border rounded w-full px-1 py-1 text-sm bg-white" @change="saveData">
-                                        <option :value="null">跟隨預設</option>
-                                        <option value="maint">融資維持率</option>
-                                        <option value="equity">保證金比例</option>
-                                    </select>
-                                </div>
-                                <div v-if="posCallMode(pos) === 'maint'">
-                                    <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">追繳維持率 %</label>
-                                    <input v-model.number="pos.maintPct" type="number" step="1" :placeholder="riskCfg.maintPct" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="saveData">
-                                </div>
-                                <div v-else>
-                                    <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">權益門檻 %</label>
-                                    <input v-model.number="pos.equityPct" type="number" step="1" :placeholder="riskCfg.equityPct" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="saveData">
+                                    <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">虧損上限 % 保證金</label>
+                                    <input v-model.number="pos.lossPct" type="number" step="1" :placeholder="riskCfg.lossPct" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="saveData">
                                 </div>
                             </div>
 
@@ -459,8 +436,7 @@
                                 <p class="col-span-2 sm:col-span-3 text-[10px] text-gray-400 border-t border-gray-200 pt-1 mt-0.5">
                                     借款餘額由各次買進累加（每筆 = 買進金額 × (1 − 1/該筆槓桿)），賣出時按股數比例償還；
                                     實質槓桿 = 總成本 ÷ 自有資金，庫存費對借款計息。
-                                    <template v-if="posCallMode(pos) === 'maint'">維持率 = 市值 ÷ 借款，跌破 {{ posMaintPct(pos) }}% 視為追繳。</template>
-                                    <template v-else>權益 = 市值 − 借款，跌到初始保證金的 {{ posEquityTriggerPct(pos) }}% 視為追繳。</template>
+                                    權益 = 市值 − 借款，自備保證金虧損達 {{ posLossPct(pos) }}%（權益剩 {{ posEquityTriggerPct(pos) }}%）視為停損／追繳。
                                     一次性作業處理費約 {{ formatNumber(posHandlingCostTWD(pos)) }} TWD。
                                 </p>
                             </div>
@@ -827,7 +803,7 @@
                     newPosition: { ticker: '', market: 'TW', shares: null, price: null, lev: null, carryFee: null },
                     positions: [],
                     cash: 0,
-                    riskCfg: { callMode: 'maint', maintPct: 130, equityPct: 25, stressPct: 15 },
+                    riskCfg: { lossPct: 50, stressPct: 15 },
                     levOpen: {},
                     history: [],
                     netHistory: [],
@@ -1231,9 +1207,7 @@
                             borrow: this.lotBorrow(this.newPosition.shares, this.newPosition.price, this.newPosition.lev),
                             carryFee: this.newPosition.carryFee || 0,
                             handlingFee: 0,
-                            callMode: null,
-                            maintPct: null,
-                            equityPct: null,
+                            lossPct: null,
                             currentPrice: this.newPosition.price,
                             closeShares: null,
                             closePrice: null
@@ -1358,10 +1332,6 @@
                     if (!l || l <= 1 || isNaN(l)) return 0;
                     return (shares || 0) * (price || 0) * (1 - 1 / l);
                 },
-                posMaintPct(pos) {
-                    const m = Number(pos.maintPct);
-                    return (!m || m <= 0 || isNaN(m)) ? (Number(this.riskCfg.maintPct) || 130) : m;
-                },
                 posCostOrig(pos) {
                     return (pos.shares || 0) * (pos.price || 0);
                 },
@@ -1389,23 +1359,17 @@
                 posEquityTWD(pos) {
                     return this.posExposureTWD(pos) - this.posBorrowTWD(pos);
                 },
-                posMaintRatio(pos) {
-                    const borrow = this.posBorrowOrig(pos);
-                    if (borrow <= 0) return 9999;
-                    const cur = pos.currentPrice || pos.price || 0;
-                    return ((pos.shares || 0) * cur) / borrow * 100;
+                posLossPct(pos) {
+                    const l = Number(pos.lossPct);
+                    const v = (!l || l <= 0 || isNaN(l)) ? (Number(this.riskCfg.lossPct) || 50) : l;
+                    return Math.min(v, 100);
                 },
                 posEquityTriggerPct(pos) {
-                    const e = Number(pos.equityPct);
-                    return (!e || e <= 0 || isNaN(e)) ? (Number(this.riskCfg.equityPct) || 25) : e;
+                    // 權益剩下初始自備保證金的幾 % 時觸發
+                    return 100 - this.posLossPct(pos);
                 },
-                posCallMode(pos) {
-                    const m = pos.callMode || this.riskCfg.callMode || 'maint';
-                    return m === 'equity' ? 'equity' : 'maint';
-                },
-                posTriggerPct(pos) {
-                    return this.posCallMode(pos) === 'equity' ? this.posEquityTriggerPct(pos) : this.posMaintPct(pos);
-                },
+                posCallMode() { return 'equity'; },
+                posTriggerPct(pos) { return this.posEquityTriggerPct(pos); },
                 posEquityRatio(pos) {
                     // 目前權益（市值 − 借款）相對於初始自備保證金的比率
                     const margin = this.posCostOrig(pos) - this.posBorrowOrig(pos);
@@ -1413,22 +1377,15 @@
                     const cur = pos.currentPrice || pos.price || 0;
                     return ((pos.shares || 0) * cur - this.posBorrowOrig(pos)) / margin * 100;
                 },
-                posHealthPct(pos) {
-                    return this.posCallMode(pos) === 'equity' ? this.posEquityRatio(pos) : this.posMaintRatio(pos);
-                },
-                posHealthLabel(pos) {
-                    return this.posCallMode(pos) === 'equity' ? '目前權益比' : '目前維持率';
-                },
+                posHealthPct(pos) { return this.posEquityRatio(pos); },
+                posHealthLabel() { return '目前權益比'; },
                 posCallPrice(pos) {
+                    // 預估停損價 = (借款 + 自備保證金 × 剩餘權益比) ÷ 股數
+                    //            = 成本 × (1 − 虧損上限 ÷ 槓桿)
                     const borrow = this.posBorrowOrig(pos);
                     if (borrow <= 0 || !pos.shares) return 0;
-                    if (this.posCallMode(pos) === 'equity') {
-                        // 權益 = 市值 − 借款，跌到初始保證金的 X% 時觸發
-                        const margin = this.posCostOrig(pos) - this.posBorrowOrig(pos);
-                        return (borrow + margin * this.posEquityTriggerPct(pos) / 100) / pos.shares;
-                    }
-                    // 市值 = 借款 × 維持率 時觸發追繳
-                    return borrow * (this.posMaintPct(pos) / 100) / pos.shares;
+                    const margin = this.posCostOrig(pos) - borrow;
+                    return (borrow + margin * this.posEquityTriggerPct(pos) / 100) / pos.shares;
                 },
                 posBufferPct(pos) {
                     const cur = pos.currentPrice || pos.price || 0;
@@ -1628,7 +1585,7 @@
                         });
                         this.cash = Number(parsed.cash) || 0;
                         if (migrated) this.$nextTick(() => this.saveData());
-                        if (parsed.riskCfg) this.riskCfg = Object.assign({ callMode: 'maint', maintPct: 130, equityPct: 25, stressPct: 15 }, parsed.riskCfg);
+                        if (parsed.riskCfg) this.riskCfg = Object.assign({ lossPct: 50, stressPct: 15 }, { stressPct: parsed.riskCfg.stressPct, lossPct: parsed.riskCfg.lossPct });
                     } else if (dataOld) {
                         const parsed = JSON.parse(dataOld);
                         if(parsed.exchangeRate) this.exchangeRate = parsed.exchangeRate;
