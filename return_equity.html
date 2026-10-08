@@ -279,8 +279,9 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="pos in leveragedPositions" :key="pos.ticker + pos.market + (pos.dir || 'long')" class="border-t border-gray-200">
-                                        <td class="px-2 py-1.5 font-bold">{{ pos.ticker }}<span class="text-[10px] text-gray-400 ml-1">{{ pos.market }}</span><span class="text-[10px] ml-1" :class="isShort(pos) ? 'text-green-600' : 'text-red-600'">{{ isShort(pos) ? '空' : '多' }}</span></td>
+                                    <tr v-for="pos in leveragedPositions" :key="positions.indexOf(pos)" class="border-t border-gray-200">
+                                        <td class="px-2 py-1.5 font-bold">{{ pos.ticker }}<span class="text-[10px] text-gray-400 ml-1">{{ pos.market }}</span><span class="text-[10px] ml-1" :class="isShort(pos) ? 'text-green-600' : 'text-red-600'">{{ isShort(pos) ? '空' : '多' }}</span>
+                                            <span class="block text-[10px] font-normal text-gray-400">{{ pos.source || '—' }} · {{ pos.shares }} 股 @{{ formatNumber(pos.price) }}<span v-if="posMixed(pos)" class="text-yellow-700 font-bold"> ⚠混合</span></span></td>
                                         <td class="px-2 py-1.5 text-right">{{ posLevLabel(pos) }}x</td>
                                         <td class="px-2 py-1.5 text-right">{{ formatNumber(pos.currentPrice || pos.price) }}</td>
                                         <td class="px-2 py-1.5 text-right">{{ formatNumber(posCallPrice(pos)) }}</td>
@@ -460,6 +461,18 @@
                                 <button @click="toggleLev(pos)" class="text-xs text-indigo-600 hover:underline font-semibold">
                                     {{ isLevOpen(pos) ? '收合設定 ▲' : '⚙ 槓桿／費用設定 ▼' }}
                                 </button>
+                            </div>
+
+                            <div v-if="posMixed(pos)" class="text-[11px] bg-yellow-50 border border-yellow-300 text-yellow-800 rounded p-2 mb-2 leading-relaxed">
+                                ⚠ 這個部位把現股和槓桿單混在一起（平均槓桿 {{ posLevLabel(pos) }}x），停損價會被平均掉而失真。
+                                新金鑽每一筆都要獨立計算 —— 用下面的「拆出一筆槓桿單」，把每一筆新金鑽的股數、成交價、倍數分出來。
+                                <div class="grid grid-cols-2 sm:grid-cols-5 gap-1.5 mt-2" v-if="pos._split || (pos._split = { shares: null, price: null, lev: 2, source: pos.source || '新金鑽' })">
+                                    <input v-model.number="pos._split.shares" type="number" placeholder="該筆股數" class="border rounded px-1 py-1 text-center text-xs bg-white">
+                                    <input v-model.number="pos._split.price" type="number" step="0.01" placeholder="該筆成交價" class="border rounded px-1 py-1 text-center text-xs bg-white">
+                                    <input v-model.number="pos._split.lev" type="number" step="0.5" min="1.5" max="5" placeholder="倍數" class="border rounded px-1 py-1 text-center text-xs bg-white">
+                                    <input v-model="pos._split.source" type="text" list="fundingSources" placeholder="來源" class="border rounded px-1 py-1 text-center text-xs bg-white">
+                                    <button @click="splitOutOrder(pos)" class="bg-yellow-500 text-white rounded px-2 py-1 text-xs font-bold hover:bg-yellow-600">拆出</button>
+                                </div>
                             </div>
 
                             <div v-show="isLevOpen(pos)" class="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-indigo-50 p-3 rounded border border-indigo-100 mb-2">
@@ -1521,8 +1534,10 @@
                         date: new Date().toLocaleString('zh-TW', { hour12: false })
                     });
 
-                    const existingIndex = this.positions.findIndex(p => p.ticker === this.newPosition.ticker && p.market === this.newPosition.market && this.isShort(p) === (this.newPosition.dir === 'short')
-                        && (p.source || '').trim() === (this.newPosition.source || '').trim());
+                    // 槓桿單（倍數 > 1）每一筆都是獨立部位，各自的保證金、停損價分開算；現股才會併入同來源的現股部位
+                    const isLevOrder = this.normLev(this.newPosition.lev) > 1;
+                    const existingIndex = isLevOrder ? -1 : this.positions.findIndex(p => p.ticker === this.newPosition.ticker && p.market === this.newPosition.market && this.isShort(p) === (this.newPosition.dir === 'short')
+                        && (p.source || '').trim() === (this.newPosition.source || '').trim() && !this.hasLeverage(p));
                     if (existingIndex !== -1) {
                         const ep = this.positions[existingIndex];
                         const lotsNext = this.lotsWith(ep, this.newPosition.shares, this.newPosition.price, this.newPosition.lev);
@@ -1549,7 +1564,8 @@
                             lossPct: null,
                             currentPrice: this.newPosition.price,
                             closeShares: null,
-                            closePrice: null
+                            closePrice: null,
+                            openedAt: this.todayStr()
                         });
                     }
                     this.newPosition = { ticker: '', market: 'TW', dir: 'long', shares: null, price: null, lev: null, carryFee: null, source: '' };
@@ -1570,6 +1586,12 @@
                         date: new Date().toLocaleString('zh-TW', { hour12: false })
                     });
 
+                    if (this.addExecLev > 1 || this.hasLeverage(pos)) {
+                        this.positions.splice(this.positions.indexOf(pos) + 1, 0, this.makeOrder(pos, this.calc.addShares, this.calc.addPrice, this.addExecLev, pos.source));
+                        this.calc = { selectedIndex: null, dir: 'long', selectedTicker: '', market: '', currentShares: 0, currentPrice: 0, addShares: null, addPrice: null, addLev: null, useLev: false, targetPrice: null, holdDays: this.calc.holdDays };
+                        this.saveData();
+                        return;
+                    }
                     const lotsNext = this.lotsWith(pos, this.calc.addShares, this.calc.addPrice, this.addExecLev);
                     pos.borrow = this.posBorrowOrig(pos) +
                         this.lotBorrow(this.calc.addShares, this.calc.addPrice, this.addExecLev);
@@ -1756,6 +1778,86 @@
                 normLev(lev) {
                     const l = Number(lev);
                     return (!l || l <= 1 || isNaN(l)) ? 1 : l;
+                },
+                lotsValid(pos) {
+                    // pos.lots 是否和庫存合計（股數、成本、借款）對得上
+                    const lots = Array.isArray(pos.lots) ? pos.lots : [];
+                    if (!lots.length) return false;
+                    const shares = Number(pos.shares) || 0, avg = Number(pos.price) || 0, borrow = this.posBorrowOrig(pos);
+                    let s = 0, c = 0, b = 0;
+                    for (const l of lots) { s += l.shares; c += l.shares * l.price; b += this.lotBorrow(l.shares, l.price, l.lev); }
+                    return Math.abs(s - shares) <= 1e-6 * Math.max(1, shares)
+                        && Math.abs(c - shares * avg) <= shares * 1e-4 + 1
+                        && Math.abs(b - borrow) <= Math.max(1, borrow * 1e-4);
+                },
+                posMixed(pos) {
+                    // 現股與槓桿單混在同一個部位：停損價無法逐筆計算，需要拆開
+                    if (!this.hasLeverage(pos)) return false;
+                    if (this.lotsValid(pos)) {
+                        const lots = pos.lots.filter(l => l.shares > 0);
+                        return lots.length > 1;
+                    }
+                    // 沒有逐筆紀錄：由借款回推的倍數若不是 0.5 的倍數，多半是混合部位
+                    const L = this.posLev(pos);
+                    return Math.abs(L * 2 - Math.round(L * 2)) > 0.02 || L < 1.5;
+                },
+                makeOrder(src, shares, price, lev, source) {
+                    // 一筆獨立的槓桿單（或現股）部位
+                    const L = this.normLev(lev);
+                    return {
+                        ticker: src.ticker, market: src.market, dir: src.dir || 'long',
+                        shares: shares, price: price,
+                        borrow: this.lotBorrow(shares, price, L),
+                        lots: [{ shares: shares, price: price, lev: L }],
+                        carryFee: src.carryFee || 0,
+                        source: (source || '').trim(),
+                        handlingFee: 0,
+                        lossPct: src.lossPct || null,
+                        currentPrice: src.currentPrice || price,
+                        prevClose: src.prevClose,
+                        closeShares: null, closePrice: null,
+                        openedAt: this.todayStr()
+                    };
+                },
+                splitByLots(pos) {
+                    // 有完整逐筆紀錄的混合部位：現股合併為一筆、每筆槓桿單各自獨立
+                    const lots = (pos.lots || []).filter(l => l.shares > 0);
+                    const cash = lots.filter(l => l.lev <= 1), lev = lots.filter(l => l.lev > 1);
+                    const out = [];
+                    if (cash.length) {
+                        const sh = cash.reduce((a, l) => a + l.shares, 0);
+                        const avg = cash.reduce((a, l) => a + l.shares * l.price, 0) / sh;
+                        out.push(Object.assign({}, pos, { shares: sh, price: parseFloat(avg.toFixed(4)), borrow: 0, source: '', lots: [{ shares: sh, price: avg, lev: 1 }] }));
+                    }
+                    lev.forEach(l => out.push(Object.assign(this.makeOrder(pos, l.shares, l.price, l.lev, pos.source), { openedAt: pos.openedAt || null })));
+                    return out;
+                },
+                splitOutOrder(pos) {
+                    // 手動從混合部位拆出一筆槓桿單：輸入該筆的股數、成交價、倍數
+                    const f = pos._split || {};
+                    const n = Number(f.shares), px = Number(f.price), L = this.normLev(f.lev);
+                    if (!n || !px || L <= 1) { alert('請輸入這筆槓桿單的股數、成交價與倍數（大於 1）'); return; }
+                    if (n > pos.shares) { alert('股數不能大於部位股數'); return; }
+                    const orderBorrow = this.lotBorrow(n, px, L);
+                    const order = this.makeOrder(pos, n, px, L, (f.source || pos.source || '').trim());
+                    const idx = this.positions.indexOf(pos);
+                    if (n === pos.shares) {
+                        this.positions.splice(idx, 1, order);
+                    } else {
+                        const restShares = pos.shares - n;
+                        const restCost = pos.shares * pos.price - n * px;
+                        if (restCost <= 0) { alert('拆出後剩餘成本小於 0，請確認成交價'); return; }
+                        const restAvg = restCost / restShares;
+                        const restBorrow = Math.max(0, this.posBorrowOrig(pos) - orderBorrow);
+                        pos.shares = restShares;
+                        pos.price = parseFloat(restAvg.toFixed(4));
+                        pos.borrow = restBorrow < 1 ? 0 : restBorrow;
+                        pos.lots = [{ shares: restShares, price: restAvg, lev: pos.borrow > 0 ? restCost / (restCost - pos.borrow) : 1 }];
+                        if (order.source && pos.source === order.source && !pos.borrow) pos.source = '';
+                        this.positions.splice(idx + 1, 0, order);
+                    }
+                    delete pos._split;
+                    this.saveData();
                 },
                 posLots(pos) {
                     // 每一筆成交的 {股數, 成交價, 倍數}；與庫存合計對不上（例如手動改過股數或借款）就退回單筆
@@ -1992,7 +2094,7 @@
                     this.recordTodayNetValue();
                     localStorage.setItem('quantPortfolioDataV2', JSON.stringify({
                         exchangeRate: this.exchangeRate,
-                        positions: this.positions,
+                        positions: this.positions.map(p => { const c = Object.assign({}, p); delete c._split; return c; }),
                         history: this.history,
                         netHistory: this.netHistory,
                         lastQuoteAt: this.lastQuoteAt,
@@ -2025,6 +2127,14 @@
                             }
                             delete p.lev;
                         });
+                        const splitted = [];
+                        this.positions.forEach(p => {
+                            if (this.hasLeverage(p) && this.lotsValid(p) && p.lots.filter(l => l.shares > 0).length > 1) {
+                                migrated = true;
+                                splitted.push(...this.splitByLots(p));
+                            } else splitted.push(p);
+                        });
+                        this.positions = splitted;
                         this.cash = Number(parsed.cash) || 0;
                         if (migrated) this.$nextTick(() => this.saveData());
                         if (parsed.riskCfg) this.riskCfg = Object.assign({ lossPct: 50, stressPct: 15 }, { stressPct: parsed.riskCfg.stressPct, lossPct: parsed.riskCfg.lossPct });
