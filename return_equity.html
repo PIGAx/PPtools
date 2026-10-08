@@ -815,11 +815,12 @@
                             <input v-model.number="conv.buyPrice" type="number" step="0.01" :placeholder="conv.sellPrice" class="border p-2 rounded w-full text-sm" :disabled="conv.index === null">
                         </div>
                         <div>
-                            <label class="block text-xs font-semibold text-gray-600 mb-1">槓桿倍數</label>
-                            <div class="flex rounded-lg overflow-hidden border border-gray-300 text-xs font-semibold">
-                                <button v-for="L in convLevSteps" :key="L" type="button" @click="conv.lev = L"
-                                        class="flex-1 py-2 px-0.5 transition border-l first:border-l-0 border-gray-300 whitespace-nowrap"
-                                        :class="conv.lev === L ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'">{{ L }}x</button>
+                            <label class="flex justify-between text-xs font-semibold text-gray-600 mb-1">
+                                <span>槓桿倍數</span><span class="text-amber-700 text-sm font-bold">{{ conv.lev }}x</span>
+                            </label>
+                            <input v-model.number="conv.lev" type="range" :min="convLevSteps[0]" :max="convLevSteps[convLevSteps.length - 1]" step="0.5" class="w-full accent-amber-500" aria-label="槓桿倍數">
+                            <div class="flex justify-between text-[10px] text-gray-400 px-0.5">
+                                <span v-for="L in convLevSteps" :key="L">{{ Number.isInteger(L) ? L + 'x' : '·' }}</span>
                             </div>
                         </div>
                         <div class="sm:col-span-2">
@@ -881,6 +882,58 @@
                             整體槓桿＝{{ convertSim.pos.ticker }} 所有看多部位以 {{ formatNumber(convertSim.P) }} 計的市值 ÷（市值 − 借款）；持股水位＝全組合曝險 ÷ 淨資產。
                             停損價依新金鑽公式：成交價 −（價格 ÷ 倍數）× {{ posLossPct(convertSim.pos) }}%。金額為原幣，未計手續費與交易稅。
                         </p>
+                        <div class="mt-4 pt-3 border-t border-amber-200">
+                            <div class="flex flex-wrap items-end justify-between gap-2 mb-2">
+                                <p class="text-xs font-bold text-gray-700">📈 損益預測：不轉換 vs 轉換 {{ convertSim.sel.lev }}x</p>
+                                <div class="flex gap-2">
+                                    <label class="text-[10px] text-gray-500">持有天數
+                                        <input v-model.number="conv.holdDays" type="number" min="0" class="border rounded w-16 px-1 py-0.5 text-xs text-center bg-white">
+                                    </label>
+                                    <label class="text-[10px] text-gray-500">目標價
+                                        <input v-model.number="conv.target" type="number" step="0.01" class="border rounded w-20 px-1 py-0.5 text-xs text-center bg-white">
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="overflow-x-auto border border-amber-200 rounded bg-white">
+                                <table class="w-full text-xs">
+                                    <thead class="bg-amber-50 text-gray-500">
+                                        <tr>
+                                            <th class="text-left px-2 py-1.5 font-semibold">情境價</th>
+                                            <th class="text-right px-2 py-1.5 font-semibold">漲跌</th>
+                                            <th class="text-right px-2 py-1.5 font-semibold">不轉換<br><span class="font-normal">現股 {{ convertSim.X }} 股</span></th>
+                                            <th class="text-right px-2 py-1.5 font-semibold">轉換後<br><span class="font-normal">{{ convertSim.sel.lev }}x {{ convertSim.sel.shares }} 股</span></th>
+                                            <th class="text-right px-2 py-1.5 font-semibold">差額</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="row in convertSim.scen.rows" :key="row.price" class="border-t border-gray-200"
+                                            :class="row.isCustom ? 'bg-amber-100 font-semibold' : (row.isStop ? 'bg-gray-50' : '')">
+                                            <td class="px-2 py-1.5 whitespace-nowrap">
+                                                {{ formatNumber(row.price) }}
+                                                <span v-if="row.isStop" class="text-[10px] text-indigo-600 font-bold">停損價</span>
+                                                <span v-else-if="row.stopped" class="text-[10px] text-indigo-600 font-bold">⚠已停損</span>
+                                            </td>
+                                            <td class="px-2 py-1.5 text-right text-gray-500">{{ row.pct >= 0 ? '+' : '' }}{{ row.pct.toFixed(0) }}%</td>
+                                            <td class="px-2 py-1.5 text-right" :class="row.before >= 0 ? 'text-red-600' : 'text-green-600'">
+                                                {{ row.before >= 0 ? '+' : '' }}{{ formatNumber(row.before) }}
+                                                <span class="block text-[10px] text-gray-400">{{ row.beforeRoi >= 0 ? '+' : '' }}{{ row.beforeRoi.toFixed(1) }}%</span>
+                                            </td>
+                                            <td class="px-2 py-1.5 text-right font-bold" :class="row.after >= 0 ? 'text-red-600' : 'text-green-600'">
+                                                {{ row.after >= 0 ? '+' : '' }}{{ formatNumber(row.after) }}
+                                                <span class="block text-[10px] font-normal text-gray-400">{{ row.afterRoi >= 0 ? '+' : '' }}{{ row.afterRoi.toFixed(1) }}%</span>
+                                            </td>
+                                            <td class="px-2 py-1.5 text-right" :class="row.diff >= 0 ? 'text-red-600' : 'text-green-600'">{{ row.diff >= 0 ? '+' : '' }}{{ formatNumber(row.diff) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="text-[10px] text-gray-500 mt-2 leading-relaxed">
+                                損益從現在（{{ formatNumber(convertSim.P) }}）起算，百分比以賣出金額 {{ formatNumber(convertSim.scen.baseCapital) }} 為本金。
+                                轉換後已扣 {{ convertSim.scen.days }} 天庫存費約 {{ formatNumber(convertSim.scen.carry) }}，損益兩平價約 {{ formatNumber(convertSim.scen.be) }}；
+                                跌破停損價以停損價出場，最多虧掉保證金的 {{ posLossPct(convertSim.pos) }}%。已實現的 {{ formatNumber(convertSim.realized) }} 兩邊都一樣，不列入。
+                                <template v-if="conv.mode === 'keep'">維持股數模式下釋放的現金不計報酬。</template>
+                            </p>
+                        </div>
                         <label class="flex items-center gap-1.5 text-xs text-gray-600 mt-2">
                             <input type="checkbox" v-model="conv.addCash"> 執行時把釋放的現金加到「可動用現金」
                         </label>
@@ -978,7 +1031,7 @@
                     quoteLoading: false,
                     quoteStatus: '',
                     chartTab: 'net',
-                    conv: { index: null, sellShares: null, sellPrice: null, buyPrice: null, lev: 2, mode: 'amplify', carryFee: 3.5, source: '新金鑽', addCash: true },
+                    conv: { index: null, sellShares: null, sellPrice: null, buyPrice: null, lev: 2, mode: 'amplify', carryFee: 3.5, source: '新金鑽', addCash: true, holdDays: 30, target: null },
                     calc: {
                         selectedIndex: null,
                         dir: 'long',
@@ -1221,6 +1274,33 @@
                     return {
                         pos, ready: true, fx, X, P, B, proceeds, realized, sellBorrow,
                         sel: row(this.conv.lev),
+                        scen: (() => {
+                            // 損益預測：從現在起，不轉換（續抱 X 股現股）vs 轉換後（N 股槓桿，扣持有期間庫存費，跌破停損價視為出場）
+                            const r = row(this.conv.lev);
+                            const days = Math.max(0, Number(this.conv.holdDays) || 0);
+                            const carry = r.borrow * rate / 100 * days / 365;
+                            const tgt = Number(this.conv.target);
+                            const custom = tgt > 0 && !isNaN(tgt) ? Math.round(tgt * 100) / 100 : 0;
+                            const pts = [-30, -20, -10, 0, 10, 20, 30, 50].map(x => Math.round(P * (1 + x / 100) * 100) / 100);
+                            if (r.stop > 0) pts.push(Math.round(r.stop * 100) / 100);
+                            if (custom) pts.push(custom);
+                            const rows = [...new Set(pts)].filter(t => t > 0).sort((a, b) => a - b).map(t => {
+                                const stopped = r.stop > 0 && t <= r.stop;
+                                const exitPx = stopped ? r.stop : t;
+                                const before = (t - P) * X;
+                                const after = (exitPx - B) * r.shares - carry;
+                                return {
+                                    price: t, pct: (t - P) / P * 100, stopped, isStop: r.stop > 0 && Math.abs(t - r.stop) < 0.005,
+                                    isCustom: custom > 0 && t === custom,
+                                    before, after, diff: after - before,
+                                    beforeRoi: proceeds > 0 ? before / proceeds * 100 : 0,
+                                    afterRoi: proceeds > 0 ? after / proceeds * 100 : 0
+                                };
+                            });
+                            // 轉換後損益兩平價（含庫存費）
+                            const be = r.shares > 0 ? B + carry / r.shares : 0;
+                            return { days, carry, rows, be, baseCapital: proceeds };
+                        })(),
                         table: this.convLevSteps.map(row)
                     };
                 },
