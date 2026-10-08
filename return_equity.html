@@ -416,10 +416,12 @@
                         <div class="flex justify-between items-center mb-3">
                             <span class="font-bold text-lg flex items-center">{{ pos.ticker }} 
                                 <span class="text-[10px] px-1.5 py-0.5 rounded ml-1.5 font-normal" :class="pos.market === 'US' ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-800'">{{ pos.market }}</span>
+                                <span v-if="pos.source" class="text-[10px] px-1.5 py-0.5 rounded ml-1 font-normal bg-indigo-50 text-indigo-700">{{ pos.source }}</span>
                                 <span class="text-[10px] px-1.5 py-0.5 rounded ml-1 font-bold" :class="isShort(pos) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">{{ isShort(pos) ? '看空' : '看多' }}</span>
                             </span>
                             <div class="flex space-x-2">
                                 <button @click="selectForCalc(pos)" class="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded hover:bg-indigo-200 font-semibold transition">選取試算</button>
+                                <button v-if="!isShort(pos)" @click="openConvert(pos)" class="text-xs bg-amber-100 text-amber-800 px-2.5 py-1.5 rounded hover:bg-amber-200 font-semibold transition">轉槓桿</button>
                                 <button @click="deletePosition(index)" class="text-xs bg-gray-100 text-red-500 px-2 py-1 rounded hover:bg-red-100 transition" title="刪除此部位">🗑️</button>
                             </div>
                         </div>
@@ -784,6 +786,109 @@
                     <button @click="executeAddOn" v-if="calc.selectedTicker" class="w-full mt-4 bg-indigo-600 text-white p-2.5 rounded hover:bg-indigo-700 font-bold text-base transition shadow-sm">確認執行加碼 (寫入庫存與明細)</button>
                 </div>
 
+                <div id="convertCard" class="bg-white p-5 rounded-lg shadow-md border-t-4 border-amber-500">
+                    <h2 class="text-lg font-bold mb-1">🔄 現股轉槓桿試算</h2>
+                    <p class="text-[11px] text-gray-500 mb-3">賣出一部分現股，把拿回的錢轉成新金鑽等槓桿部位，先預覽倍數、股數、停損價與整體槓桿。</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">要轉換的部位</label>
+                            <select v-model.number="conv.index" @change="openConvert(positions[conv.index])" class="border p-2 rounded w-full text-sm bg-white">
+                                <option :value="null">請選擇</option>
+                                <template v-for="(pos, i) in positions" :key="i">
+                                    <option v-if="!isShort(pos)" :value="i">{{ pos.ticker }} {{ pos.market }}{{ pos.source ? '・' + pos.source : '' }} — {{ pos.shares }} 股{{ hasLeverage(pos) ? '（槓桿 ' + posLevLabel(pos) + 'x）' : '（現股）' }}</option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">賣出股數</label>
+                            <input v-model.number="conv.sellShares" type="number" min="1" :max="convertSim ? convertSim.pos.shares : null" class="border p-2 rounded w-full text-sm" :disabled="conv.index === null">
+                            <div v-if="convertSim" class="flex gap-1 mt-1">
+                                <button v-for="f in [0.25, 0.5, 1]" :key="f" type="button" @click="conv.sellShares = Math.floor(convertSim.pos.shares * f)" class="text-[10px] px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200">{{ f === 1 ? '全部' : (f * 100) + '%' }}</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">賣出價格</label>
+                            <input v-model.number="conv.sellPrice" type="number" step="0.01" class="border p-2 rounded w-full text-sm" :disabled="conv.index === null">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">槓桿成交價（預設同賣出價）</label>
+                            <input v-model.number="conv.buyPrice" type="number" step="0.01" :placeholder="conv.sellPrice" class="border p-2 rounded w-full text-sm" :disabled="conv.index === null">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">槓桿倍數</label>
+                            <div class="flex rounded-lg overflow-hidden border border-gray-300 text-xs font-semibold">
+                                <button v-for="L in [2, 3, 4, 5]" :key="L" type="button" @click="conv.lev = L"
+                                        class="flex-1 py-2 transition border-l first:border-l-0 border-gray-300"
+                                        :class="conv.lev === L ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'">{{ L }}x</button>
+                            </div>
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">轉換方式</label>
+                            <div class="flex rounded-lg overflow-hidden border border-gray-300 text-xs font-semibold">
+                                <button type="button" @click="conv.mode = 'amplify'" class="flex-1 py-2 transition" :class="conv.mode === 'amplify' ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'">賣出金額全當保證金（放大曝險）</button>
+                                <button type="button" @click="conv.mode = 'keep'" class="flex-1 py-2 transition border-l border-gray-300" :class="conv.mode === 'keep' ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'">維持相同股數（釋放現金）</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">庫存費／年息 %</label>
+                            <input v-model.number="conv.carryFee" type="number" step="0.01" class="border p-2 rounded w-full text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">資金來源</label>
+                            <input v-model="conv.source" type="text" list="fundingSources" class="border p-2 rounded w-full text-sm">
+                        </div>
+                    </div>
+
+                    <div v-if="convertSim && convertSim.ready" class="bg-amber-50 p-4 rounded border border-amber-200 text-sm">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-2 mb-3">
+                            <div><p class="text-[10px] text-gray-500 font-semibold">賣出拿回</p><p class="font-bold">{{ formatNumber(convertSim.proceeds - convertSim.sellBorrow) }}</p></div>
+                            <div><p class="text-[10px] text-gray-500 font-semibold">實現損益</p><p class="font-bold" :class="convertSim.realized >= 0 ? 'text-red-600' : 'text-green-600'">{{ convertSim.realized >= 0 ? '+' : '' }}{{ formatNumber(convertSim.realized) }}</p></div>
+                            <div><p class="text-[10px] text-gray-500 font-semibold">新保證金（權利金）</p><p class="font-bold">{{ formatNumber(convertSim.sel.margin) }}</p></div>
+                            <div><p class="text-[10px] text-gray-500 font-semibold">{{ convertSim.sel.lev }}x 可開股數</p><p class="font-bold text-amber-700 text-base">{{ convertSim.sel.shares }} 股</p></div>
+                            <div><p class="text-[10px] text-gray-500 font-semibold">合約價值</p><p class="font-bold">{{ formatNumber(convertSim.sel.contract) }}</p></div>
+                            <div><p class="text-[10px] text-gray-500 font-semibold">預估停損價</p><p class="font-bold">{{ formatNumber(convertSim.sel.stop) }} <span class="text-[10px] text-gray-500">(−{{ convertSim.sel.stopDrop.toFixed(1) }}%)</span></p></div>
+                            <div><p class="text-[10px] text-gray-500 font-semibold">借款／每日庫存費</p><p class="font-bold">{{ formatNumber(convertSim.sel.borrow) }} ／ {{ formatNumber(convertSim.sel.daily) }}</p></div>
+                            <div><p class="text-[10px] text-gray-500 font-semibold">釋放現金</p><p class="font-bold">{{ formatNumber(convertSim.sel.freed) }}</p></div>
+                            <div><p class="text-[10px] text-gray-500 font-semibold">{{ convertSim.pos.ticker }} 整體槓桿</p><p class="font-bold">{{ convertSim.sel.levBefore.toFixed(2) }}x → <span class="text-amber-700">{{ convertSim.sel.levAfter.toFixed(2) }}x</span></p></div>
+                        </div>
+                        <div class="overflow-x-auto border border-amber-200 rounded bg-white">
+                            <table class="w-full text-xs">
+                                <thead class="bg-amber-50 text-gray-500">
+                                    <tr>
+                                        <th class="text-left px-2 py-1.5 font-semibold">倍數</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">股數</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">保證金</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">停損價</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">整體槓桿</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">持股水位</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">每日費用</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="r in convertSim.table" :key="r.lev" @click="conv.lev = r.lev" class="border-t border-gray-200 cursor-pointer" :class="r.lev === conv.lev ? 'bg-amber-100 font-semibold' : 'hover:bg-gray-50'">
+                                        <td class="px-2 py-1.5">{{ r.lev }}x</td>
+                                        <td class="px-2 py-1.5 text-right">{{ r.shares }}</td>
+                                        <td class="px-2 py-1.5 text-right">{{ formatNumber(r.margin) }}</td>
+                                        <td class="px-2 py-1.5 text-right">{{ formatNumber(r.stop) }} <span class="text-gray-400">−{{ r.stopDrop.toFixed(0) }}%</span></td>
+                                        <td class="px-2 py-1.5 text-right">{{ r.levAfter.toFixed(2) }}x</td>
+                                        <td class="px-2 py-1.5 text-right">{{ r.waterAfter.toFixed(0) }}%</td>
+                                        <td class="px-2 py-1.5 text-right">{{ formatNumber(r.daily) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="text-[10px] text-gray-500 mt-2 leading-relaxed">
+                            整體槓桿＝{{ convertSim.pos.ticker }} 所有看多部位以 {{ formatNumber(convertSim.P) }} 計的市值 ÷（市值 − 借款）；持股水位＝全組合曝險 ÷ 淨資產。
+                            停損價依新金鑽公式：成交價 −（價格 ÷ 倍數）× {{ posLossPct(convertSim.pos) }}%。金額為原幣，未計手續費與交易稅。
+                        </p>
+                        <label class="flex items-center gap-1.5 text-xs text-gray-600 mt-2">
+                            <input type="checkbox" v-model="conv.addCash"> 執行時把釋放的現金加到「可動用現金」
+                        </label>
+                        <button @click="executeConvert" class="w-full mt-3 bg-amber-500 text-white p-2.5 rounded hover:bg-amber-600 font-bold text-sm transition shadow-sm">確認轉換（寫入出場結算與新槓桿部位）</button>
+                    </div>
+                    <div v-else-if="conv.index !== null" class="text-gray-400 text-xs p-3 border border-dashed rounded text-center">輸入賣出股數就會出現預覽</div>
+                </div>
+
                 <div class="bg-white p-5 rounded-lg shadow-md max-h-[500px] overflow-y-auto">
                     <h2 class="text-lg font-bold mb-3">📜 歷次交易明細帳</h2>
                     <div v-if="history.length === 0" class="text-gray-500 text-sm py-4 text-center">尚無交易紀錄。</div>
@@ -873,6 +978,7 @@
                     quoteLoading: false,
                     quoteStatus: '',
                     chartTab: 'net',
+                    conv: { index: null, sellShares: null, sellPrice: null, buyPrice: null, lev: 2, mode: 'amplify', carryFee: 3.5, source: '新金鑽', addCash: true },
                     calc: {
                         selectedIndex: null,
                         dir: 'long',
@@ -1063,6 +1169,55 @@
                         customRow: custom > 0 ? rows.find(r => r.isCustom) : null,
                         beAfter, beBefore, callAfter,
                         upToBreakeven: dirSign * (beAfter - anchor) / anchor * 100
+                    };
+                },
+
+                /* ══ 現股轉槓桿試算 ══
+                   賣出部分現股 → 用拿回的錢開槓桿部位，預覽各倍數下的股數、借款、停損價與整體槓桿。
+                   amplify：賣出金額全部當保證金（放大曝險）；keep：買回相同股數（釋放現金）。 */
+                convertSim() {
+                    const pos = this.positions[this.conv.index];
+                    if (!pos || this.isShort(pos)) return null;
+                    const X = Math.min(Number(this.conv.sellShares) || 0, pos.shares || 0);
+                    const P = Number(this.conv.sellPrice) || pos.currentPrice || pos.price || 0;
+                    const B = Number(this.conv.buyPrice) || P;
+                    if (X <= 0 || P <= 0 || B <= 0) return { pos, ready: false };
+                    const fx = this.fxRate(pos);
+                    const loss = this.posLossPct(pos) / 100;
+                    const rate = Number(this.conv.carryFee) || 0;
+                    const proceeds = X * P;
+                    const realized = (P - (pos.price || 0)) * X;
+                    const sellBorrow = (pos.shares > 0) ? this.posBorrowOrig(pos) * X / pos.shares : 0;   // 賣出時一併償還的借款
+
+                    // 同一檔所有看多部位合計（含已有的槓桿部位），用來算轉換前後的整體槓桿
+                    const same = this.positions.filter(p => p.ticker === pos.ticker && p.market === pos.market && !this.isShort(p));
+                    const sh0 = same.reduce((a, p) => a + (p.shares || 0), 0);
+                    const bo0 = same.reduce((a, p) => a + this.posBorrowOrig(p), 0);
+                    const levOf = (sh, bo) => { const e = sh * P; return e - bo > 0 ? e / (e - bo) : 0; };
+
+                    const vm = this;
+                    function row(L) {
+                        L = vm.normLev(L);
+                        const N = vm.conv.mode === 'keep' ? X : Math.floor(proceeds * L / B);
+                        const margin = N * B / L;
+                        const borrow = N * B - margin;
+                        const freed = proceeds - sellBorrow - margin;     // 賣出拿回（扣掉償還借款）− 新保證金
+                        const sh1 = sh0 - X + N, bo1 = bo0 - sellBorrow + borrow;
+                        const stop = L > 1 ? B - B / L * loss : 0;
+                        return {
+                            lev: L, shares: N, contract: N * B, margin, borrow, freed,
+                            stop, stopDrop: stop > 0 ? (B - stop) / B * 100 : 0,
+                            daily: borrow * rate / 100 / 365,
+                            expChange: (N * B - X * P) * fx,
+                            sharesAfter: sh1, levBefore: levOf(sh0, bo0), levAfter: levOf(sh1, bo1),
+                            waterAfter: vm.netAssetTWD > 0
+                                ? (vm.totalExposureTWD + (N * B - X * P) * fx) / (vm.netAssetTWD + (vm.conv.addCash ? 0 : -Math.max(freed, 0) * fx)) * 100 : 0
+                        };
+                    }
+                    return {
+                        pos, ready: true, fx, X, P, B, proceeds, realized, sellBorrow,
+                        sel: row(this.conv.lev),
+                        table: [2, 3, 4, 5].map(row)
                     };
                 },
 
@@ -1282,7 +1437,8 @@
                         date: new Date().toLocaleString('zh-TW', { hour12: false })
                     });
 
-                    const existingIndex = this.positions.findIndex(p => p.ticker === this.newPosition.ticker && p.market === this.newPosition.market && this.isShort(p) === (this.newPosition.dir === 'short'));
+                    const existingIndex = this.positions.findIndex(p => p.ticker === this.newPosition.ticker && p.market === this.newPosition.market && this.isShort(p) === (this.newPosition.dir === 'short')
+                        && (p.source || '').trim() === (this.newPosition.source || '').trim());
                     if (existingIndex !== -1) {
                         const ep = this.positions[existingIndex];
                         const lotsNext = this.lotsWith(ep, this.newPosition.shares, this.newPosition.price, this.newPosition.lev);
@@ -1338,6 +1494,44 @@
                     pos.lots = lotsNext;
                     
                     this.calc = { selectedIndex: null, dir: 'long', selectedTicker: '', market: '', currentShares: 0, currentPrice: 0, addShares: null, addPrice: null, addLev: null, useLev: false, targetPrice: null, holdDays: this.calc.holdDays };
+                    this.saveData();
+                },
+                openConvert(pos) {
+                    const i = this.positions.indexOf(pos);
+                    this.conv.index = i >= 0 ? i : null;
+                    this.conv.sellPrice = pos ? (pos.currentPrice || pos.price) : null;
+                    this.conv.buyPrice = null;
+                    this.conv.sellShares = null;
+                    this.$nextTick && this.$nextTick(() => {
+                        const el = document.getElementById('convertCard');
+                        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    });
+                },
+                executeConvert() {
+                    const r = this.convertSim;
+                    if (!r || !r.ready || !r.sel.shares) { alert('請輸入賣出股數，且轉換後股數需至少 1 股'); return; }
+                    const pos = r.pos;
+                    const msg = `賣出 ${pos.ticker} ${r.X} 股 @ ${r.P}，再以 ${r.sel.lev} 倍開 ${r.sel.shares} 股 @ ${r.B}（${this.conv.source || '槓桿部位'}）？`;
+                    if (!confirm(msg)) return;
+                    const draft = Object.assign({}, this.newPosition);
+                    // 1) 賣出現股（走原本的出場結算，寫入已實現損益）
+                    pos.closeShares = r.X;
+                    pos.closePrice = r.P;
+                    this.closePosition(this.positions.indexOf(pos));
+                    // 2) 開槓桿部位（資金來源不同就是獨立的一張卡片）
+                    this.newPosition = {
+                        ticker: pos.ticker, market: pos.market, dir: 'long',
+                        shares: r.sel.shares, price: r.B, lev: r.sel.lev,
+                        carryFee: Number(this.conv.carryFee) || 0, source: (this.conv.source || '').trim()
+                    };
+                    this.addPosition();
+                    this.newPosition = draft;
+                    // 3) 釋放出來的現金記回可動用現金
+                    if (this.conv.addCash && r.sel.freed) this.cash = Math.round(((Number(this.cash) || 0) + r.sel.freed * r.fx) * 100) / 100;
+                    this.conv.index = null;
+                    this.conv.sellShares = null;
+                    this.conv.sellPrice = null;
+                    this.conv.buyPrice = null;
                     this.saveData();
                 },
                 closePosition(index) {
