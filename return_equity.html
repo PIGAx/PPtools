@@ -817,8 +817,8 @@
                         <div>
                             <label class="block text-xs font-semibold text-gray-600 mb-1">槓桿倍數</label>
                             <div class="flex rounded-lg overflow-hidden border border-gray-300 text-xs font-semibold">
-                                <button v-for="L in [2, 3, 4, 5]" :key="L" type="button" @click="conv.lev = L"
-                                        class="flex-1 py-2 transition border-l first:border-l-0 border-gray-300"
+                                <button v-for="L in convLevSteps" :key="L" type="button" @click="conv.lev = L"
+                                        class="flex-1 py-2 px-0.5 transition border-l first:border-l-0 border-gray-300 whitespace-nowrap"
                                         :class="conv.lev === L ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'">{{ L }}x</button>
                             </div>
                         </div>
@@ -1175,6 +1175,10 @@
                 /* ══ 現股轉槓桿試算 ══
                    賣出部分現股 → 用拿回的錢開槓桿部位，預覽各倍數下的股數、借款、停損價與整體槓桿。
                    amplify：賣出金額全部當保證金（放大曝險）；keep：買回相同股數（釋放現金）。 */
+                convLevSteps() {
+                    // 新金鑽倍數可調：2x 起每 0.5 倍一級，上限 5x
+                    return [2, 2.5, 3, 3.5, 4, 4.5, 5];
+                },
                 convertSim() {
                     const pos = this.positions[this.conv.index];
                     if (!pos || this.isShort(pos)) return null;
@@ -1217,7 +1221,7 @@
                     return {
                         pos, ready: true, fx, X, P, B, proceeds, realized, sellBorrow,
                         sel: row(this.conv.lev),
-                        table: [2, 3, 4, 5].map(row)
+                        table: this.convLevSteps.map(row)
                     };
                 },
 
