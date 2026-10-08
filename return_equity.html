@@ -430,11 +430,11 @@
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-700 mb-3 bg-gray-50 p-3 rounded border border-transparent group-hover:border-gray-200 transition">
                             <div class="flex justify-between sm:justify-start items-center">
                                 <span class="text-gray-500 sm:w-16">持有股數:</span>
-                                <input v-model.number="pos.shares" type="number" class="border border-gray-300 rounded w-24 px-1 text-center bg-white" @change="saveData">
+                                <input v-model.number="pos.shares" type="number" class="border border-gray-300 rounded w-24 px-1 text-center bg-white" @focus="rememberLev(pos)" @change="onCoreEdit(pos)">
                             </div>
                             <div class="flex justify-between sm:justify-start items-center">
                                 <span class="text-gray-500 sm:w-16">平均成交價:</span>
-                                <input v-model.number="pos.price" type="number" step="0.0001" class="border border-gray-300 rounded w-24 px-1 text-center bg-white" @change="saveData">
+                                <input v-model.number="pos.price" type="number" step="0.0001" class="border border-gray-300 rounded w-24 px-1 text-center bg-white" @focus="rememberLev(pos)" @change="onCoreEdit(pos)">
                             </div>
                             <div class="flex justify-between sm:justify-start items-center">
                                 <span class="text-gray-500 sm:w-16">目前市價:</span>
@@ -478,7 +478,7 @@
                             <div v-show="isLevOpen(pos)" class="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-indigo-50 p-3 rounded border border-indigo-100 mb-2">
                                 <div>
                                     <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">借款餘額（原幣）</label>
-                                    <input v-model.number="pos.borrow" type="number" step="1" min="0" placeholder="0" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="saveData">
+                                    <input v-model.number="pos.borrow" type="number" step="1" min="0" placeholder="0" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="onBorrowEdit(pos)">
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">借款年息／庫存費 %／年</label>
@@ -495,6 +495,14 @@
                                 <div>
                                     <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">虧損上限 % 保證金</label>
                                     <input v-model.number="pos.lossPct" type="number" step="1" :placeholder="riskCfg.lossPct" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="saveData">
+                                </div>
+                                <div v-if="hasLeverage(pos) && !posMixed(pos)">
+                                    <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">這筆槓桿倍數</label>
+                                    <input :value="posLevLabel(pos)" type="number" step="0.5" min="1" max="5" class="border rounded w-full px-1 py-1 text-center text-sm bg-white" @change="setPosLev(pos, $event.target.value)">
+                                </div>
+                                <div v-if="hasLeverage(pos) && !posMixed(pos)" class="col-span-2 sm:col-span-5 flex flex-wrap items-center justify-between gap-2 border-t border-indigo-100 pt-2">
+                                    <span class="text-[10px] text-gray-500">改股數、成交價或倍數時，借款與停損價會自動重算。拆錯了可以把這筆併回現股。</span>
+                                    <button @click="mergeBackToCash(pos)" class="text-xs bg-white border border-indigo-300 text-indigo-700 rounded px-2 py-1 font-semibold hover:bg-indigo-100">↩ 併回現股</button>
                                 </div>
                             </div>
 
@@ -1779,6 +1787,58 @@
                     const l = Number(lev);
                     return (!l || l <= 1 || isNaN(l)) ? 1 : l;
                 },
+                /* ── 手動修正：改股數／成交價／倍數／借款時，讓借款與逐筆紀錄保持一致 ── */
+                rememberLev(pos) {
+                    // 編輯前記住這筆的倍數（改完股數或價格後，借款要依原倍數重算）
+                    pos._levBefore = this.hasLeverage(pos) && !this.posMixed(pos) ? this.posLev(pos) : null;
+                },
+                onCoreEdit(pos) {
+                    const sh = Number(pos.shares) || 0, px = Number(pos.price) || 0;
+                    const L = pos._levBefore;
+                    delete pos._levBefore;
+                    if (sh > 0 && px > 0) {
+                        if (L && L > 1) {
+                            pos.borrow = this.lotBorrow(sh, px, L);
+                            pos.lots = [{ shares: sh, price: px, lev: L }];
+                        } else if (!this.hasLeverage(pos)) {
+                            pos.lots = [{ shares: sh, price: px, lev: 1 }];
+                        }
+                    }
+                    this.saveData();
+                },
+                onBorrowEdit(pos) {
+                    const sh = Number(pos.shares) || 0, px = Number(pos.price) || 0, cost = sh * px;
+                    const b = Math.max(0, Math.min(Number(pos.borrow) || 0, cost));
+                    pos.borrow = b;
+                    if (cost > 0) pos.lots = [{ shares: sh, price: px, lev: b > 0 && cost - b > 0 ? cost / (cost - b) : 1 }];
+                    this.saveData();
+                },
+                setPosLev(pos, v) {
+                    const L = this.normLev(v);
+                    const sh = Number(pos.shares) || 0, px = Number(pos.price) || 0;
+                    pos.borrow = this.lotBorrow(sh, px, L);
+                    pos.lots = [{ shares: sh, price: px, lev: L }];
+                    this.saveData();
+                },
+                mergeBackToCash(pos) {
+                    // 撤銷拆分：把這筆槓桿單的股數與成本併回同一檔的現股部位（沒有現股部位就直接改成現股）
+                    if (!confirm(`把這筆 ${pos.ticker} ${pos.shares} 股 @${pos.price} 併回現股？借款會歸零。`)) return;
+                    const cash = this.positions.find(p => p !== pos && p.ticker === pos.ticker && p.market === pos.market
+                        && this.isShort(p) === this.isShort(pos) && !this.hasLeverage(p));
+                    if (cash) {
+                        const sh = cash.shares + pos.shares;
+                        const avg = (cash.shares * cash.price + pos.shares * pos.price) / sh;
+                        cash.shares = sh;
+                        cash.price = parseFloat(avg.toFixed(4));
+                        cash.lots = [{ shares: sh, price: avg, lev: 1 }];
+                        this.positions.splice(this.positions.indexOf(pos), 1);
+                    } else {
+                        pos.borrow = 0;
+                        pos.lots = [{ shares: pos.shares, price: pos.price, lev: 1 }];
+                        pos.source = '';
+                    }
+                    this.saveData();
+                },
                 lotsValid(pos) {
                     // pos.lots 是否和庫存合計（股數、成本、借款）對得上
                     const lots = Array.isArray(pos.lots) ? pos.lots : [];
@@ -2094,7 +2154,7 @@
                     this.recordTodayNetValue();
                     localStorage.setItem('quantPortfolioDataV2', JSON.stringify({
                         exchangeRate: this.exchangeRate,
-                        positions: this.positions.map(p => { const c = Object.assign({}, p); delete c._split; return c; }),
+                        positions: this.positions.map(p => { const c = Object.assign({}, p); delete c._split; delete c._levBefore; return c; }),
                         history: this.history,
                         netHistory: this.netHistory,
                         lastQuoteAt: this.lastQuoteAt,
