@@ -6,6 +6,7 @@
     <title>個人量化部位與成本控管系統</title>
     <link rel="stylesheet" href="pp-ui.css">
     <script src="pp-theme.js"></script>
+    <script src="pp-target-sim.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script>window.Vue || document.write('<script src="vue.global.prod.js"><\/script>')</script>
@@ -574,7 +575,7 @@
                                 </div>
                                 <div v-if="calc.useLev" class="flex items-center gap-1.5">
                                     <span class="text-xs text-gray-500 font-semibold">倍數</span>
-                                    <input v-model.number="calc.addLev" type="number" step="0.1" min="1" placeholder="2" class="border p-2 rounded w-20 bg-gray-50 focus:bg-white text-sm text-center">
+                                    <input v-model.number="calc.addLev" type="number" step="0.1" min="1" placeholder="2.5" class="border p-2 rounded w-20 bg-gray-50 focus:bg-white text-sm text-center">
                                 </div>
                             </div>
                         </div>
@@ -651,7 +652,7 @@
                                             <td class="px-2 py-1.5 text-right font-bold">{{ addCompare.lev.levAfter }}x</td>
                                         </tr>
                                         <tr class="border-t border-gray-200">
-                                            <td class="px-1 py-1.5 text-gray-500">加碼後追繳價</td>
+                                            <td class="px-1 py-1.5 text-gray-500">加碼後強制收回價</td>
                                             <td class="px-2 py-1.5 text-right text-gray-400">{{ addCompare.cash.callAfter > 0 ? formatNumber(addCompare.cash.callAfter) : '—' }}</td>
                                             <td class="px-2 py-1.5 text-right">{{ formatNumber(addCompare.lev.callAfter) }}</td>
                                         </tr>
@@ -661,7 +662,7 @@
                                             <td class="px-2 py-1.5 text-right font-bold" :class="bufferClass(addCompare.lev.bufferAfter)">{{ addCompare.lev.bufferAfter.toFixed(1) }}%</td>
                                         </tr>
                                         <tr class="border-t border-gray-200">
-                                            <td class="px-1 py-1.5 text-gray-500">年化持有成本增加</td>
+                                            <td class="px-1 py-1.5 text-gray-500">{{ calc.dir === 'short' ? '年化持有成本增加' : '年化庫存費增加' }}</td>
                                             <td class="px-2 py-1.5 text-right">0</td>
                                             <td class="px-2 py-1.5 text-right">{{ formatNumber(addCompare.lev.carryAdd) }}</td>
                                         </tr>
@@ -670,14 +671,15 @@
                             </div>
                             <p class="text-[10px] text-gray-400 mt-2 leading-relaxed">
                                 兩案的名目曝險與淨資產相同，差別在於：槓桿少付 {{ formatNumber(addCompare.cash.cashNeed - addCompare.lev.cashNeed) }} 現金保留彈性，
-                                但換來借款、每年 {{ formatNumber(addCompare.lev.carryAdd) }} 的持有成本，以及這檔部位的追繳風險。
-                                庫存費率沿用此部位設定的 {{ Number(positions[calc.selectedIndex] && positions[calc.selectedIndex].carryFee) || 0 }}%／年。
+                                但換來每年 {{ formatNumber(addCompare.lev.carryAdd) }} 的持有成本，以及跌破下限價時被強制收回的風險。
+                                <template v-if="calc.dir === 'short'">庫存費率沿用此部位設定的 {{ Number(positions[calc.selectedIndex] && positions[calc.selectedIndex].carryFee) || 0 }}%／年。</template>
+                                <template v-else>新金鑽庫存費率 {{ optCfg.carryPct }}%／年，以名目全額計（非僅借款部分）。</template>
                             </p>
                         </div>
                     </div>
 
                     <div v-if="targetSim" class="mt-4 bg-white border border-gray-200 rounded-lg p-4">
-                        <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
                             <h3 class="text-sm font-bold text-gray-700">🎯 目標價損益模擬</h3>
                             <span class="text-[10px] text-gray-400">金額為 TWD{{ targetSim.hasAdd ? '' : '（尚未輸入加碼股數，先以現有部位試算）' }}</span>
                         </div>
@@ -697,37 +699,67 @@
                                 <label class="block text-xs font-semibold text-gray-600 mb-1">預計持有天數</label>
                                 <input v-model.number="calc.holdDays" type="number" min="0" step="1" class="border p-2 rounded w-full bg-gray-50 focus:bg-white text-sm">
                                 <p class="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
-                                    {{ targetSim.feePct > 0 ? '以費率 ' + targetSim.feePct + '%／年計算借款利息，期間成本 ' + formatNumber(targetSim.after.carry * targetSim.fx) + ' TWD。' : '此部位未設定借款費率，不計利息成本。' }}
+                                    期間成本 {{ formatNumber(targetSim.costs.fixed) }} TWD
+                                    <template v-if="targetSim.costs.fixed > 0">（<template v-if="targetSim.costs.stockCarry > 0">原部位借款利息 {{ formatNumber(targetSim.costs.stockCarry) }}</template><template v-if="targetSim.costs.addCarry > 0">{{ targetSim.costs.stockCarry > 0 ? ' ＋ ' : '' }}{{ targetSim.optMode ? '加碼庫存費' : '加碼借款利息' }} {{ formatNumber(targetSim.costs.addCarry) }}</template><template v-if="targetSim.costs.buyFee > 0">{{ targetSim.costs.stockCarry + targetSim.costs.addCarry > 0 ? ' ＋ ' : '' }}{{ targetSim.optMode ? '買進作業處理費' : '買進手續費' }} {{ formatNumber(targetSim.costs.buyFee) }}</template>）</template>，
+                                    表中損益已全數扣除；出場{{ targetSim.optMode ? '作業處理費' : '' }}{{ targetSim.optMode && targetSim.exitCostPct > 0 ? '與現股' : '' }}{{ targetSim.exitCostPct > 0 ? '手續費、證交稅' : '' }}依出場價另計。
                                 </p>
                             </div>
                         </div>
+
+                        <details v-if="targetSim.optMode || targetSim.stockFeeOn" class="mb-3 text-xs border border-gray-200 rounded" :open="targetSim.optMode">
+                            <summary class="cursor-pointer px-3 py-2 font-semibold text-gray-600 select-none">
+                                費率設定{{ targetSim.optMode ? '（新金鑽：' + targetSim.terms.lev + ' 倍、庫存費 ' + optCfg.carryPct + '%、處理費 ' + optCfg.handlePct + '%）' : '' }}
+                            </summary>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 px-3 pb-3">
+                                <div v-if="targetSim.optMode">
+                                    <label class="block text-[11px] text-gray-500 mb-1">庫存費率 %／年</label>
+                                    <input v-model.number="optCfg.carryPct" type="number" step="0.1" min="0" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                                </div>
+                                <div v-if="targetSim.optMode">
+                                    <label class="block text-[11px] text-gray-500 mb-1">作業處理費率 %（單邊）</label>
+                                    <input v-model.number="optCfg.handlePct" type="number" step="0.01" min="0" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                                </div>
+                                <div v-if="targetSim.stockFeeOn">
+                                    <label class="block text-[11px] text-gray-500 mb-1">現股手續費率 %</label>
+                                    <input v-model.number="optCfg.stockFeePct" type="number" step="0.0001" min="0" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                                </div>
+                                <div v-if="targetSim.stockFeeOn">
+                                    <label class="block text-[11px] text-gray-500 mb-1">證交稅率 %</label>
+                                    <input v-model.number="optCfg.stockTaxPct" type="number" step="0.01" min="0" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                                </div>
+                            </div>
+                            <p v-if="targetSim.optMode" class="text-[10px] text-gray-400 px-3 pb-2 leading-relaxed">
+                                槓桿倍數即上方「倍數」欄（預設 2.5，由下限價 1,472 = 1,840 × 0.8 反推，請以成交單確認）。庫存費率以康和官網公告為準（契約範例為 3.5%）。
+                            </p>
+                        </details>
 
                         <div v-if="targetSim.customRow" class="p-3 rounded border mb-3"
                              :class="targetSim.customRow.after.net >= 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'">
                             <p class="text-xs text-gray-500 font-semibold mb-1">
                                 目標價 {{ formatNumber(targetSim.customRow.price) }}
                                 <span class="text-gray-400">（相對 {{ formatNumber(targetSim.anchor) }} {{ targetSim.customRow.pct >= 0 ? '+' : '' }}{{ targetSim.customRow.pct.toFixed(1) }}%）</span>
+                                <span v-if="targetSim.customRow.forced" class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-indigo-600 text-white font-bold">強制收回</span>
                             </p>
-                            <div class="flex flex-wrap items-end gap-x-6 gap-y-2">
-                                <div>
+                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 items-end">
+                                <div class="col-span-2 sm:col-span-3 min-w-0">
                                     <p class="text-[11px] text-gray-500 font-semibold">試算後未實現損益</p>
                                     <p class="text-2xl font-bold" :class="targetSim.customRow.after.net >= 0 ? 'text-red-600' : 'text-green-600'">
                                         {{ targetSim.customRow.after.net >= 0 ? '+' : '' }}{{ formatNumber(targetSim.customRow.after.net) }}
                                     </p>
                                 </div>
-                                <div>
+                                <div class="min-w-0">
                                     <p class="text-[11px] text-gray-500 font-semibold">總成本報酬率</p>
                                     <p class="text-base font-bold" :class="targetSim.customRow.after.roi >= 0 ? 'text-red-600' : 'text-green-600'">
                                         {{ targetSim.customRow.after.roi >= 0 ? '+' : '' }}{{ targetSim.customRow.after.roi.toFixed(1) }}%
                                     </p>
                                 </div>
-                                <div>
+                                <div class="min-w-0">
                                     <p class="text-[11px] text-gray-500 font-semibold">自有資金報酬率</p>
                                     <p class="text-base font-bold" :class="targetSim.customRow.after.roe >= 0 ? 'text-red-600' : 'text-green-600'">
                                         {{ targetSim.customRow.after.roe >= 0 ? '+' : '' }}{{ targetSim.customRow.after.roe.toFixed(1) }}%
                                     </p>
                                 </div>
-                                <div v-if="targetSim.hasAdd">
+                                <div v-if="targetSim.hasAdd" class="min-w-0">
                                     <p class="text-[11px] text-gray-500 font-semibold">相對不加碼</p>
                                     <p class="text-base font-bold" :class="targetSim.customRow.diff >= 0 ? 'text-red-600' : 'text-green-600'">
                                         {{ targetSim.customRow.diff >= 0 ? '+' : '' }}{{ formatNumber(targetSim.customRow.diff) }}
@@ -740,6 +772,7 @@
                             <div class="bg-gray-50 p-2 rounded border border-gray-200">
                                 <p class="text-gray-500 font-semibold text-[11px]">加碼後回本價</p>
                                 <p class="font-bold text-gray-800">{{ formatNumber(targetSim.beAfter) }}</p>
+                                <p v-if="targetSim.optMode" class="text-[10px] text-gray-400">加碼部位，含庫存費＋雙邊處理費</p>
                             </div>
                             <div class="bg-gray-50 p-2 rounded border border-gray-200">
                                 <p class="text-gray-500 font-semibold text-[11px]">{{ targetSim.upToBreakeven > 0 ? '距回本還需漲' : '已高於回本價' }}</p>
@@ -752,56 +785,90 @@
                                 <p class="font-bold text-gray-800">{{ formatNumber(targetSim.beBefore) }}</p>
                             </div>
                             <div class="bg-gray-50 p-2 rounded border border-gray-200">
-                                <p class="text-gray-500 font-semibold text-[11px]">加碼後追繳價</p>
+                                <p class="text-gray-500 font-semibold text-[11px]">{{ targetSim.optMode ? '強制收回價（下限價）' : '加碼後強制收回價' }}</p>
                                 <p class="font-bold" :class="targetSim.callAfter > 0 ? 'text-indigo-600' : 'text-gray-400'">
                                     {{ targetSim.callAfter > 0 ? formatNumber(targetSim.callAfter) : '—' }}
                                 </p>
+                                <p v-if="targetSim.optMode" class="text-[10px] text-gray-400">收盤 ≤ 此價，隔日提前結算</p>
                             </div>
+                            <template v-if="targetSim.optMode">
+                                <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                                    <p class="text-gray-500 font-semibold text-[11px]">履約價</p>
+                                    <p class="font-bold text-gray-800">{{ formatNumber(targetSim.terms.strike) }}</p>
+                                </div>
+                                <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                                    <p class="text-gray-500 font-semibold text-[11px]">每股權利金</p>
+                                    <p class="font-bold text-gray-800">{{ formatNumber(targetSim.terms.premiumPerShare) }}</p>
+                                </div>
+                                <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                                    <p class="text-gray-500 font-semibold text-[11px]">權利金總額（投資本金）</p>
+                                    <p class="font-bold text-gray-800">{{ formatNumber(targetSim.terms.premium) }}</p>
+                                </div>
+                                <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                                    <p class="text-gray-500 font-semibold text-[11px]">名目金額</p>
+                                    <p class="font-bold text-gray-800">{{ formatNumber(targetSim.terms.notional) }}</p>
+                                </div>
+                            </template>
                         </div>
 
                         <div class="overflow-x-auto">
-                            <table class="w-full text-xs">
+                            <table class="w-full text-[11px] sm:text-xs">
                                 <thead class="text-gray-500">
-                                    <tr>
+                                    <tr class="align-bottom">
                                         <th class="text-left px-1 py-1.5 font-semibold">目標價</th>
-                                        <th class="text-right px-2 py-1.5 font-semibold">漲跌</th>
-                                        <th class="text-right px-2 py-1.5 font-semibold">{{ targetSim.hasAdd ? '加碼後損益' : '損益' }}</th>
-                                        <th class="text-right px-2 py-1.5 font-semibold">成本報酬</th>
-                                        <th class="text-right px-2 py-1.5 font-semibold">自有資金報酬</th>
-                                        <th v-if="targetSim.hasAdd" class="text-right px-2 py-1.5 font-semibold">不加碼損益</th>
-                                        <th v-if="targetSim.hasAdd" class="text-right px-2 py-1.5 font-semibold">差異</th>
+                                        <th class="hidden sm:table-cell text-right px-1 py-1.5 font-semibold">漲跌</th>
+                                        <th class="text-right px-1 py-1.5 font-semibold">{{ targetSim.hasAdd ? '加碼後損益' : '損益' }}</th>
+                                        <th class="hidden sm:table-cell text-right px-1 py-1.5 font-semibold">成本報酬</th>
+                                        <th class="text-right px-1 py-1.5 font-semibold">自有資金<br class="sm:hidden">報酬</th>
+                                        <th v-if="targetSim.hasAdd" class="hidden sm:table-cell text-right px-1 py-1.5 font-semibold">不加碼損益</th>
+                                        <th v-if="targetSim.hasAdd" class="text-right px-1 py-1.5 font-semibold">相對<br class="sm:hidden">不加碼</th>
                                     </tr>
                                 </thead>
-                                <tbody>
-                                    <tr v-for="row in targetSim.rows" :key="row.price" class="border-t border-gray-200"
-                                        :class="row.isCustom ? 'bg-indigo-50 font-semibold' : ''">
-                                        <td class="px-1 py-1.5 whitespace-nowrap">
-                                            {{ formatNumber(row.price) }}
-                                            <span v-if="row.belowCall" class="text-[10px] text-indigo-600 font-bold">⚠停損</span>
+                                <tbody v-for="g in targetSim.groups" :key="g.key"
+                                       :class="g.key === 'custom' ? 'bg-indigo-50' : (g.key === 'stress' ? 'bg-amber-50' : '')">
+                                    <tr class="border-t-2 border-gray-300">
+                                        <td colspan="7" class="px-1 pt-2 pb-1 text-[10px] font-bold text-gray-500">{{ g.label }}</td>
+                                    </tr>
+                                    <tr v-for="row in g.rows" :key="g.key + row.price" class="border-t border-gray-200"
+                                        :class="row.isCustom ? 'font-semibold' : ''">
+                                        <td class="px-1 py-1.5">
+                                            <span class="whitespace-nowrap">{{ formatNumber(row.price) }}</span>
+                                            <span v-if="row.forced" class="inline-block text-[10px] px-1 rounded bg-indigo-600 text-white font-bold whitespace-nowrap">{{ row.wipedOut ? '強制收回・全賠' : '強制收回' }}</span>
+                                            <span v-else-if="row.belowCall" class="text-[10px] text-indigo-600 font-bold whitespace-nowrap">⚠停損</span>
+                                            <div v-if="row.label" class="text-[10px] text-gray-400 font-normal">{{ row.label }}</div>
+                                            <div class="sm:hidden text-[10px] text-gray-400 font-normal">{{ row.pct >= 0 ? '+' : '' }}{{ row.pct.toFixed(row.label ? 1 : 0) }}%</div>
                                         </td>
-                                        <td class="px-2 py-1.5 text-right text-gray-500">{{ row.pct >= 0 ? '+' : '' }}{{ row.pct.toFixed(0) }}%</td>
-                                        <td class="px-2 py-1.5 text-right font-bold" :class="row.after.net >= 0 ? 'text-red-600' : 'text-green-600'">
-                                            {{ row.after.net >= 0 ? '+' : '' }}{{ formatNumber(row.after.net) }}
+                                        <td class="hidden sm:table-cell px-1 py-1.5 text-right text-gray-500 whitespace-nowrap">{{ row.pct >= 0 ? '+' : '' }}{{ row.pct.toFixed(row.label ? 1 : 0) }}%</td>
+                                        <td class="px-1 py-1.5 text-right font-bold whitespace-nowrap" :class="row.after.net >= 0 ? 'text-red-600' : 'text-green-600'">
+                                            {{ row.after.net >= 0 ? '+' : '' }}{{ formatInt(row.after.net) }}
                                         </td>
-                                        <td class="px-2 py-1.5 text-right" :class="row.after.roi >= 0 ? 'text-red-600' : 'text-green-600'">
+                                        <td class="hidden sm:table-cell px-1 py-1.5 text-right whitespace-nowrap" :class="row.after.roi >= 0 ? 'text-red-600' : 'text-green-600'">
                                             {{ row.after.roi >= 0 ? '+' : '' }}{{ row.after.roi.toFixed(1) }}%
                                         </td>
-                                        <td class="px-2 py-1.5 text-right" :class="row.after.roe >= 0 ? 'text-red-600' : 'text-green-600'">
+                                        <td class="px-1 py-1.5 text-right whitespace-nowrap" :class="row.after.roe >= 0 ? 'text-red-600' : 'text-green-600'">
                                             {{ row.after.roe >= 0 ? '+' : '' }}{{ row.after.roe.toFixed(1) }}%
                                         </td>
-                                        <td v-if="targetSim.hasAdd" class="px-2 py-1.5 text-right text-gray-500">
-                                            {{ row.before.net >= 0 ? '+' : '' }}{{ formatNumber(row.before.net) }}
+                                        <td v-if="targetSim.hasAdd" class="hidden sm:table-cell px-1 py-1.5 text-right text-gray-500 whitespace-nowrap">
+                                            {{ row.before.net >= 0 ? '+' : '' }}{{ formatInt(row.before.net) }}
                                         </td>
-                                        <td v-if="targetSim.hasAdd" class="px-2 py-1.5 text-right" :class="row.diff >= 0 ? 'text-red-600' : 'text-green-600'">
-                                            {{ row.diff >= 0 ? '+' : '' }}{{ formatNumber(row.diff) }}
+                                        <td v-if="targetSim.hasAdd" class="px-1 py-1.5 text-right whitespace-nowrap" :class="row.diff >= 0 ? 'text-red-600' : 'text-green-600'">
+                                            {{ row.diff >= 0 ? '+' : '' }}{{ formatInt(row.diff) }}
                                         </td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
                         <p class="text-[10px] text-gray-400 mt-2 leading-relaxed">
-                            情境價以{{ targetSim.hasAdd ? '計畫加碼價' : '目前市價' }} {{ formatNumber(targetSim.anchor) }} 為基準上下推算，損益已扣除持有 {{ targetSim.days }} 天的借款利息；
-                            自有資金報酬率＝損益 ÷（總成本 − 借款），槓桿會同時放大獲利與虧損。未計入手續費、交易稅與匯率變動。
+                            <template v-if="targetSim.optMode">
+                                加碼部位為康和新金鑽「自訂槓桿股權選擇權（買權）」：每股權利金 ＝ 加碼價 ÷ {{ targetSim.terms.lev }}，履約價 ＝ 加碼價 − 每股權利金，下限價 ＝ 履約價 ＋ 每股權利金 × 50%。
+                                庫存費以名目全額 × {{ targetSim.terms.carryPct }}% × {{ targetSim.days }} ÷ 365 計，作業處理費買賣各 {{ targetSim.terms.handlePct }}%，無證交稅；加碼部位最多損失權利金總額加上全部費用。
+                                收盤 ≤ 下限價即隔日以當日最低第一委買提前結算，標示「強制收回」的列不能假設續抱等反彈，加碼部位以該列價格作為結算價；庫存費保守以完整 {{ targetSim.days }} 天計。
+                                自有資金報酬率 ＝ 損益 ÷（現股自有成本 ＋ 權利金總額）；相對不加碼 ＝ 加碼後總損益 − 不加碼總損益。除息對履約價／下限價的調整尚未納入。
+                            </template>
+                            <template v-else>
+                                損益已扣除持有 {{ targetSim.days }} 天的借款利息；自有資金報酬率＝損益 ÷（總成本 − 借款），槓桿會同時放大獲利與虧損。
+                            </template>
+                            {{ targetSim.stockFeeOn ? '現股部分出場扣手續費 ' + optCfg.stockFeePct + '%' + (targetSim.exitCostPct > Number(optCfg.stockFeePct) ? '、證交稅 ' + optCfg.stockTaxPct + '%' : '') + '（原有股數的買進費用視為已付）。' : '美股未計手續費與稅。' }}未計匯率變動。
                         </p>
                     </div>
                     <button @click="executeAddOn" v-if="calc.selectedTicker" class="w-full mt-4 bg-indigo-600 text-white p-2.5 rounded hover:bg-indigo-700 font-bold text-base transition shadow-sm">確認執行加碼 (寫入庫存與明細)</button>
@@ -1050,6 +1117,8 @@
                     positions: [],
                     cash: 0,
                     riskCfg: { lossPct: 50, stressPct: 15 },
+                    // 新金鑽（自訂槓桿股權選擇權）與現股費率；庫存費率以官網公告為準
+                    optCfg: { carryPct: 4, handlePct: 0.12, stockFeePct: 0.1425, stockTaxPct: 0.3 },
                     levOpen: {},
                     history: [],
                     netHistory: [],
@@ -1119,7 +1188,7 @@
                 /* ══ 加碼試算：現股 vs 槓桿 ══ */
                 addLevValue() {
                     const l = Number(this.calc.addLev);
-                    if (!l || l <= 1 || isNaN(l)) return 2; // 對照用的預設倍數
+                    if (!l || l <= 1 || isNaN(l)) return 2.5; // 預設倍數（1,472 = 1,840 × 0.8 反推）
                     return l;
                 },
                 estimatedSelfFund() {
@@ -1160,19 +1229,26 @@
                             levAfter: Math.round(vm.posLev(proj) * 100) / 100,
                             callAfter: vm.posCallPrice(proj),
                             bufferAfter: vm.posBufferPct(proj),
-                            carryAdd: borrowAdd * fx * (Number(pos.carryFee) || 0) / 100
+                            // 做多槓桿 = 新金鑽選擇權：庫存費以名目全額計；做空沿用借款 × 年息
+                            carryAdd: lev <= 1 ? 0 : (vm.isShort(pos)
+                                ? borrowAdd * fx * (Number(pos.carryFee) || 0) / 100
+                                : amt * fx * (Number(vm.optCfg.carryPct) || 0) / 100)
                         };
                     }
                     return { cash: build(1), lev: build(this.addLevValue) };
                 },
 
                 /* ══ 目標價損益模擬 ══
-                   以「加碼後」的股數／均價／借款餘額為基礎，推估各目標價下的損益、
-                   成本報酬率與自有資金報酬率，並與「不加碼」的原部位對照。 */
+                   原部位以現股計（含原有借款利息、出場手續費與證交稅）；
+                   以「槓桿工具」做多加碼時，加碼部位依康和新金鑽「自訂槓桿股權選擇權（買權）」契約計算：
+                   權利金、履約價、下限價（強制收回）、庫存費（名目全額）、雙邊作業處理費，損失以權利金＋費用為限。
+                   公式見 pp-target-sim.js。 */
                 targetSim() {
                     const pos = this.positions[this.calc.selectedIndex];
                     if (!pos || !this.calc.selectedTicker) return null;
 
+                    const T = PPTargetSim;
+                    const cfg = this.optCfg;
                     const fx = this.fxRate(pos);
                     const dirSign = this.isShort(pos) ? -1 : 1;
                     const days = Math.max(0, Number(this.calc.holdDays) || 0);
@@ -1180,72 +1256,110 @@
                     const addShares = this.calc.addShares || 0;
                     const addPrice = this.calc.addPrice || 0;
                     const hasAdd = addShares > 0 && addPrice > 0;
+                    const optMode = hasAdd && this.calc.useLev && dirSign > 0;
                     const borrowNow = this.posBorrowOrig(pos);
-                    const borrowAdd = hasAdd ? this.lotBorrow(addShares, addPrice, this.addExecLev) : 0;
 
-                    function scenario(shares, avg, borrow) {
-                        const cost = shares * avg;
-                        return {
-                            shares: shares,
-                            avg: avg,
-                            borrow: borrow,
-                            cost: cost,
-                            own: Math.max(cost - borrow, 0),
-                            carry: borrow * feePct / 100 * days / 365   // 原幣，持有期間的借款利息
-                        };
-                    }
-                    const before = scenario(pos.shares || 0, pos.price || 0, borrowNow);
-                    const after = hasAdd
-                        ? scenario(this.newTotalShares, this.newAveragePrice, borrowNow + borrowAdd)
-                        : before;
+                    // 現股費用只套用台股：做多出場 = 手續費 + 證交稅；做空回補只收手續費
+                    const stockFeeOn = pos.market === 'TW';
+                    const stockFee = stockFeeOn ? (Number(cfg.stockFeePct) || 0) : 0;
+                    const exitCostPct = stockFeeOn ? stockFee + (dirSign > 0 ? (Number(cfg.stockTaxPct) || 0) : 0) : 0;
 
-                    function evalAt(sc, target) {
-                        const gross = dirSign * (target - sc.avg) * sc.shares;
-                        const net = gross - sc.carry;
-                        return {
-                            gross: gross * fx,
-                            carry: sc.carry * fx,
-                            net: net * fx,
-                            roi: sc.cost > 0 ? net / sc.cost * 100 : 0,
-                            roe: sc.own > 0 ? net / sc.own * 100 : (sc.cost > 0 ? net / sc.cost * 100 : 0)
-                        };
+                    const before = T.stockScenario({ shares: pos.shares || 0, avg: pos.price || 0, borrow: borrowNow, carryPct: feePct, days });
+                    let after = before, terms = null;
+                    if (optMode) {
+                        terms = T.optionTerms({
+                            price: addPrice, shares: addShares, lev: this.addLevValue,
+                            carryPct: Number(cfg.carryPct) || 0, handlePct: Number(cfg.handlePct) || 0, days
+                        });
+                    } else if (hasAdd) {
+                        // 現股加碼（或做空的槓桿加碼，沿用借款模型）
+                        const borrowAdd = this.lotBorrow(addShares, addPrice, this.addExecLev);
+                        after = T.stockScenario({
+                            shares: this.newTotalShares, avg: this.newAveragePrice, borrow: borrowNow + borrowAdd,
+                            carryPct: feePct, days, buyCost: this.addExecLev > 1 ? 0 : addShares * addPrice * stockFee / 100
+                        });
                     }
 
                     const anchor = addPrice || pos.currentPrice || pos.price || 0;
-                    if (anchor <= 0 || after.shares <= 0) return null;
+                    if (anchor <= 0 || (before.shares <= 0 && !terms) || after.shares + (terms ? terms.shares : 0) <= 0) return null;
 
-                    const beAfter = after.avg + dirSign * after.carry / after.shares;
-                    const beBefore = before.shares > 0 ? before.avg + dirSign * before.carry / before.shares : 0;
-                    const callAfter = this.posCallPrice(Object.assign({}, pos, {
+                    // 報酬率分母：選擇權模式 = 現股（總成本／自有成本）＋ 加碼名目金額／權利金總額
+                    const costBase = optMode ? before.cost + terms.notional : after.cost;
+                    const ownBase = optMode ? before.own + terms.premium : after.own;
+
+                    function evalAt(price) {
+                        const b = T.stockEvalAt(before, price, dirSign, exitCostPct);
+                        let net, opt = null;
+                        if (optMode) {
+                            opt = T.optionEvalAt(terms, price);
+                            net = b.net + opt.net;
+                        } else {
+                            net = hasAdd ? T.stockEvalAt(after, price, dirSign, exitCostPct).net : b.net;
+                        }
+                        return {
+                            before: { net: b.net * fx },
+                            after: {
+                                net: net * fx,
+                                roi: costBase > 0 ? net / costBase * 100 : 0,
+                                roe: ownBase > 0 ? net / ownBase * 100 : (costBase > 0 ? net / costBase * 100 : 0)
+                            },
+                            opt: opt && { net: opt.net * fx, fees: opt.fees * fx, forced: opt.forced, wipedOut: opt.wipedOut },
+                            diff: (net - b.net) * fx
+                        };
+                    }
+
+                    const beAfter = optMode ? T.optionBreakeven(terms) : T.stockBreakeven(after, dirSign, exitCostPct);
+                    const beBefore = T.stockBreakeven(before, dirSign, exitCostPct);
+                    const callAfter = optMode ? terms.floor : this.posCallPrice(Object.assign({}, pos, {
                         shares: after.shares, price: after.avg, borrow: after.borrow,
                         lots: hasAdd ? this.lotsWith(pos, addShares, addPrice, this.addExecLev) : this.posLots(pos)
                     }));
 
+                    const mkRow = (price, extra) => {
+                        const r = evalAt(price);
+                        return Object.assign({
+                            price,
+                            pct: (price - anchor) / anchor * 100,
+                            after: r.after, before: r.before, opt: r.opt, diff: r.diff,
+                            forced: !!(r.opt && r.opt.forced),
+                            wipedOut: !!(r.opt && r.opt.wipedOut),
+                            belowCall: !optMode && callAfter > 0 && (dirSign > 0 ? price <= callAfter : price >= callAfter)
+                        }, extra || {});
+                    };
+
                     const rawTarget = Number(this.calc.targetPrice);
                     const custom = (rawTarget > 0 && !isNaN(rawTarget)) ? Math.round(rawTarget * 100) / 100 : 0;
-                    const prices = [-30, -20, -10, 0, 10, 20, 30]
-                        .map(p => Math.round(anchor * (1 + p / 100) * 100) / 100)
-                        .concat(custom > 0 ? [custom] : [])
-                        .filter(v => v > 0);
-                    const uniq = [...new Set(prices)].sort((a, b) => a - b);
-
-                    const rows = uniq.map(t => {
-                        const a = evalAt(after, t);
-                        const b = evalAt(before, t);
-                        return {
-                            price: t,
-                            pct: (t - anchor) / anchor * 100,
-                            after: a,
-                            before: b,
-                            diff: a.net - b.net,
-                            isCustom: custom > 0 && t === custom,
-                            belowCall: callAfter > 0 && (dirSign > 0 ? t <= callAfter : t >= callAfter)
-                        };
+                    const groups = [];
+                    if (custom > 0) groups.push({ key: 'custom', label: '你的目標價', rows: [mkRow(custom, { isCustom: true })] });
+                    groups.push({
+                        key: 'grid', label: '以' + (hasAdd ? '加碼價' : '市價') + ' ' + this.formatNumber(anchor) + ' 為基準 ±30%',
+                        rows: [-30, -20, -10, 0, 10, 20, 30]
+                            .map(p => Math.round(anchor * (1 + p / 100) * 100) / 100)
+                            .filter(v => v > 0)
+                            .map(v => mkRow(v))
                     });
+                    if (optMode) {
+                        groups.push({
+                            key: 'stress', label: '強制收回情境（加碼部位以結算價計）',
+                            rows: T.optionStressPrices(terms).map(s => mkRow(Math.round(s.price * 100) / 100, { label: s.label }))
+                        });
+                    }
+
+                    // 期間固定成本：與表中損益扣除的是同一組數字（出場處理費／稅依出場價另計）
+                    const stockCarry = before.carry * fx;
+                    const addCarry = optMode ? terms.carryFee * fx : (after.carry - before.carry) * fx;
+                    const buyFee = optMode ? terms.buyFee * fx : after.buyCost * fx;
 
                     return {
-                        hasAdd, fx, days, feePct, anchor, before, after, rows,
-                        customRow: custom > 0 ? rows.find(r => r.isCustom) : null,
+                        hasAdd, optMode, fx, days, feePct, anchor, before, after, groups,
+                        terms: terms && {
+                            lev: terms.lev, carryPct: terms.carryPct, handlePct: terms.handlePct,
+                            premiumPerShare: terms.premiumPerShare, strike: terms.strike, floor: terms.floor,
+                            premium: terms.premium * fx, notional: terms.notional * fx
+                        },
+                        costs: { stockCarry, addCarry, buyFee, fixed: stockCarry + addCarry + buyFee },
+                        exitCostPct, stockFeeOn,
+                        customRow: custom > 0 ? groups[0].rows[0] : null,
                         beAfter, beBefore, callAfter,
                         upToBreakeven: dirSign * (beAfter - anchor) / anchor * 100
                     };
@@ -2053,7 +2167,7 @@
                 },
                 setAddMode(mode) {
                     this.calc.useLev = (mode === 'lev');
-                    if (this.calc.useLev && !this.calc.addLev) this.calc.addLev = 2;
+                    if (this.calc.useLev && !this.calc.addLev) this.calc.addLev = 2.5;
                 },
                 selectForCalc(pos) {
                     const index = this.positions.indexOf(pos);
@@ -2068,6 +2182,10 @@
                     this.calc.addLev = null;
                     this.calc.useLev = false;
                     this.calc.targetPrice = null;
+                },
+                formatInt(num) {
+                    if (isNaN(num)) return '0';
+                    return Math.round(Number(num)).toLocaleString('zh-TW');
                 },
                 formatNumber(num) {
                     if (isNaN(num)) return '0';
@@ -2169,7 +2287,8 @@
                         netHistory: this.netHistory,
                         lastQuoteAt: this.lastQuoteAt,
                         cash: this.cash,
-                        riskCfg: this.riskCfg
+                        riskCfg: this.riskCfg,
+                        optCfg: this.optCfg
                     }));
                     this.updateNetChart();
                     this.updateAllocChart();
@@ -2207,6 +2326,7 @@
                         this.positions = splitted;
                         this.cash = Number(parsed.cash) || 0;
                         if (migrated) this.$nextTick(() => this.saveData());
+                        if (parsed.optCfg) this.optCfg = Object.assign({}, this.optCfg, parsed.optCfg);
                         if (parsed.riskCfg) this.riskCfg = Object.assign({ lossPct: 50, stressPct: 15 }, { stressPct: parsed.riskCfg.stressPct, lossPct: parsed.riskCfg.lossPct });
                     } else if (dataOld) {
                         const parsed = JSON.parse(dataOld);
