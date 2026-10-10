@@ -55,3 +55,21 @@ test('現股出場扣手續費＋證交稅，回本價解出淨損益 = 0', () =
 test('舊版借款模型維持原公式', () => {
     near(T.legacyCarry(117024, 4, 180), 2308.42);
 });
+
+test('損益矩陣：(價格 − 成本) × 股數，與試算表一致', () => {
+    const prices = T.steps(1800, 3100, 50, 100), shares = T.steps(128, 200, 3, 100);
+    assert.equal(prices.length, 27);
+    assert.equal(shares.length, 25);
+    const m = T.pnlMatrix({ prices, shares, cost: 1477, dirSign: 1 });
+    near(m[0][0], 41344);      // 1800 × 128
+    near(m[0][9], 50065);      // 1800 × 155
+    near(m[26][24], 324600);   // 3100 × 200
+    const f = T.pnlMatrix({ prices: [2000], shares: [100], cost: 1477, dirSign: 1, exitCostPct: 0.4425 });
+    near(f[0][0], 52300 - 2000 * 100 * 0.004425);
+});
+
+test('矩陣預設範圍：155 股 → 128～200 間距 3；1,840 → 間距 50', () => {
+    const d = T.matrixDefaults(1840, 155);
+    assert.deepEqual([d.sStart, d.sEnd, d.sStep], [128, 200, 3]);
+    assert.deepEqual([d.pStart, d.pStep, d.pEnd], [1650, 50, 2950]);
+});
