@@ -1,0 +1,57 @@
+// 執行：node --test tests/*.test.mjs
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+const T = createRequire(import.meta.url)('../pp-target-sim.js');
+
+// 驗收條件：P0 = 1,840、N = 106、L = 2.5、庫存費率 4%、處理費 0.12%、180 天
+const t = T.optionTerms({ price: 1840, shares: 106, lev: 2.5, carryPct: 4, handlePct: 0.12, days: 180 });
+const near = (a, b, tol = 0.01) => assert.ok(Math.abs(a - b) <= tol, `${a} ≠ ${b}`);
+
+test('權利金、履約價、下限價', () => {
+    near(t.premiumPerShare, 736);
+    near(t.premium, 78016);
+    near(t.strike, 1104);
+    near(t.floor, 1472);
+    near(t.notional, 195040);
+});
+
+test('庫存費以名目全額計、雙邊處理費', () => {
+    near(t.carryFee, 195040 * 0.04 * 180 / 365);   // ≈ 3,847.36
+    near(t.carryFee, 3847, 1);
+    near(t.buyFee, 234.05);
+    near(T.optionEvalAt(t, 1840).sellFee, 234.05);
+});
+
+test('價格 ≤ 履約價：淨損益 = −(權利金總額 + 全部費用)', () => {
+    for (const px of [1104, 1000, 500]) {
+        const r = T.optionEvalAt(t, px);
+        near(r.net, -(78016 + t.carryFee + t.buyFee + px * 106 * 0.0012));
+        assert.ok(r.wipedOut && r.forced);
+    }
+});
+
+test('價格 ≤ 下限價標示強制收回，以上則否', () => {
+    assert.ok(T.optionEvalAt(t, 1472).forced);
+    assert.ok(T.optionEvalAt(t, 1288).forced);
+    assert.ok(!T.optionEvalAt(t, 1472.01).forced);
+    const labels = T.optionStressPrices(t).map(s => Math.round(s.price * 100) / 100);
+    assert.deepEqual(labels, [1472, 1398.4, 1324.8, 1104]);
+});
+
+test('加碼部位回本價：淨損益 = 0', () => {
+    const be = T.optionBreakeven(t);
+    near(T.optionEvalAt(t, be).net, 0, 1e-6);
+    assert.ok(be > 1840);
+});
+
+test('現股出場扣手續費＋證交稅，回本價解出淨損益 = 0', () => {
+    const sc = T.stockScenario({ shares: 100, avg: 1380, borrow: 0, carryPct: 0, days: 180 });
+    const r = T.stockEvalAt(sc, 1840, 1, 0.4425);
+    near(r.net, 46000 - 184000 * 0.004425);
+    near(T.stockEvalAt(sc, T.stockBreakeven(sc, 1, 0.4425), 1, 0.4425).net, 0, 1e-6);
+});
+
+test('舊版借款模型維持原公式', () => {
+    near(T.legacyCarry(117024, 4, 180), 2308.42);
+});
