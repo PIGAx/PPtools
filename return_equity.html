@@ -298,6 +298,69 @@
                     </div>
                 </div>
 
+                <!-- 同標的合併風險：現股與每一筆新金鑽分開記錄，風險合在一起看 -->
+                <div v-if="tickerRisks.length" class="mt-5">
+                    <h3 class="text-sm font-bold mb-2">🧩 同標的合併風險</h3>
+                    <div v-for="g in tickerRisks" :key="g.key" class="border border-gray-200 rounded mb-3 overflow-hidden">
+                        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2 bg-gray-50 text-xs">
+                            <span class="font-bold text-sm">{{ g.ticker }} <span class="text-[10px] text-gray-400">{{ g.market }}</span></span>
+                            <span>共 {{ g.r.shares }} 股（現股 {{ g.r.cashShares }}・新金鑽 {{ g.r.levShares }}）</span>
+                            <span>自有資金 {{ formatInt(g.r.own * g.fx) }}</span>
+                            <span :class="g.r.pnl >= 0 ? 'text-red-600' : 'text-green-600'" class="font-bold">合計損益 {{ g.r.pnl >= 0 ? '+' : '' }}{{ formatInt(g.r.pnl * g.fx) }}</span>
+                            <span v-if="g.r.bufferPct != null">最先強制收回 {{ formatNumber(Math.round(g.r.firstFloor * 100) / 100) }}，<b :class="bufferClass(g.r.bufferPct)">緩衝 {{ g.r.bufferPct.toFixed(1) }}%</b></span>
+                        </div>
+                        <p v-if="g.mixed" class="text-[11px] text-yellow-800 bg-yellow-50 px-3 py-1.5">⚠ 其中有現股和槓桿單混在一起的部位，下限價不準，請先到庫存卡片「逐筆拆分」。</p>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-[11px] sm:text-xs">
+                                <thead class="text-gray-500">
+                                    <tr>
+                                        <th class="text-left px-2 py-1.5 font-semibold">每一筆</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">股數</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">成交價</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">倍數</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">強制收回價</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(l, li) in g.lots" :key="li" class="border-t border-gray-200">
+                                        <td class="px-2 py-1">{{ l.source || '—' }}<span v-if="l.mixed" class="text-yellow-700 font-bold"> ⚠混合</span></td>
+                                        <td class="px-2 py-1 text-right">{{ l.shares }}</td>
+                                        <td class="px-2 py-1 text-right">{{ formatNumber(Math.round(l.price * 100) / 100) }}</td>
+                                        <td class="px-2 py-1 text-right">{{ l.lev > 1 ? (Math.round(l.lev * 100) / 100) + 'x' : '現股' }}</td>
+                                        <td class="px-2 py-1 text-right" :class="l.lev > 1 ? 'text-indigo-600 font-semibold' : 'text-gray-400'">{{ l.lev > 1 ? formatNumber(Math.round(l.floor * 100) / 100) : '—' }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div v-if="g.r.rows.length" class="overflow-x-auto border-t-2 border-gray-300">
+                            <table class="w-full text-[11px] sm:text-xs">
+                                <thead class="text-gray-500 bg-amber-50">
+                                    <tr>
+                                        <th class="text-left px-2 py-1.5 font-semibold">若跌到</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">被收回</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">合計損益</th>
+                                        <th class="text-right px-2 py-1.5 font-semibold">全部買回需補款</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="row in g.r.rows" :key="row.price" class="border-t border-gray-200">
+                                        <td class="px-2 py-1">{{ formatNumber(row.price) }} <span class="text-[10px] text-gray-400">{{ row.label }}</span></td>
+                                        <td class="px-2 py-1 text-right">{{ row.recalled }} 筆／{{ row.recalledShares }} 股</td>
+                                        <td class="px-2 py-1 text-right" :class="row.pnl >= 0 ? 'text-red-600' : 'text-green-600'">{{ row.pnl >= 0 ? '+' : '' }}{{ formatInt(row.pnl * g.fx) }}</td>
+                                        <td class="px-2 py-1 text-right font-bold">{{ formatInt(Math.max(0, row.topUp) * g.fx) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <p class="text-[11px] px-3 py-2 bg-gray-50 border-t border-gray-200">
+                                建議為 {{ g.ticker }} 預留 <b>{{ formatInt(g.r.reserve * g.fx) }}</b> TWD 回補金
+                                <template v-if="g.r.reserve * g.fx > (Number(cash) || 0)">（可動用現金 {{ formatInt(cash) }}，<span class="text-green-600 font-bold">不足 {{ formatInt(g.r.reserve * g.fx - (Number(cash) || 0)) }}</span>）</template>
+                                <template v-else>（可動用現金 {{ formatInt(cash) }}，足夠）</template>。
+                                <span class="text-gray-400">被收回的單以該價位結算、同價位以原倍數重新承作同股數；損益未計費用，需補款含庫存費與處理費。實際結算為隔日最低第一委買。</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 風險指標 -->
                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
                     <div class="bg-gray-50 p-3 rounded border border-gray-200">
@@ -459,20 +522,42 @@
                                       :class="hasLeverage(pos) ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-200 text-gray-600'">
                                     {{ hasLeverage(pos) ? '實質槓桿 ' + posLevLabel(pos) + 'x' : '現股（無槓桿）' }}
                                 </span>
+                                <button v-if="!pos._lots && pos.shares > 1 && !posMixed(pos)" @click="splitInit(pos)" class="text-xs text-gray-500 hover:underline ml-auto">✂ 逐筆拆分</button>
                                 <button @click="toggleLev(pos)" class="text-xs text-indigo-600 hover:underline font-semibold">
                                     {{ isLevOpen(pos) ? '收合設定 ▲' : '⚙ 槓桿／費用設定 ▼' }}
                                 </button>
                             </div>
 
-                            <div v-if="posMixed(pos)" class="text-[11px] bg-yellow-50 border border-yellow-300 text-yellow-800 rounded p-2 mb-2 leading-relaxed">
+                            <div v-if="posMixed(pos) && !pos._lots" class="text-[11px] bg-yellow-50 border border-yellow-300 text-yellow-800 rounded p-2 mb-2 leading-relaxed">
                                 ⚠ 這個部位把現股和槓桿單混在一起（平均槓桿 {{ posLevLabel(pos) }}x），停損價會被平均掉而失真。
-                                新金鑽每一筆都要獨立計算 —— 用下面的「拆出一筆槓桿單」，把每一筆新金鑽的股數、成交價、倍數分出來。
-                                <div class="grid grid-cols-2 sm:grid-cols-5 gap-1.5 mt-2" v-if="pos._split || (pos._split = { shares: null, price: null, lev: 2, source: pos.source || '新金鑽' })">
-                                    <input v-model.number="pos._split.shares" type="number" placeholder="該筆股數" class="border rounded px-1 py-1 text-center text-xs bg-white">
-                                    <input v-model.number="pos._split.price" type="number" step="0.01" placeholder="該筆成交價" class="border rounded px-1 py-1 text-center text-xs bg-white">
-                                    <input v-model.number="pos._split.lev" type="number" step="0.5" min="1.5" max="5" placeholder="倍數" class="border rounded px-1 py-1 text-center text-xs bg-white">
-                                    <input v-model="pos._split.source" type="text" list="fundingSources" placeholder="來源" class="border rounded px-1 py-1 text-center text-xs bg-white">
-                                    <button @click="splitOutOrder(pos)" class="bg-yellow-500 text-white rounded px-2 py-1 text-xs font-bold hover:bg-yellow-600">拆出</button>
+                                現股（例如國泰）和每一筆新金鑽都要分開記錄 —— 按「逐筆拆分」，把每一筆的來源、股數、成交價、倍數填進去。
+                                <button @click="splitInit(pos)" class="block mt-2 bg-yellow-500 text-white rounded px-3 py-1.5 text-xs font-bold hover:bg-yellow-600">✂ 逐筆拆分</button>
+                            </div>
+
+                            <div v-if="pos._lots" class="text-[11px] bg-yellow-50 border border-yellow-300 text-yellow-900 rounded p-2 mb-2">
+                                <p class="font-bold mb-1">✂ 逐筆拆分 {{ pos.ticker }}（目前 {{ pos.shares }} 股 @{{ formatNumber(pos.price) }}）</p>
+                                <p class="text-yellow-800 mb-2 leading-relaxed">每一列是一筆：現股倍數填 1（同一來源的現股可合成一列），新金鑽每一筆分開填成交價與倍數。股數合計要等於 {{ pos.shares }} 股。</p>
+                                <div class="hidden sm:grid grid-cols-12 gap-1 text-[10px] text-yellow-700 font-semibold px-0.5 mb-0.5">
+                                    <span class="col-span-3">來源</span><span class="col-span-2">股數</span><span class="col-span-2">成交價</span><span class="col-span-2">倍數</span><span class="col-span-2">建倉日</span><span></span>
+                                </div>
+                                <div v-for="(row, ri) in pos._lots" :key="ri" class="grid grid-cols-6 sm:grid-cols-12 gap-1 mb-1">
+                                    <input v-model="row.source" type="text" list="fundingSources" placeholder="來源" class="col-span-3 sm:col-span-3 border rounded px-1 py-1 text-xs bg-white">
+                                    <input v-model.number="row.shares" type="number" min="1" placeholder="股數" class="col-span-3 sm:col-span-2 border rounded px-1 py-1 text-center text-xs bg-white">
+                                    <input v-model.number="row.price" type="number" step="0.01" placeholder="成交價" class="col-span-2 sm:col-span-2 border rounded px-1 py-1 text-center text-xs bg-white">
+                                    <input v-model.number="row.lev" type="number" step="0.5" min="1" max="5" placeholder="倍數" class="col-span-1 sm:col-span-2 border rounded px-1 py-1 text-center text-xs bg-white">
+                                    <input v-model="row.date" type="date" class="col-span-2 sm:col-span-2 border rounded px-1 py-1 text-xs bg-white">
+                                    <button @click="pos._lots.splice(ri, 1)" :disabled="pos._lots.length <= 1" class="col-span-1 text-yellow-700 hover:text-red-600 disabled:opacity-30" title="刪除這列">✕</button>
+                                </div>
+                                <div class="flex flex-wrap items-center justify-between gap-2 mt-2">
+                                    <button @click="pos._lots.push({ source: '康和', shares: null, price: null, lev: 2.5, date: '' })" class="text-xs text-yellow-800 font-semibold hover:underline">＋ 再加一筆新金鑽</button>
+                                    <span class="text-[11px]" :class="splitCheck(pos).sharesOk ? 'text-yellow-800' : 'text-green-700 font-bold'">
+                                        股數合計 {{ splitCheck(pos).shares }}／{{ pos.shares }}
+                                        <template v-if="splitCheck(pos).cost > 0">・成本 {{ formatInt(splitCheck(pos).cost) }}（原 {{ formatInt(pos.shares * pos.price) }}）</template>
+                                    </span>
+                                </div>
+                                <div class="flex gap-2 mt-2">
+                                    <button @click="splitApply(pos)" class="bg-yellow-500 text-white rounded px-3 py-1.5 text-xs font-bold hover:bg-yellow-600">確認拆分</button>
+                                    <button @click="splitCancel(pos)" class="text-xs text-gray-500 hover:underline">取消</button>
                                 </div>
                             </div>
 
@@ -1502,12 +1587,38 @@
                     return { group: g, prices, shares, cells, maxAbs, nearRow, exitCostPct, feeAvailable };
                 },
 
+                /* ══ 同標的合併風險 ══
+                   現股（例如國泰）與每一筆新金鑽各自是一個部位，這裡把同一檔（做多）合在一起看：
+                   每一筆的強制收回價、跌到各下限價時的合計損益，以及全部買回的需補款。 */
+                tickerRisks() {
+                    const groups = new Map();
+                    this.positions.forEach(p => {
+                        if (this.isShort(p) || !(p.shares > 0)) return;
+                        const key = p.ticker + '|' + p.market;
+                        const g = groups.get(key) || { key, ticker: p.ticker, market: p.market, fx: this.fxRate(p), price: 0, mixed: false, lots: [] };
+                        if (!g.price) g.price = p.currentPrice || p.price || 0;
+                        const mixed = this.posMixed(p);
+                        if (mixed) g.mixed = true;
+                        const days = p.openedAt ? Math.max(0, Math.round((Date.now() - new Date(p.openedAt).getTime()) / 86400000)) : 0;
+                        this.posLots(p).forEach(l => {
+                            const prem = l.lev > 1 ? l.price / l.lev : 0;
+                            g.lots.push({ source: p.source, shares: l.shares, price: l.price, lev: l.lev, days, mixed,
+                                floor: l.lev > 1 ? l.price - prem + prem * 0.5 : 0 });
+                        });
+                        groups.set(key, g);
+                    });
+                    const feeCarry = (Number(this.optCfg.carryPct) || 0) / 100, feeProc = (Number(this.optCfg.handlePct) || 0) / 100;
+                    return [...groups.values()]
+                        .filter(g => g.lots.some(l => l.lev > 1))
+                        .map(g => Object.assign(g, { r: PPTargetSim.tickerRisk({ lots: g.lots, price: g.price, feeCarry, feeProc }) }));
+                },
+
                 /* ══ 強制收回後重新承作試算 ══ */
                 rbSources() {
                     // 庫存中做多的槓桿單（新金鑽），每筆帶入成交價、股數、倍數與已持有天數
                     const out = [];
                     this.positions.forEach((p, i) => {
-                        if (this.isShort(p)) return;
+                        if (this.isShort(p) || this.posMixed(p)) return;   // 混合部位的倍數是平均值，先拆分再試算
                         this.posLeveragedLots(p).forEach((l, j) => {
                             out.push({
                                 key: i + ':' + j, P0: l.price, N: l.shares, L: Math.round(l.lev * 100) / 100,
@@ -2321,6 +2432,53 @@
                     lev.forEach(l => out.push(Object.assign(this.makeOrder(pos, l.shares, l.price, l.lev, pos.source), { openedAt: pos.openedAt || null })));
                     return out;
                 },
+                splitInit(pos) {
+                    // 預填：一列現股（國泰）＋一列新金鑽（康和），使用者再依對帳單修正
+                    const lev = this.posLeveragedLots(pos);
+                    pos._lots = this.hasLeverage(pos) && this.posMixed(pos)
+                        ? [{ source: '國泰', shares: null, price: null, lev: 1, date: '' },
+                           { source: pos.source && pos.source !== '國泰' ? pos.source : '康和', shares: null, price: null, lev: 2.5, date: pos.openedAt || '' }]
+                        : this.posLots(pos).map(l => ({ source: pos.source || '', shares: l.shares, price: l.price, lev: Math.round(l.lev * 100) / 100, date: pos.openedAt || '' }));
+                    if (!lev.length && !pos._lots.length) pos._lots = [{ source: pos.source || '', shares: pos.shares, price: pos.price, lev: 1, date: pos.openedAt || '' }];
+                },
+                splitCancel(pos) { delete pos._lots; },
+                splitCheck(pos) {
+                    const rows = pos._lots || [];
+                    const shares = rows.reduce((a, r) => a + (Number(r.shares) || 0), 0);
+                    const cost = rows.reduce((a, r) => a + (Number(r.shares) || 0) * (Number(r.price) || 0), 0);
+                    return { shares, cost, sharesOk: shares === pos.shares };
+                },
+                splitApply(pos) {
+                    // 每一列變成獨立部位：現股（倍數 1）同來源合併，新金鑽每筆各自一筆
+                    const rows = (pos._lots || []).map(r => ({
+                        source: (r.source || '').trim(), shares: Number(r.shares) || 0, price: Number(r.price) || 0,
+                        lev: this.normLev(r.lev), date: r.date || pos.openedAt || null
+                    }));
+                    if (rows.some(r => r.shares <= 0 || r.price <= 0)) { alert('每一列都要填股數與成交價'); return; }
+                    const chk = this.splitCheck(pos);
+                    if (!chk.sharesOk) { alert(`股數合計 ${chk.shares} 股，和部位的 ${pos.shares} 股對不上`); return; }
+                    const orig = pos.shares * pos.price;
+                    if (orig > 0 && Math.abs(chk.cost - orig) / orig > 0.01
+                        && !confirm(`拆分後成本合計 ${this.formatInt(chk.cost)}，和原本的 ${this.formatInt(orig)} 差超過 1%。以你填的成交價為準？`)) return;
+                    const merged = [];
+                    rows.forEach(r => {
+                        const same = r.lev <= 1 && merged.find(m => m.lev <= 1 && m.source === r.source);
+                        if (same) {
+                            const sh = same.shares + r.shares;
+                            same.price = (same.shares * same.price + r.shares * r.price) / sh;
+                            same.shares = sh;
+                        } else merged.push(Object.assign({}, r));
+                    });
+                    const out = merged.map(r => {
+                        const o = this.makeOrder(pos, r.shares, parseFloat(r.price.toFixed(4)), r.lev, r.source);
+                        o.openedAt = r.date;
+                        if (r.lev > 1) o.carryFee = Number(pos.carryFee) || Number(this.optCfg.carryPct) || 0;
+                        else { o.carryFee = 0; o.lossPct = null; }
+                        return o;
+                    });
+                    this.positions.splice(this.positions.indexOf(pos), 1, ...out);
+                    this.saveData();
+                },
                 splitOutOrder(pos) {
                     // 手動從混合部位拆出一筆槓桿單：輸入該筆的股數、成交價、倍數
                     const f = pos._split || {};
@@ -2614,7 +2772,7 @@
                     this.recordTodayNetValue();
                     localStorage.setItem('quantPortfolioDataV2', JSON.stringify({
                         exchangeRate: this.exchangeRate,
-                        positions: this.positions.map(p => { const c = Object.assign({}, p); delete c._split; delete c._levBefore; return c; }),
+                        positions: this.positions.map(p => { const c = Object.assign({}, p); delete c._split; delete c._lots; delete c._levBefore; return c; }),
                         history: this.history,
                         netHistory: this.netHistory,
                         lastQuoteAt: this.lastQuoteAt,
