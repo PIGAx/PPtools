@@ -97,3 +97,25 @@ test('結算價 ≤ 履約價：payoff = 0、標示權利金全賠', () => {
     assert.ok(last.fullLoss);
     assert.ok(rows.every((x, i) => i === 0 || x.topUp > rows[i - 1].topUp));   // 跌越深、補越多
 });
+
+test('同標的合併風險：現股 ＋ 兩筆新金鑽各自計算下限價', () => {
+    const r = T.tickerRisk({
+        price: 1840,
+        lots: [
+            { shares: 120, price: 1477, lev: 1 },
+            { shares: 24, price: 1846, lev: 2.5, days: 30 },
+            { shares: 10, price: 1600, lev: 2, days: 10 }
+        ]
+    });
+    assert.equal(r.shares, 154);
+    assert.equal(r.cashShares, 120);
+    assert.equal(r.levShares, 34);
+    near(r.firstFloor, 1476.8);                                   // 1846 那筆最先觸發
+    assert.deepEqual(r.rows.map(x => x.price), [1476.8, 1200, 1080]); // 1600×2 倍 → 下限價 1,200
+    assert.deepEqual(r.rows.map(x => x.recalled), [1, 2, 2]);
+    // 1,200 時：現股 (1200−1477)×120，1846 那筆最多賠權利金 738.4×24，1600 那筆剛好賠一半權利金
+    near(r.rows[1].pnl, (1200 - 1477) * 120 + Math.max((1200 - 1846) * 24, -738.4 * 24) + (1200 - 1600) * 10);
+    const one = T.recallRebuy({ P0: 1846, N: 24, L: 2.5, days: 30, S: 1476.8, R: 1476.8 });
+    near(r.rows[0].topUp, one.topUp);
+    near(r.reserve, Math.max(...r.rows.map(x => x.topUp)));
+});

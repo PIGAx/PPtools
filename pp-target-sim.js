@@ -231,12 +231,56 @@
         ].map(r => Object.assign({ label: r.label }, recallRebuy(Object.assign({}, o, { S: r.S, R: o.R != null ? o.R : r.S }))));
     }
 
+    /* ── 同標的合併風險 ──
+       lots：同一檔的每一筆 { shares, price, lev, days }，lev ≤ 1 為現股、> 1 為新金鑽（各自的履約價／下限價）。
+       壓力價位取每一筆新金鑽的下限價（由高到低）與最低下限價再跌 10%；被收回的單以該價位結算（跳空的保守假設），
+       並試算以同價位重新承作同股數、同倍數的合計需補款。損益不含費用，需補款含庫存費與處理費（同 recallRebuy）。 */
+    function tickerRisk(o) {
+        const lots = (o.lots || []).filter(l => l.shares > 0 && l.price > 0);
+        const feeCarry = o.feeCarry != null ? o.feeCarry : 0.04;
+        const feeProc = o.feeProc != null ? o.feeProc : 0.0012;
+        const levLots = lots.filter(l => l.lev > 1).map(l => {
+            const prem = l.price / l.lev, strike = l.price - prem;
+            return Object.assign({}, l, { strike, floor: strike + prem * OPTION_FLOOR_RATIO });
+        });
+        const pnlAt = p => lots.reduce((a, l) => a + (l.lev > 1
+            ? Math.max((p - l.price) * l.shares, -l.price / l.lev * l.shares)
+            : (p - l.price) * l.shares), 0);
+        const floors = [...new Set(levLots.map(l => Math.round(l.floor * 100) / 100))].sort((a, b) => b - a);
+        const prices = floors.length ? floors.concat([Math.round(floors[floors.length - 1] * 0.9 * 100) / 100]) : [];
+        const rows = prices.map((p, i) => {
+            const hit = levLots.filter(l => p <= l.floor + 0.005);
+            const topUp = hit.reduce((a, l) => a + recallRebuy({
+                P0: l.price, N: l.shares, L: l.lev, feeCarry, feeProc, days: l.days || 0, S: p, R: p
+            }).topUp, 0);
+            return {
+                price: p, label: i < floors.length ? '下限價' : '最低下限價再跌 10%',
+                recalled: hit.length, recalledShares: hit.reduce((a, l) => a + l.shares, 0),
+                pnl: pnlAt(p), topUp
+            };
+        });
+        const cur = o.price || 0;
+        const first = levLots.length ? Math.max(...levLots.map(l => l.floor)) : 0;
+        return {
+            shares: lots.reduce((a, l) => a + l.shares, 0),
+            cashShares: lots.filter(l => !(l.lev > 1)).reduce((a, l) => a + l.shares, 0),
+            levShares: levLots.reduce((a, l) => a + l.shares, 0),
+            cost: lots.reduce((a, l) => a + l.shares * l.price, 0),
+            own: lots.reduce((a, l) => a + l.shares * l.price / (l.lev > 1 ? l.lev : 1), 0),
+            pnl: cur > 0 ? pnlAt(cur) : 0,
+            levLots, firstFloor: first,
+            bufferPct: cur > 0 && first > 0 ? (cur - first) / cur * 100 : null,
+            rows,
+            reserve: rows.reduce((a, r) => Math.max(a, r.topUp), 0)
+        };
+    }
+
     const api = {
         legacyCarry, legacyScenario, legacyEvalAt, legacyBreakeven,
         stockScenario, stockEvalAt, stockBreakeven,
         optionTerms, optionEvalAt, optionBreakeven, optionStressPrices,
         niceStep, matrixDefaults, steps, pnlMatrix,
-        recallRebuy, recallSensitivity
+        recallRebuy, recallSensitivity, tickerRisk
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.PPTargetSim = api;
