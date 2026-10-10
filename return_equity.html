@@ -6,6 +6,7 @@
     <title>個人量化部位與成本控管系統</title>
     <link rel="stylesheet" href="pp-ui.css">
     <script src="pp-theme.js"></script>
+    <script src="pp-target-sim.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script>window.Vue || document.write('<script src="vue.global.prod.js"><\/script>')</script>
@@ -1183,39 +1184,22 @@
                     const borrowNow = this.posBorrowOrig(pos);
                     const borrowAdd = hasAdd ? this.lotBorrow(addShares, addPrice, this.addExecLev) : 0;
 
-                    function scenario(shares, avg, borrow) {
-                        const cost = shares * avg;
-                        return {
-                            shares: shares,
-                            avg: avg,
-                            borrow: borrow,
-                            cost: cost,
-                            own: Math.max(cost - borrow, 0),
-                            carry: borrow * feePct / 100 * days / 365   // 原幣，持有期間的借款利息
-                        };
-                    }
-                    const before = scenario(pos.shares || 0, pos.price || 0, borrowNow);
+                    const T = PPTargetSim;
+                    const before = T.legacyScenario(pos.shares || 0, pos.price || 0, borrowNow, feePct, days);
                     const after = hasAdd
-                        ? scenario(this.newTotalShares, this.newAveragePrice, borrowNow + borrowAdd)
+                        ? T.legacyScenario(this.newTotalShares, this.newAveragePrice, borrowNow + borrowAdd, feePct, days)
                         : before;
 
                     function evalAt(sc, target) {
-                        const gross = dirSign * (target - sc.avg) * sc.shares;
-                        const net = gross - sc.carry;
-                        return {
-                            gross: gross * fx,
-                            carry: sc.carry * fx,
-                            net: net * fx,
-                            roi: sc.cost > 0 ? net / sc.cost * 100 : 0,
-                            roe: sc.own > 0 ? net / sc.own * 100 : (sc.cost > 0 ? net / sc.cost * 100 : 0)
-                        };
+                        const r = T.legacyEvalAt(sc, target, dirSign);
+                        return { gross: r.gross * fx, carry: r.carry * fx, net: r.net * fx, roi: r.roi, roe: r.roe };
                     }
 
                     const anchor = addPrice || pos.currentPrice || pos.price || 0;
                     if (anchor <= 0 || after.shares <= 0) return null;
 
-                    const beAfter = after.avg + dirSign * after.carry / after.shares;
-                    const beBefore = before.shares > 0 ? before.avg + dirSign * before.carry / before.shares : 0;
+                    const beAfter = T.legacyBreakeven(after, dirSign);
+                    const beBefore = T.legacyBreakeven(before, dirSign);
                     const callAfter = this.posCallPrice(Object.assign({}, pos, {
                         shares: after.shares, price: after.avg, borrow: after.borrow,
                         lots: hasAdd ? this.lotsWith(pos, addShares, addPrice, this.addExecLev) : this.posLots(pos)
