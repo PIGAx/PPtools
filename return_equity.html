@@ -1158,6 +1158,152 @@
                 最多顯示 80 列 × 60 欄。
             </p>
         </div>
+
+        <!-- ══════ 強制收回後重新承作試算 ══════ -->
+        <div class="bg-white p-4 sm:p-5 rounded-lg shadow-md border-t-4 border-amber-500 mt-6 md:mt-8">
+            <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-3">
+                <h2 class="text-lg font-bold">🧯 強制收回後重新承作試算</h2>
+                <span class="text-[11px] text-gray-400">新金鑽被強制收回後，要補多少錢才能把同樣股數買回來</span>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mb-2 text-xs">
+                <div v-if="rbSources.length" class="col-span-2">
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">從庫存帶入</label>
+                    <select v-model="rb.src" @change="rbPick(rb.src)" class="border p-1.5 rounded w-full bg-gray-50 text-sm">
+                        <option value="">— 手動輸入 —</option>
+                        <option v-for="o in rbSources" :key="o.key" :value="o.key">{{ o.label }}</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">原成交價 P0</label>
+                    <input v-model.number="rb.P0" type="number" step="0.01" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">原股數 N</label>
+                    <input v-model.number="rb.N" type="number" step="1" min="1" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">槓桿倍數 L</label>
+                    <input v-model.number="rb.L" type="number" step="0.5" min="1.5" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">已持有天數</label>
+                    <input v-model.number="rb.days" type="number" step="1" min="0" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">結算價 S</label>
+                    <input v-model.number="rb.S" type="number" step="0.01" :placeholder="rbSim ? '下限價 ' + formatNumber(rbSim.r.floor0) : ''" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                    <p class="text-[10px] text-gray-400 mt-0.5">實際為隔日最低第一委買</p>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">重新承作價 R</label>
+                    <input v-model.number="rb.R" type="number" step="0.01" :placeholder="rbSim ? '= 結算價 ' + formatNumber(rbSim.r.S) : ''" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                    <p class="text-[10px] text-gray-400 mt-0.5">實際有買賣價差</p>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">重新承作股數 N1</label>
+                    <input v-model.number="rb.N1" type="number" step="1" min="1" :placeholder="rb.N ? '= ' + rb.N : ''" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">新合約倍數 L1</label>
+                    <input v-model.number="rb.L1" type="number" step="0.5" min="1.5" :placeholder="rb.L ? '= ' + rb.L : ''" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">新部位持有天數</label>
+                    <input v-model.number="rb.days1" type="number" step="1" min="0" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">庫存費率 %／年</label>
+                    <input v-model.number="optCfg.carryPct" type="number" step="0.1" min="0" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">作業處理費率 %</label>
+                    <input v-model.number="optCfg.handlePct" type="number" step="0.01" min="0" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                </div>
+            </div>
+
+            <template v-if="rbSim">
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 my-3 text-xs">
+                    <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                        <p class="text-gray-500 font-semibold text-[11px]">舊合約 履約價／下限價</p>
+                        <p class="font-bold text-gray-800">{{ formatNumber(rbSim.r.strike0) }}／{{ formatNumber(rbSim.r.floor0) }}</p>
+                        <p class="text-[10px] text-gray-400">收盤 ≤ 下限價即觸發</p>
+                    </div>
+                    <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                        <p class="text-gray-500 font-semibold text-[11px]">拿回金額</p>
+                        <p class="font-bold" :class="rbSim.r.cashBack >= 0 ? 'text-gray-800' : 'text-green-600'">{{ formatInt(rbSim.r.cashBack) }}</p>
+                        <p class="text-[10px] text-gray-400">
+                            <span v-if="rbSim.r.fullLoss" class="inline-block px-1 rounded bg-indigo-600 text-white font-bold">權利金全賠</span>
+                            <template v-else>殘值 {{ formatInt(rbSim.r.payoff) }}</template>
+                            − 庫存費 {{ formatInt(rbSim.r.carry) }} − 處理費 {{ formatInt(rbSim.r.sellFee) }}
+                        </p>
+                    </div>
+                    <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                        <p class="text-gray-500 font-semibold text-[11px]">已實現損益</p>
+                        <p class="font-bold" :class="rbSim.r.realizedPnL >= 0 ? 'text-red-600' : 'text-green-600'">{{ rbSim.r.realizedPnL >= 0 ? '+' : '' }}{{ formatInt(rbSim.r.realizedPnL) }}</p>
+                        <p class="text-[10px] text-gray-400">含當初權利金與買進處理費</p>
+                    </div>
+                    <div class="p-2 rounded border" :class="rbSim.r.topUp > 0 ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'">
+                        <p class="text-gray-500 font-semibold text-[11px]">{{ rbSim.r.topUp >= 0 ? '需補款' : '可退回' }}</p>
+                        <p class="text-lg font-bold text-gray-800">{{ formatInt(Math.abs(rbSim.r.topUp)) }}</p>
+                        <p class="text-[10px] text-gray-400">新權利金 {{ formatInt(rbSim.r.prem1 * rbSim.r.N1) }} ＋ 處理費 {{ formatInt(rbSim.r.cost1 - rbSim.r.prem1 * rbSim.r.N1) }} − 拿回</p>
+                    </div>
+                    <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                        <p class="text-gray-500 font-semibold text-[11px]">新合約 履約價／下限價</p>
+                        <p class="font-bold text-indigo-600">{{ formatNumber(rbSim.r.strike1) }}／{{ formatNumber(rbSim.r.floor1) }}</p>
+                        <p class="text-[10px] text-gray-400">重新承作 {{ formatNumber(rbSim.r.N1) }} 股 @ {{ formatNumber(rbSim.r.R) }}</p>
+                    </div>
+                    <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                        <p class="text-gray-500 font-semibold text-[11px]">新部位回本價</p>
+                        <p class="font-bold text-gray-800">{{ formatNumber(Math.round(rbSim.r.breakEven * 100) / 100) }}</p>
+                        <p class="text-[10px] text-gray-400">賺回已實現虧損＋{{ rb.days1 || 0 }} 天庫存費＋雙邊處理費</p>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-[11px] sm:text-xs">
+                        <thead class="text-gray-500">
+                            <tr>
+                                <th class="text-left px-1 py-1.5 font-semibold">結算價情境</th>
+                                <th class="text-right px-1 py-1.5 font-semibold">結算價</th>
+                                <th class="text-right px-1 py-1.5 font-semibold">拿回金額</th>
+                                <th class="text-right px-1 py-1.5 font-semibold">需補款</th>
+                                <th class="hidden sm:table-cell text-right px-1 py-1.5 font-semibold">已實現損益</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="row in rbSim.sens" :key="row.label" class="border-t border-gray-200">
+                                <td class="px-1 py-1.5">
+                                    {{ row.label }}
+                                    <span v-if="row.fullLoss" class="inline-block text-[10px] px-1 rounded bg-indigo-600 text-white font-bold whitespace-nowrap">權利金全賠</span>
+                                </td>
+                                <td class="px-1 py-1.5 text-right whitespace-nowrap">{{ formatNumber(Math.round(row.S * 100) / 100) }}</td>
+                                <td class="px-1 py-1.5 text-right whitespace-nowrap" :class="row.cashBack < 0 ? 'text-green-600' : ''">{{ formatInt(row.cashBack) }}</td>
+                                <td class="px-1 py-1.5 text-right font-bold whitespace-nowrap">{{ row.topUp >= 0 ? '' : '退 ' }}{{ formatInt(Math.abs(row.topUp)) }}</td>
+                                <td class="hidden sm:table-cell px-1 py-1.5 text-right whitespace-nowrap" :class="row.realizedPnL >= 0 ? 'text-red-600' : 'text-green-600'">{{ formatInt(row.realizedPnL) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-3 p-3 rounded border text-sm" :class="rbSim.short > 0 ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'">
+                    <p class="text-xs text-gray-500 font-semibold mb-1">建議預留現金（取上表最壞情境）</p>
+                    <p class="font-bold text-lg text-gray-800">{{ formatInt(rbSim.reserve) }} TWD</p>
+                    <p class="text-[11px] text-gray-500 mt-0.5">
+                        目前可動用現金 {{ formatInt(cash) }}，
+                        <template v-if="rbSim.short > 0"><span class="text-green-600 font-bold">還差 {{ formatInt(rbSim.short) }}</span>。</template>
+                        <template v-else>足夠，剩 {{ formatInt(-rbSim.short) }}。</template>
+                        重新承作後的新下限價只比承作價低 {{ formatNumber(Math.round((1 - rbSim.r.floor1 / rbSim.r.R) * 1000) / 10) }}%，若持續下跌可能再被收回一次，建議多留一筆同額緩衝。
+                    </p>
+                </div>
+            </template>
+            <p v-else class="text-gray-400 text-sm p-4 border border-dashed rounded text-center">請輸入原成交價、原股數與槓桿倍數（需大於 1）。</p>
+
+            <p class="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                拿回金額 ＝ max(結算價 − 履約價, 0) × N − 賣出處理費 − 已累積庫存費（名目 P0 × N × 費率 × 天數 ÷ 365）；
+                需補款 ＝ 新權利金（R ÷ L1 × N1）＋ 買進處理費 − 拿回金額。實際結算價為隔日最低第一委買，重新承作有買賣價差，結果僅供試算。
+            </p>
+        </div>
     </div>
 
     <script>
@@ -1200,6 +1346,8 @@
                     // 新金鑽（自訂槓桿股權選擇權）與現股費率；庫存費率以官網公告為準
                     optCfg: { carryPct: 4, handlePct: 0.12, stockFeePct: 0.1425, stockTaxPct: 0.3 },
                     // 價格 × 股數損益矩陣的設定（標的、成本、範圍）
+                    // 強制收回後重新承作試算的輸入（S、R、N1、L1 留空 = 用預設值）
+                    rb: { src: '', P0: null, N: null, L: 2.5, days: 30, S: null, R: null, N1: null, L1: null, days1: 90 },
                     mx: { key: '', cost: null, pStart: null, pEnd: null, pStep: null, sStart: null, sEnd: null, sStep: null, fees: false },
                     levOpen: {},
                     history: [],
@@ -1352,6 +1500,43 @@
                     let nearRow = -1, best = Infinity;
                     prices.forEach((p, i) => { const d = Math.abs(p - g.currentPrice); if (d < best) { best = d; nearRow = i; } });
                     return { group: g, prices, shares, cells, maxAbs, nearRow, exitCostPct, feeAvailable };
+                },
+
+                /* ══ 強制收回後重新承作試算 ══ */
+                rbSources() {
+                    // 庫存中做多的槓桿單（新金鑽），每筆帶入成交價、股數、倍數與已持有天數
+                    const out = [];
+                    this.positions.forEach((p, i) => {
+                        if (this.isShort(p)) return;
+                        this.posLeveragedLots(p).forEach((l, j) => {
+                            out.push({
+                                key: i + ':' + j, P0: l.price, N: l.shares, L: Math.round(l.lev * 100) / 100,
+                                days: p.openedAt ? Math.max(0, Math.round((Date.now() - new Date(p.openedAt).getTime()) / 86400000)) : null,
+                                label: `${p.ticker} ${l.shares} 股 @ ${this.formatNumber(l.price)}（${Math.round(l.lev * 100) / 100}x${p.source ? '・' + p.source : ''}）`
+                            });
+                        });
+                    });
+                    return out;
+                },
+                rbSim() {
+                    const b = this.rb, num = v => (v === null || v === '' || isNaN(Number(v))) ? null : Number(v);
+                    const P0 = num(b.P0), N = num(b.N), L = num(b.L);
+                    if (!(P0 > 0 && N > 0 && L > 1)) return null;
+                    const L1 = num(b.L1);
+                    const o = {
+                        P0, N, L,
+                        feeCarry: (Number(this.optCfg.carryPct) || 0) / 100,
+                        feeProc: (Number(this.optCfg.handlePct) || 0) / 100,
+                        days: num(b.days) || 0, days1: num(b.days1) || 0,
+                        S: num(b.S) > 0 ? num(b.S) : null,
+                        R: num(b.R) > 0 ? num(b.R) : null,
+                        N1: num(b.N1) > 0 ? num(b.N1) : null,
+                        L1: L1 > 1 ? L1 : null
+                    };
+                    const r = PPTargetSim.recallRebuy(o);
+                    const sens = PPTargetSim.recallSensitivity(o);
+                    const reserve = Math.max(0, r.topUp, ...sens.map(x => x.topUp));
+                    return { r, sens, reserve, short: reserve - (Number(this.cash) || 0) };
                 },
 
                 /* ══ 目標價損益模擬 ══
@@ -1749,6 +1934,7 @@
             mounted() {
                 this.loadData();
                 this.mxEnsure();
+                if (!this.rb.P0 && this.rbSources.length) this.rbPick(this.rbSources[0].key);
                 setTimeout(() => {
                     this.initChart();
                     this.initNetChart();
@@ -2274,6 +2460,13 @@
                     return 'text-gray-700';
                 },
 
+                rbPick(key) {
+                    const o = this.rbSources.find(x => x.key === key);
+                    if (!o) return;
+                    Object.assign(this.rb, { src: key, P0: o.P0, N: o.N, L: o.L, S: null, R: null, N1: null, L1: null });
+                    if (o.days != null) this.rb.days = o.days;
+                    this.saveData();
+                },
                 mxEnsure() {
                     // 沒選過或原標的已出清 → 預設第一檔
                     if (!this.mxGroups.some(g => g.key === this.mx.key) && this.mxGroups.length) {
@@ -2428,7 +2621,8 @@
                         cash: this.cash,
                         riskCfg: this.riskCfg,
                         optCfg: this.optCfg,
-                        mx: this.mx
+                        mx: this.mx,
+                        rb: this.rb
                     }));
                     this.updateNetChart();
                     this.updateAllocChart();
@@ -2468,6 +2662,7 @@
                         if (migrated) this.$nextTick(() => this.saveData());
                         if (parsed.optCfg) this.optCfg = Object.assign({}, this.optCfg, parsed.optCfg);
                         if (parsed.mx) this.mx = Object.assign({}, this.mx, parsed.mx);
+                        if (parsed.rb) this.rb = Object.assign({}, this.rb, parsed.rb);
                         if (parsed.riskCfg) this.riskCfg = Object.assign({ lossPct: 50, stressPct: 15 }, { stressPct: parsed.riskCfg.stressPct, lossPct: parsed.riskCfg.lossPct });
                     } else if (dataOld) {
                         const parsed = JSON.parse(dataOld);

@@ -73,3 +73,27 @@ test('矩陣預設範圍：155 股 → 128～200 間距 3；1,840 → 間距 50'
     assert.deepEqual([d.sStart, d.sEnd, d.sStep], [128, 200, 3]);
     assert.deepEqual([d.pStart, d.pStep, d.pEnd], [1650, 50, 2950]);
 });
+
+test('強制收回後重新承作：P0 1,846、24 股、持有 30 天', () => {
+    const r = T.recallRebuy({ P0: 1846, N: 24, days: 30, days1: 90 });
+    near(r.strike0, 1107.6);
+    near(r.floor0, 1476.8);
+    near(r.payoff, (1476.8 - 1107.6) * 24);
+    near(r.cashBack, r.payoff - 1476.8 * 24 * 0.0012 - 1846 * 24 * 0.04 * 30 / 365);
+    near(r.realizedPnL, r.cashBack - (738.4 * 24 + 1846 * 24 * 0.0012));
+    near(r.topUp, 1476.8 / 2.5 * 24 + 1476.8 * 24 * 0.0012 - r.cashBack);
+    near(r.floor1, 1476.8 * 0.8);
+    // 回本價代回去：新部位淨損益剛好補回已實現虧損
+    const X = r.breakEven, h = 0.0012;
+    near((X - r.R) * 24 - X * 24 * h - r.R * 24 * h - r.carry1, -r.realizedPnL, 1e-6);
+    assert.ok(!r.fullLoss);
+});
+
+test('結算價 ≤ 履約價：payoff = 0、標示權利金全賠', () => {
+    const rows = T.recallSensitivity({ P0: 1846, N: 24, days: 30 });
+    assert.deepEqual(rows.map(x => Math.round(x.S * 100) / 100), [1476.8, 1402.96, 1329.12, 1107.6]);
+    const last = rows[3];
+    assert.equal(last.payoff, 0);
+    assert.ok(last.fullLoss);
+    assert.ok(rows.every((x, i) => i === 0 || x.topUp > rows[i - 1].topUp));   // 跌越深、補越多
+});

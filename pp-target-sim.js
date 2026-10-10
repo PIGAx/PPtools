@@ -178,11 +178,65 @@
         return o.prices.map(p => o.shares.map(n => dirSign * (p - cost) * n - p * n * e));
     }
 
+    /* ── 強制收回後重新承作（新金鑽）──
+       費率為小數（0.04 = 4%）。舊合約被收回：拿回 max(S − 履約價, 0) × N，扣賣出處理費與已累積庫存費；
+       新合約以重新承作價 R 開倉：權利金 R / L1 ＋ 買進處理費。topUp > 0 為要補的錢，< 0 為退回。
+       實際結算價為隔日最低第一委買，重新承作也有買賣價差，結果僅供試算。 */
+    function recallRebuy(o) {
+        const P0 = o.P0, N = o.N, L = o.L || 2.5;
+        const feeCarry = o.feeCarry != null ? o.feeCarry : 0.04;
+        const feeProc = o.feeProc != null ? o.feeProc : 0.0012;
+        const days = o.days || 0, days1 = o.days1 || 0;
+        const prem0 = P0 / L;
+        const strike0 = P0 - prem0;
+        const floor0 = strike0 + prem0 * OPTION_FLOOR_RATIO;
+
+        const S = o.S != null ? o.S : floor0;
+        const R = o.R != null ? o.R : S;
+        const N1 = o.N1 != null ? o.N1 : N;
+        const L1 = o.L1 || L;
+
+        const payoff = Math.max(S - strike0, 0) * N;
+        const sellFee = S * N * feeProc;
+        const carry = P0 * N * feeCarry * days / 365;
+        const cashBack = payoff - sellFee - carry;
+        const realizedPnL = cashBack - (prem0 * N + P0 * N * feeProc);
+
+        const prem1 = R / L1;
+        const cost1 = prem1 * N1 + R * N1 * feeProc;
+        const topUp = cost1 - cashBack;
+        const strike1 = R - prem1;
+        const floor1 = strike1 + prem1 * OPTION_FLOOR_RATIO;
+
+        // 新部位回本價：解 (X − R)·N1 − X·N1·feeProc − R·N1·feeProc − carry1 = −realizedPnL
+        const carry1 = R * N1 * feeCarry * days1 / 365;
+        const breakEven = N1 > 0 ? (R + (-realizedPnL + R * N1 * feeProc + carry1) / N1) / (1 - feeProc) : 0;
+
+        return {
+            prem0, strike0, floor0, S, R, N1, L1,
+            payoff, sellFee, carry, cashBack, realizedPnL,
+            prem1, cost1, topUp, strike1, floor1, carry1, breakEven,
+            fullLoss: S <= strike0 + EPS
+        };
+    }
+
+    // 敏感度：結算價 = 下限價、再跌 5%、再跌 10%、履約價；重新承作價跟著結算價（使用者另填 R 時沿用）
+    function recallSensitivity(o) {
+        const base = recallRebuy(Object.assign({}, o, { S: null, R: null }));
+        return [
+            { label: '下限價', S: base.floor0 },
+            { label: '下限價再跌 5%', S: base.floor0 * 0.95 },
+            { label: '下限價再跌 10%', S: base.floor0 * 0.9 },
+            { label: '履約價', S: base.strike0 }
+        ].map(r => Object.assign({ label: r.label }, recallRebuy(Object.assign({}, o, { S: r.S, R: o.R != null ? o.R : r.S }))));
+    }
+
     const api = {
         legacyCarry, legacyScenario, legacyEvalAt, legacyBreakeven,
         stockScenario, stockEvalAt, stockBreakeven,
         optionTerms, optionEvalAt, optionBreakeven, optionStressPrices,
-        niceStep, matrixDefaults, steps, pnlMatrix
+        niceStep, matrixDefaults, steps, pnlMatrix,
+        recallRebuy, recallSensitivity
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.PPTargetSim = api;
