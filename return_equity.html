@@ -1078,6 +1078,86 @@
             </div>
 
         </div>
+
+        <!-- ══════ 價格 × 股數 損益矩陣 ══════ -->
+        <div v-if="mxGroups.length" class="bg-white p-4 sm:p-5 rounded-lg shadow-md border-t-4 border-red-400 mt-6 md:mt-8">
+            <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-3">
+                <h2 class="text-lg font-bold">📊 價格 × 股數 損益矩陣</h2>
+                <span class="text-[11px] text-gray-400">同一檔的現股與槓桿單合併計算，金額為{{ mxSim && mxSim.group.market === 'US' ? ' USD' : ' TWD' }}</span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-3 text-xs">
+                <div class="col-span-2">
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">標的</label>
+                    <select v-model="mx.key" @change="mxReset" class="border p-1.5 rounded w-full bg-gray-50 text-sm">
+                        <option v-for="g in mxGroups" :key="g.key" :value="g.key">{{ g.ticker }}{{ g.dir === 'short' ? '（空）' : '' }}・{{ g.shares }} 股</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">成本均價</label>
+                    <input v-model.number="mx.cost" type="number" step="0.01" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">價格 起</label>
+                    <input v-model.number="mx.pStart" type="number" step="any" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">價格 迄／間距</label>
+                    <div class="flex gap-1">
+                        <input v-model.number="mx.pEnd" type="number" step="any" class="border p-1.5 rounded w-full min-w-0 bg-gray-50 text-sm" @change="saveData">
+                        <input v-model.number="mx.pStep" type="number" step="any" min="0" class="border p-1.5 rounded w-16 bg-gray-50 text-sm" @change="saveData">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">股數 起</label>
+                    <input v-model.number="mx.sStart" type="number" step="1" min="1" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-600 mb-1">股數 迄／間距</label>
+                    <div class="flex gap-1">
+                        <input v-model.number="mx.sEnd" type="number" step="1" class="border p-1.5 rounded w-full min-w-0 bg-gray-50 text-sm" @change="saveData">
+                        <input v-model.number="mx.sStep" type="number" step="1" min="1" class="border p-1.5 rounded w-14 bg-gray-50 text-sm" @change="saveData">
+                    </div>
+                </div>
+                <div class="flex flex-col justify-end gap-1">
+                    <label v-if="mxSim && mxSim.feeAvailable" class="flex items-center gap-1 text-[11px] text-gray-600">
+                        <input type="checkbox" v-model="mx.fees" @change="saveData"> 扣出場費稅
+                    </label>
+                    <button type="button" @click="mxReset" class="text-[11px] px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 font-semibold">重設範圍</button>
+                </div>
+            </div>
+
+            <div v-if="mxSim && mxSim.prices.length && mxSim.shares.length" class="overflow-auto max-h-[75vh] border border-gray-200 rounded">
+                <table class="text-[11px] sm:text-xs border-collapse">
+                    <thead>
+                        <tr>
+                            <th class="sticky top-0 left-0 z-20 bg-white border-b-2 border-r border-gray-300 px-2 py-1.5 text-left font-semibold text-gray-500 whitespace-nowrap">價格＼股數</th>
+                            <th v-for="(n, j) in mxSim.shares" :key="'h' + j"
+                                class="sticky top-0 z-10 bg-white border-b-2 border-gray-300 px-2 py-1.5 text-right font-semibold whitespace-nowrap"
+                                :class="n === mxSim.group.shares ? 'text-red-600' : 'text-gray-600'">{{ formatNumber(n) }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(p, i) in mxSim.prices" :key="'r' + i">
+                            <th class="sticky left-0 z-10 bg-white border-r border-b border-gray-200 px-2 py-1 text-right whitespace-nowrap"
+                                :class="i === mxSim.nearRow ? 'text-indigo-600 font-bold' : 'font-semibold text-gray-600'">
+                                {{ formatNumber(p) }}<span v-if="i === mxSim.nearRow" class="text-[9px] font-normal"> 現價</span>
+                            </th>
+                            <td v-for="(v, j) in mxSim.cells[i]" :key="'c' + j"
+                                class="border-b border-gray-100 px-2 py-1 text-right whitespace-nowrap tabular-nums"
+                                :class="[mxSim.shares[j] === mxSim.group.shares ? 'text-red-600 font-semibold' : 'text-gray-800']"
+                                :style="{ backgroundColor: mxCellColor(v, mxSim.maxAbs) }">{{ formatInt(v) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p v-else class="text-gray-400 text-sm p-4 border border-dashed rounded text-center">請確認價格與股數的起迄、間距（間距需大於 0）。</p>
+            <p v-if="mxSim" class="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                損益 ＝（價格 − 成本均價 {{ formatNumber(mx.cost) }}）× 股數{{ mxSim.exitCostPct > 0 ? '，並扣出場手續費 ' + optCfg.stockFeePct + '%' + (mxSim.group.dir === 'short' ? '' : '＋證交稅 ' + optCfg.stockTaxPct + '%') : '' }}。
+                紅字欄為目前持股 {{ formatNumber(mxSim.group.shares) }} 股，紫字列為最接近現價 {{ formatNumber(mxSim.group.currentPrice) }} 的價位；底色越深代表{{ mxSim.maxAbs > 0 ? '獲利（紅）或虧損（綠）' : '' }}越大。
+                未計庫存費／借款利息，槓桿單也以線性損益計（未套用強制收回與權利金全賠上限），細部請用上方目標價模擬。
+                最多顯示 80 列 × 60 欄。
+            </p>
+        </div>
     </div>
 
     <script>
@@ -1119,6 +1199,8 @@
                     riskCfg: { lossPct: 50, stressPct: 15 },
                     // 新金鑽（自訂槓桿股權選擇權）與現股費率；庫存費率以官網公告為準
                     optCfg: { carryPct: 4, handlePct: 0.12, stockFeePct: 0.1425, stockTaxPct: 0.3 },
+                    // 價格 × 股數損益矩陣的設定（標的、成本、範圍）
+                    mx: { key: '', cost: null, pStart: null, pEnd: null, pStep: null, sStart: null, sEnd: null, sStep: null, fees: false },
                     levOpen: {},
                     history: [],
                     netHistory: [],
@@ -1236,6 +1318,40 @@
                         };
                     }
                     return { cash: build(1), lev: build(this.addLevValue) };
+                },
+
+                /* ══ 價格 × 股數 損益矩陣 ══
+                   同一檔（同市場、同方向）的現股與槓桿單合併成一組：股數加總、成本加權平均。 */
+                mxGroups() {
+                    const map = new Map();
+                    this.positions.forEach(p => {
+                        if (!p.ticker || !(p.shares > 0)) return;
+                        const key = p.ticker + '|' + p.market + '|' + (p.dir || 'long');
+                        const g = map.get(key) || { key, ticker: p.ticker, market: p.market, dir: p.dir || 'long', shares: 0, costSum: 0, currentPrice: 0 };
+                        g.shares += p.shares;
+                        g.costSum += p.shares * (p.price || 0);
+                        if (!g.currentPrice) g.currentPrice = p.currentPrice || p.price || 0;
+                        map.set(key, g);
+                    });
+                    return [...map.values()].map(g => Object.assign(g, { avg: g.shares > 0 ? g.costSum / g.shares : 0 }));
+                },
+                mxSim() {
+                    const g = this.mxGroups.find(x => x.key === this.mx.key);
+                    if (!g) return null;
+                    const T = PPTargetSim, m = this.mx;
+                    const prices = T.steps(Number(m.pStart), Number(m.pEnd), Number(m.pStep), 80);
+                    const shares = T.steps(Number(m.sStart), Number(m.sEnd), Number(m.sStep), 60);
+                    const dirSign = g.dir === 'short' ? -1 : 1;
+                    const feeAvailable = g.market === 'TW';
+                    const exitCostPct = feeAvailable && m.fees
+                        ? (Number(this.optCfg.stockFeePct) || 0) + (dirSign > 0 ? (Number(this.optCfg.stockTaxPct) || 0) : 0) : 0;
+                    const cost = Number(m.cost) || g.avg;
+                    const cells = T.pnlMatrix({ prices, shares, cost, dirSign, exitCostPct });
+                    let maxAbs = 0;
+                    cells.forEach(r => r.forEach(v => { if (Math.abs(v) > maxAbs) maxAbs = Math.abs(v); }));
+                    let nearRow = -1, best = Infinity;
+                    prices.forEach((p, i) => { const d = Math.abs(p - g.currentPrice); if (d < best) { best = d; nearRow = i; } });
+                    return { group: g, prices, shares, cells, maxAbs, nearRow, exitCostPct, feeAvailable };
                 },
 
                 /* ══ 目標價損益模擬 ══
@@ -1621,6 +1737,8 @@
                 }
             },
             watch: {
+                // 新增或出清部位後，矩陣的標的仍要指向存在的那一檔
+                'mxGroups.length'() { this.mxEnsure(); },
                 history: {
                     handler() {
                         this.updateChart();
@@ -1630,6 +1748,7 @@
             },
             mounted() {
                 this.loadData();
+                this.mxEnsure();
                 setTimeout(() => {
                     this.initChart();
                     this.initNetChart();
@@ -2155,6 +2274,26 @@
                     return 'text-gray-700';
                 },
 
+                mxEnsure() {
+                    // 沒選過或原標的已出清 → 預設第一檔
+                    if (!this.mxGroups.some(g => g.key === this.mx.key) && this.mxGroups.length) {
+                        this.mx.key = this.mxGroups[0].key;
+                        this.mxReset();
+                    }
+                },
+                mxReset() {
+                    const g = this.mxGroups.find(x => x.key === this.mx.key);
+                    if (!g) return;
+                    const d = PPTargetSim.matrixDefaults(g.currentPrice || g.avg, g.shares);
+                    Object.assign(this.mx, d, { cost: Math.round(g.avg * 100) / 100 });
+                    this.saveData();
+                },
+                mxCellColor(v, maxAbs) {
+                    // 台股慣例：獲利紅、虧損綠；透明度依金額占最大值的比例
+                    if (!maxAbs || !v) return 'transparent';
+                    const a = (0.06 + 0.34 * Math.min(1, Math.abs(v) / maxAbs)).toFixed(3);
+                    return v > 0 ? `rgba(239, 68, 68, ${a})` : `rgba(34, 197, 94, ${a})`;
+                },
                 setTargetByPct(pct) {
                     const sim = this.targetSim;
                     if (!sim) return;
@@ -2288,7 +2427,8 @@
                         lastQuoteAt: this.lastQuoteAt,
                         cash: this.cash,
                         riskCfg: this.riskCfg,
-                        optCfg: this.optCfg
+                        optCfg: this.optCfg,
+                        mx: this.mx
                     }));
                     this.updateNetChart();
                     this.updateAllocChart();
@@ -2327,6 +2467,7 @@
                         this.cash = Number(parsed.cash) || 0;
                         if (migrated) this.$nextTick(() => this.saveData());
                         if (parsed.optCfg) this.optCfg = Object.assign({}, this.optCfg, parsed.optCfg);
+                        if (parsed.mx) this.mx = Object.assign({}, this.mx, parsed.mx);
                         if (parsed.riskCfg) this.riskCfg = Object.assign({ lossPct: 50, stressPct: 15 }, { stressPct: parsed.riskCfg.stressPct, lossPct: parsed.riskCfg.lossPct });
                     } else if (dataOld) {
                         const parsed = JSON.parse(dataOld);

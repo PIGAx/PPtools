@@ -142,10 +142,47 @@
         ];
     }
 
+    /* ── 價格 × 股數 損益矩陣 ── */
+
+    // 取「好讀」的間距：1、2、2.5、5 × 10^k
+    function niceStep(raw) {
+        if (!(raw > 0)) return 1;
+        const p = Math.pow(10, Math.floor(Math.log10(raw)));
+        const m = raw / p;
+        return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+    }
+
+    // 預設範圍：價格從現價 −10% 起 27 列，股數以持股為中心偏上 25 欄
+    function matrixDefaults(price, shares) {
+        const pStep = niceStep((price || 0) * 0.025);
+        const pStart = Math.max(pStep, Math.floor((price || 0) * 0.9 / pStep) * pStep);
+        const sStep = Math.max(1, Math.round((shares || 0) * 0.02));
+        const sStart = Math.max(sStep, (shares || 0) - 9 * sStep);
+        return { pStart, pEnd: pStart + 26 * pStep, pStep, sStart, sEnd: sStart + 24 * sStep, sStep };
+    }
+
+    function steps(start, end, step, maxCount) {
+        const out = [];
+        if (!(step > 0) || !(end >= start)) return out;
+        for (let i = 0; out.length < maxCount; i++) {
+            const v = Math.round((start + i * step) * 10000) / 10000;
+            if (v > end + 1e-9) break;
+            out.push(v);
+        }
+        return out;
+    }
+
+    // cells[i][j] = 價格 prices[i]、股數 shares[j] 的損益（扣出場費用率 exitCostPct %）
+    function pnlMatrix(o) {
+        const cost = o.cost || 0, dirSign = o.dirSign || 1, e = (o.exitCostPct || 0) / 100;
+        return o.prices.map(p => o.shares.map(n => dirSign * (p - cost) * n - p * n * e));
+    }
+
     const api = {
         legacyCarry, legacyScenario, legacyEvalAt, legacyBreakeven,
         stockScenario, stockEvalAt, stockBreakeven,
-        optionTerms, optionEvalAt, optionBreakeven, optionStressPrices
+        optionTerms, optionEvalAt, optionBreakeven, optionStressPrices,
+        niceStep, matrixDefaults, steps, pnlMatrix
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.PPTargetSim = api;
