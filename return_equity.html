@@ -1120,8 +1120,72 @@
                     <div v-else-if="conv.index !== null" class="text-gray-400 text-xs p-3 border border-dashed rounded text-center">輸入賣出股數就會出現預覽</div>
                 </div>
 
-                <div class="bg-white p-5 rounded-lg shadow-md max-h-[500px] overflow-y-auto">
-                    <h2 class="text-lg font-bold mb-3">📜 歷次交易明細帳</h2>
+                <div ref="histCard" class="bg-white p-5 rounded-lg shadow-md max-h-[500px] overflow-y-auto">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-lg font-bold">📜 歷次交易明細帳</h2>
+                        <button v-if="!adj.open" @click="openAdj()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded font-semibold">＋ 補登已實現損益</button>
+                    </div>
+                    <div v-if="adj.open" class="border border-amber-300 bg-amber-50 rounded p-3 mb-3 text-xs space-y-2">
+                        <p class="font-bold text-amber-800">{{ adj.editId ? '✏️ 修改已實現損益' : '＋ 手動補登已實現損益' }}</p>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">日期</label>
+                                <input v-model="adj.date" type="date" class="border p-1.5 rounded w-full bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">標的</label>
+                                <input v-model="adj.ticker" type="text" placeholder="例：2330" class="border p-1.5 rounded w-full bg-white uppercase">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">市場</label>
+                                <select v-model="adj.market" class="border p-1.5 rounded w-full bg-white">
+                                    <option value="TW">TW</option>
+                                    <option value="US">US</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">方向</label>
+                                <select v-model="adj.dir" class="border p-1.5 rounded w-full bg-white">
+                                    <option value="long">做多</option>
+                                    <option value="short">放空</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">股數（選填）</label>
+                                <input v-model.number="adj.shares" type="number" step="any" class="border p-1.5 rounded w-full bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">成本價（選填）</label>
+                                <input v-model.number="adj.buyPrice" type="number" step="any" class="border p-1.5 rounded w-full bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">平倉價（選填）</label>
+                                <input v-model.number="adj.sellPrice" type="number" step="any" class="border p-1.5 rounded w-full bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">損益金額（{{ adj.market === 'US' ? 'USD' : 'TWD' }}）</label>
+                                <input v-model.number="adj.pnl" type="number" step="any" placeholder="留空＝依價差計算" class="border p-1.5 rounded w-full bg-white">
+                            </div>
+                            <div v-if="adj.market === 'US'">
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">匯率</label>
+                                <input v-model.number="adj.fx" type="number" step="any" :placeholder="exchangeRate" class="border p-1.5 rounded w-full bg-white">
+                            </div>
+                            <div :class="adj.market === 'US' ? 'col-span-2 sm:col-span-3' : 'col-span-2 sm:col-span-4'">
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">備註</label>
+                                <input v-model="adj.note" type="text" placeholder="例：轉槓桿時漏記的出場" class="border p-1.5 rounded w-full bg-white">
+                            </div>
+                        </div>
+                        <p class="text-gray-600">虧損請填負數。損益金額可直接輸入，也可留空、改填股數與成本價、平倉價自動計算。補登只會更新已實現損益與績效曲線，不會變動庫存。</p>
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="font-bold" :class="adjPnlTWD === null ? 'text-gray-400' : (adjPnlTWD >= 0 ? 'text-red-600' : 'text-green-600')">
+                                {{ adjPnlTWD === null ? '尚未輸入損益' : (adjPnlTWD >= 0 ? '+' : '') + formatNumber(adjPnlTWD) + ' TWD' }}
+                            </span>
+                            <div class="flex gap-2">
+                                <button @click="cancelAdj" class="px-3 py-1.5 rounded border bg-white hover:bg-gray-100">取消</button>
+                                <button @click="saveAdj" class="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white font-bold">{{ adj.editId ? '儲存修改' : '寫入明細' }}</button>
+                            </div>
+                        </div>
+                    </div>
                     <div v-if="history.length === 0" class="text-gray-500 text-sm py-4 text-center">尚無交易紀錄。</div>
                     
                     <ul class="space-y-3">
@@ -1135,11 +1199,13 @@
                                     <span class="font-bold text-base text-gray-900">{{ record.ticker }}</span> 
                                     <span class="text-[10px] bg-gray-200 text-gray-600 px-1 rounded ml-1">{{ record.market }}</span>
                                     <span v-if="record.dir === 'short'" class="text-[10px] bg-green-100 text-green-700 px-1 rounded ml-1 font-bold">看空</span>
+                                    <span v-if="record.manual" class="text-[10px] bg-amber-100 text-amber-700 px-1 rounded ml-1 font-bold">手動</span>
                                 </div>
                                 <div class="text-xs text-gray-500 space-y-0.5">
                                     <p>{{ record.date }}</p>
                                     <p>異動股數: <span class="font-semibold text-gray-700">{{ record.shares }} 股</span></p>
-                                    <p v-if="record.type === 'SELL'">平倉價格: {{ record.sellPrice }} | 原成交均價: {{ record.buyPrice }}</p>
+                                    <p v-if="record.type === 'SELL' && (record.sellPrice != null || record.buyPrice != null)">平倉價格: {{ record.sellPrice ?? '-' }} | 原成交均價: {{ record.buyPrice ?? '-' }}</p>
+                                    <p v-if="record.note" class="text-amber-700">備註: {{ record.note }}</p>
                                     <p v-if="record.type === 'BUY'">成交價格: {{ record.buyPrice }}</p>
                                 </div>
                             </div>
@@ -1155,7 +1221,10 @@
                                 </div>
                                 <div v-else class="text-gray-400 text-xs">- 建倉/加碼 -</div>
                                 
-                                <button @click="deleteHistory(record.id)" class="text-xs text-gray-400 hover:text-red-500 underline ml-4 sm:ml-0 sm:mt-1 font-medium">刪除</button>
+                                <div class="flex gap-3 ml-4 sm:ml-0 sm:mt-1">
+                                    <button v-if="record.type === 'SELL'" @click="openAdj(record)" class="text-xs text-gray-400 hover:text-amber-600 underline font-medium">修改</button>
+                                    <button @click="deleteHistory(record.id)" class="text-xs text-gray-400 hover:text-red-500 underline font-medium">刪除</button>
+                                </div>
                             </div>
                         </li>
                     </ul>
@@ -1436,6 +1505,8 @@
                     mx: { key: '', cost: null, pStart: null, pEnd: null, pStep: null, sStart: null, sEnd: null, sStep: null, fees: false },
                     levOpen: {},
                     history: [],
+                    // 手動補登／修改已實現損益（editId 有值 = 修改既有那筆）
+                    adj: { open: false, editId: null, ticker: '', market: 'TW', dir: 'long', date: '', shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '' },
                     netHistory: [],
                     lastQuoteAt: null,
                     quoteLoading: false,
@@ -1495,6 +1566,20 @@
                     const currentTotal = this.calc.currentShares * this.calc.currentPrice;
                     const addTotal = this.calc.addShares * this.calc.addPrice;
                     return (currentTotal + addTotal) / this.newTotalShares;
+                },
+                // 補登的損益（原幣）：有填金額就用金額，否則以 股數 ×（平倉價 − 成本）計算
+                adjPnlOrig() {
+                    const a = this.adj;
+                    if (a.pnl !== null && a.pnl !== '' && !isNaN(Number(a.pnl))) return Number(a.pnl);
+                    if (a.shares && a.buyPrice != null && a.buyPrice !== '' && a.sellPrice != null && a.sellPrice !== '')
+                        return (a.dir === 'short' ? -1 : 1) * (Number(a.sellPrice) - Number(a.buyPrice)) * Number(a.shares);
+                    return null;
+                },
+                adjFx() {
+                    return this.adj.market === 'US' ? (Number(this.adj.fx) || Number(this.exchangeRate) || 1) : 1;
+                },
+                adjPnlTWD() {
+                    return this.adjPnlOrig === null ? null : this.adjPnlOrig * this.adjFx;
                 },
                 reversedHistory() {
                     return [...this.history].reverse();
@@ -2253,6 +2338,65 @@
                             this.saveData();
                         }
                     }
+                },
+                // 明細的日期字串（zh-TW 格式，如 2026/10/13 14:05:03）轉成可比較的時間
+                histTime(str) {
+                    const m = String(str || '').match(/(\d{4})\D(\d{1,2})\D(\d{1,2})(?:\D+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+                    if (!m) return NaN;
+                    return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)).getTime();
+                },
+                openAdj(record) {
+                    if (record) {
+                        const t = this.histTime(record.date);
+                        const fx = record.market === 'US' && record.pnlOrig ? Math.abs(record.pnlTWD / record.pnlOrig) : null;
+                        this.adj = {
+                            open: true, editId: record.id, ticker: record.ticker || '', market: record.market || 'TW', dir: record.dir || 'long',
+                            date: isNaN(t) ? this.todayStr() : new Date(t).toLocaleDateString('en-CA'),
+                            shares: record.shares || null, buyPrice: record.buyPrice ?? null, sellPrice: record.sellPrice ?? null,
+                            pnl: record.market === 'US' ? (record.pnlOrig ?? null) : (record.pnlTWD ?? null),
+                            fx: fx ? parseFloat(fx.toFixed(4)) : null, note: record.note || ''
+                        };
+                    } else {
+                        this.adj = { open: true, editId: null, ticker: '', market: 'TW', dir: 'long', date: this.todayStr(), shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '' };
+                    }
+                    // 表單在明細卡最上方，從下面點「修改」時要捲回去
+                    if (this.$refs.histCard) this.$refs.histCard.scrollTop = 0;
+                },
+                cancelAdj() {
+                    this.adj = { open: false, editId: null, ticker: '', market: 'TW', dir: 'long', date: '', shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '' };
+                },
+                saveAdj() {
+                    const a = this.adj;
+                    if (this.adjPnlOrig === null) { alert('請輸入損益金額，或填完整的股數、成本價與平倉價'); return; }
+                    if (!a.date) { alert('請選擇日期'); return; }
+                    const old = a.editId ? this.history.find(h => h.id === a.editId) : null;
+                    // 沿用原本的時間；新補登的放在當天最後
+                    const oldT = old ? this.histTime(old.date) : NaN;
+                    const timePart = !isNaN(oldT) && new Date(oldT).toLocaleDateString('en-CA') === a.date
+                        ? (old.date.split(' ')[1] || '23:59:59') : '23:59:59';
+                    const [y, mo, d] = a.date.split('-').map(Number);
+                    const rec = {
+                        id: a.editId || this.generateId(),
+                        type: 'SELL',
+                        ticker: (a.ticker || '').trim().toUpperCase() || '調整',
+                        market: a.market,
+                        dir: a.dir,
+                        buyPrice: a.buyPrice === '' ? null : a.buyPrice,
+                        sellPrice: a.sellPrice === '' ? null : a.sellPrice,
+                        shares: a.shares || 0,
+                        pnlOrig: parseFloat(this.adjPnlOrig.toFixed(2)),
+                        pnlTWD: parseFloat(this.adjPnlTWD.toFixed(0)),
+                        date: `${y}/${mo}/${d} ${timePart}`,
+                        manual: true,
+                        note: (a.note || '').trim()
+                    };
+                    if (old) this.history.splice(this.history.indexOf(old), 1);
+                    // 依日期插入，讓累積績效曲線維持時間順序
+                    const t = this.histTime(rec.date);
+                    const at = this.history.findIndex(h => this.histTime(h.date) > t);
+                    if (at === -1) this.history.push(rec); else this.history.splice(at, 0, rec);
+                    this.cancelAdj();
+                    this.saveData();
                 },
                 getUnrealizedPnL(pos) {
                     const current = pos.currentPrice || pos.price || 0;
@@ -3024,7 +3168,7 @@
 
                         sortedRecords.forEach(record => {
                             cumulativePnl += (record.pnlTWD || 0);
-                            const dateMatch = record.date.match(/(\d{1,2})\/(\d{1,2})/);
+                            const dateMatch = record.date.match(/\d{4}\/(\d{1,2})\/(\d{1,2})/) || record.date.match(/(\d{1,2})\/(\d{1,2})/);
                             const shortDate = dateMatch ? `${dateMatch[1]}/${dateMatch[2]}` : record.date.split(' ')[0];
                             labels.push(`${record.ticker} (${shortDate})`);
                             dataPoints.push(cumulativePnl);
