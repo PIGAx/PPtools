@@ -129,7 +129,9 @@
 
   <div class="sync-bar">
     <span>觀察標的：{{ watchTickers.map(t => t.code + ' ' + t.name).join('、') || '無' }}</span>
+    <button class="btn btn-sm" @click="copyFeed" title="Google 日曆「透過網址新增」訂閱，之後新的法說會、公告會自動出現">🔁 訂閱到 Google 日曆</button>
     <button class="btn btn-sm" @click="exportIcs" title="下載後在 Google 日曆「設定 → 匯入」即可一次加入">⬇ 匯出觀察標的事件 (.ics)</button>
+    <span v-if="autoUpdated">公告資料更新：{{ autoUpdated }}</span>
   </div>
 
   <div class="cal-grid glass">
@@ -275,7 +277,7 @@ function getBuiltinEvents() {
 const MOPS_URL = 'https://mops.twse.com.tw/mops/';
 
 // 觀察標的公司事件：法說會等一次性事件 + 依法規自動產生的月營收／財報公告期限
-function buildCompanyEvents(cfg, years) {
+function buildCompanyEvents(cfg, years, auto) {
   const out = [];
   const tickers = cfg.tickers || [];
   const byCode = Object.fromEntries(tickers.map(t => [t.code, t]));
@@ -289,6 +291,16 @@ function buildCompanyEvents(cfg, years) {
       id: 'c' + i, date: e.date, type: 'stock',
       title: `${t.code} ${t.name} ${e.title}`.replace(/\s+/g, ' '),
       note: e.note || '', url: e.url || '', links: links(t)
+    });
+  });
+  // GitHub Actions 每天從公開資訊觀測站等來源抓的事件（data/company-events-auto.json）
+  const KIND = { conference: '📣 ', meeting: '🏛 ', news: '📰 ', dividend: '💰 ' };
+  (auto || []).forEach((e, i) => {
+    const t = byCode[e.ticker] || { code: e.ticker, name: '', market: 'TW' };
+    out.push({
+      id: 'a' + i, date: e.date, type: e.kind === 'dividend' ? 'dividend' : 'stock',
+      title: `${KIND[e.kind] || ''}${t.code} ${t.name} ${e.title}`.replace(/\s+/g, ' '),
+      note: [e.note, e.source && '來源：' + e.source].filter(Boolean).join('｜'), url: e.url || '', links: links(t)
     });
   });
   const pad = n => String(n).padStart(2, '0');
@@ -328,7 +340,10 @@ createApp({
 
     const newEvent = ref({ date: '', title: '', type: 'custom', note: '' });
     const companyCfg = ref({ tickers: [], events: [] });
-    const companyEvents = computed(() => buildCompanyEvents(companyCfg.value, [viewYear.value - 1, viewYear.value, viewYear.value + 1]));
+    const companyAuto = ref({ events: [], updatedAt: null });
+    const companyEvents = computed(() => buildCompanyEvents(companyCfg.value, [viewYear.value - 1, viewYear.value, viewYear.value + 1], companyAuto.value.events));
+    const icsFeedUrl = new URL('data/company-events.ics', location.href).href;
+    const autoUpdated = computed(() => companyAuto.value.updatedAt ? new Date(companyAuto.value.updatedAt).toLocaleString('zh-TW', { hour12: false }) : '');
     const watchTickers = computed(() => companyCfg.value.tickers || []);
     const detail = ref(null);
 
@@ -477,10 +492,19 @@ createApp({
       downloadIcs(list, '觀察標的事件');
     }
 
+    async function copyFeed() {
+      try { await navigator.clipboard.writeText(icsFeedUrl); alert('已複製訂閱網址。\n到 Google 日曆 → 其他日曆「＋」→「透過網址新增」貼上即可，之後會自動更新。'); }
+      catch (e) { prompt('複製這個網址，到 Google 日曆「透過網址新增」：', icsFeedUrl); }
+    }
+
     async function loadCompany() {
       try {
         const res = await fetch('data/company-events.json', { cache: 'no-cache' });
         if (res.ok) companyCfg.value = await res.json();
+      } catch (e) {}
+      try {
+        const res = await fetch('data/company-events-auto.json', { cache: 'no-cache' });
+        if (res.ok) companyAuto.value = await res.json();
       } catch (e) {}
     }
 
@@ -498,7 +522,7 @@ createApp({
       calendarCells, upcomingEvents, customEvents, customEventsSorted,
       newEvent, prevMonth, nextMonth, goToday, selectDate,
       addCustomEvent, removeCustomEvent, formatShortDate, typeColor,
-      watchTickers, detail, openDetail, gcalUrl, downloadIcs, exportIcs
+      watchTickers, detail, openDetail, gcalUrl, downloadIcs, exportIcs, copyFeed, autoUpdated
     };
   }
 }).mount('#app');
