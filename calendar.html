@@ -92,6 +92,18 @@
   }
   .del-btn:hover { opacity: 1; color: var(--red); }
 
+  /* 事件詳情 */
+  .event-row.clickable { cursor: pointer; }
+  .event-row.clickable:hover .event-title { color: var(--accent); }
+  .detail-mask { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+  .detail-card { width: 100%; max-width: 440px; border-radius: var(--radius-lg); padding: 20px; background: var(--bg-base); }
+  .detail-card h3 { font-size: 16px; font-weight: 750; margin: 6px 0 4px; }
+  .detail-links { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .detail-links a { font-size: 13px; color: var(--accent); text-decoration: none; }
+  .detail-links a:hover { text-decoration: underline; }
+  .detail-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+  .sync-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 12px; color: var(--text-muted); }
+
 </style>
 </head>
 <body>
@@ -111,8 +123,13 @@
     <div class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span>經濟數據</div>
     <div class="legend-item"><span class="legend-dot" style="background:#4361ee"></span>財報發布</div>
     <div class="legend-item"><span class="legend-dot" style="background:#14b8a6"></span>除息 / 配息</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#f97316"></span>觀察標的</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#f97316"></span>觀察標的（法說會／營收／財報）</div>
     <div class="legend-item"><span class="legend-dot" style="background:#8b5cf6"></span>自訂事件</div>
+  </div>
+
+  <div class="sync-bar">
+    <span>觀察標的：{{ watchTickers.map(t => t.code + ' ' + t.name).join('、') || '無' }}</span>
+    <button class="btn btn-sm" @click="exportIcs" title="下載後在 Google 日曆「設定 → 匯入」即可一次加入">⬇ 匯出觀察標的事件 (.ics)</button>
   </div>
 
   <div class="cal-grid glass">
@@ -123,7 +140,7 @@
       <div class="cal-day">{{ cell.day }}</div>
       <div class="cal-events">
         <div v-for="ev in cell.events.slice(0, 3)" :key="ev.id"
-             class="cal-event" :class="'type-' + ev.type" :title="ev.title">
+             class="cal-event" :class="'type-' + ev.type" :title="ev.title" @click.stop="openDetail(ev)">
           {{ ev.title }}
         </div>
         <div v-if="cell.events.length > 3" class="cal-more">+{{ cell.events.length - 3 }} 更多</div>
@@ -136,7 +153,7 @@
     <div class="panel-card glass">
       <h3>📋 本月即將到來</h3>
       <div v-if="upcomingEvents.length === 0" class="empty-state">本月無即將到來的事件</div>
-      <div v-for="ev in upcomingEvents" :key="ev.id" class="event-row">
+      <div v-for="ev in upcomingEvents" :key="ev.id" class="event-row clickable" @click="openDetail(ev)">
         <span class="event-date">{{ formatShortDate(ev.date) }}</span>
         <span class="event-dot" :style="{ background: typeColor(ev.type) }"></span>
         <div class="event-info">
@@ -150,14 +167,14 @@
     <div class="panel-card glass">
       <h3>📌 自訂事件</h3>
       <div v-if="customEvents.length === 0" class="empty-state">尚未新增自訂事件</div>
-      <div v-for="ev in customEventsSorted" :key="ev.id" class="event-row">
+      <div v-for="ev in customEventsSorted" :key="ev.id" class="event-row clickable" @click="openDetail(ev)">
         <span class="event-date">{{ formatShortDate(ev.date) }}</span>
         <span class="event-dot" :style="{ background: typeColor(ev.type) }"></span>
         <div class="event-info">
           <div class="event-title">{{ ev.title }}</div>
           <div v-if="ev.note" class="event-meta">{{ ev.note }}</div>
         </div>
-        <button class="del-btn" @click="removeCustomEvent(ev.id)" title="刪除">&times;</button>
+        <button class="del-btn" @click.stop="removeCustomEvent(ev.id)" title="刪除">&times;</button>
       </div>
 
       <div class="add-form">
@@ -171,6 +188,23 @@
         </select>
         <input class="pp-field" v-model="newEvent.note" placeholder="備註（選填）" />
         <button class="btn btn-primary btn-sm" @click="addCustomEvent">新增</button>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="detail" class="detail-mask" @click.self="detail = null">
+    <div class="detail-card glass">
+      <span class="pp-badge" :style="{ color: typeColor(detail.type) }">{{ detail.date }}</span>
+      <h3>{{ detail.title }}</h3>
+      <div v-if="detail.note" class="event-meta">{{ detail.note }}</div>
+      <div class="detail-links">
+        <a v-if="detail.url" :href="detail.url" target="_blank" rel="noopener">🔗 消息來源</a>
+        <a v-for="l in (detail.links || [])" :key="l.url" :href="l.url" target="_blank" rel="noopener">🔗 {{ l.label }}</a>
+      </div>
+      <div class="detail-actions">
+        <button class="btn btn-sm" @click="downloadIcs([detail], detail.title)">⬇ .ics</button>
+        <a class="btn btn-primary btn-sm" :href="gcalUrl(detail)" target="_blank" rel="noopener">＋ 加入 Google 日曆</a>
+        <button class="btn btn-sm" @click="detail = null">關閉</button>
       </div>
     </div>
   </div>
@@ -217,11 +251,11 @@ function getBuiltinEvents() {
   ['2026-03-19','2026-06-18','2026-09-17','2026-12-17'
   ].forEach(d => add(d, '台灣央行理監事會', 'fed', '利率決議'));
 
-  // Taiwan major earnings seasons (approximate)
-  ['2026-01-10','2026-04-01','2026-07-01','2026-10-01'
+  // 台股財報公告期限（證交法第 36 條：年報 3/31、Q1 5/15、Q2 8/14、Q3 11/14）
+  ['2026-03-31','2026-05-15','2026-08-14','2026-11-14'
   ].forEach((d, i) => {
-    const labels = ['Q4 財報截止日', 'Q1 財報截止日', 'Q2 財報截止日', 'Q3 財報截止日'];
-    add(d, '台股 ' + labels[i], 'earnings', '上市櫃公司季報公告截止');
+    const labels = ['年報截止日', 'Q1 財報截止日', 'Q2 財報截止日', 'Q3 財報截止日'];
+    add(d, '台股 ' + labels[i], 'earnings', '上市櫃公司財報公告期限');
   });
 
   // US major earnings seasons
@@ -238,6 +272,52 @@ function getBuiltinEvents() {
   return events;
 }
 
+const MOPS_URL = 'https://mops.twse.com.tw/mops/';
+
+// 觀察標的公司事件：法說會等一次性事件 + 依法規自動產生的月營收／財報公告期限
+function buildCompanyEvents(cfg, years) {
+  const out = [];
+  const tickers = cfg.tickers || [];
+  const byCode = Object.fromEntries(tickers.map(t => [t.code, t]));
+  const links = t => [
+    { label: '公開資訊觀測站（重大訊息／法說會，輸入代號 ' + t.code + '）', url: MOPS_URL },
+    { label: 'Yahoo 股市 ' + t.code + ' 新聞', url: `https://tw.stock.yahoo.com/quote/${t.code}.${t.market === 'TWO' ? 'TWO' : 'TW'}/news` }
+  ];
+  (cfg.events || []).forEach((e, i) => {
+    const t = byCode[e.ticker] || { code: e.ticker, name: '', market: 'TW' };
+    out.push({
+      id: 'c' + i, date: e.date, type: 'stock',
+      title: `${t.code} ${t.name} ${e.title}`.replace(/\s+/g, ' '),
+      note: e.note || '', url: e.url || '', links: links(t)
+    });
+  });
+  const pad = n => String(n).padStart(2, '0');
+  tickers.forEach(t => {
+    years.forEach(y => {
+      for (let m = 1; m <= 12; m++) {
+        const prev = m === 1 ? 12 : m - 1;
+        out.push({ id: `r${t.code}-${y}-${m}`, date: `${y}-${pad(m)}-10`, type: 'stock',
+          title: `${t.code} ${t.name} ${prev}月營收公告`, note: '每月 10 日前公告上月營收', links: links(t) });
+      }
+      [['03-31', '年報'], ['05-15', 'Q1 財報'], ['08-14', 'Q2 財報'], ['11-14', 'Q3 財報']].forEach(([md, label]) => {
+        out.push({ id: `q${t.code}-${y}-${md}`, date: `${y}-${md}`, type: 'stock',
+          title: `${t.code} ${t.name} ${label}公告期限`, note: '法定最晚公告日，實際日期以董事會公告為準', links: links(t) });
+      });
+    });
+  });
+  return out;
+}
+
+function icsEscape(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n'); }
+function nextDay(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const n = new Date(y, m - 1, d + 1);
+  return `${n.getFullYear()}${String(n.getMonth() + 1).padStart(2, '0')}${String(n.getDate()).padStart(2, '0')}`;
+}
+function eventDetails(ev) {
+  return [ev.note, ev.url ? '來源：' + ev.url : '', ...(ev.links || []).map(l => l.label + '：' + l.url)].filter(Boolean).join('\n');
+}
+
 createApp({
   setup() {
     const today = new Date();
@@ -247,13 +327,17 @@ createApp({
     const builtinEvents = getBuiltinEvents();
 
     const newEvent = ref({ date: '', title: '', type: 'custom', note: '' });
+    const companyCfg = ref({ tickers: [], events: [] });
+    const companyEvents = computed(() => buildCompanyEvents(companyCfg.value, [viewYear.value - 1, viewYear.value, viewYear.value + 1]));
+    const watchTickers = computed(() => companyCfg.value.tickers || []);
+    const detail = ref(null);
 
     const dayOfWeekLabels = ['日', '一', '二', '三', '四', '五', '六'];
 
     const monthLabel = computed(() => `${viewYear.value} 年 ${viewMonth.value + 1} 月`);
 
     function allEvents() {
-      return [...builtinEvents, ...customEvents.value];
+      return [...builtinEvents, ...companyEvents.value, ...customEvents.value];
     }
 
     function eventsForDate(dateStr) {
@@ -353,19 +437,68 @@ createApp({
       return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
     }
 
+    function openDetail(ev) { detail.value = ev; }
+
+    function gcalUrl(ev) {
+      const start = ev.date.replace(/-/g, '');
+      const q = new URLSearchParams({ action: 'TEMPLATE', text: ev.title, dates: start + '/' + nextDay(ev.date), details: eventDetails(ev) });
+      return 'https://calendar.google.com/calendar/render?' + q.toString();
+    }
+
+    function downloadIcs(list, name) {
+      const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PPtools//Investment Calendar//ZH', 'CALSCALE:GREGORIAN'];
+      const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+      list.forEach(ev => {
+        lines.push('BEGIN:VEVENT',
+          'UID:' + ev.id + '-' + ev.date + '@pptools',
+          'DTSTAMP:' + stamp,
+          'DTSTART;VALUE=DATE:' + ev.date.replace(/-/g, ''),
+          'DTEND;VALUE=DATE:' + nextDay(ev.date),
+          'SUMMARY:' + icsEscape(ev.title),
+          'DESCRIPTION:' + icsEscape(eventDetails(ev)),
+          'END:VEVENT');
+      });
+      lines.push('END:VCALENDAR');
+      const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (name || 'pptools') + '.ics';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    // 匯出今天起一年內的觀察標的事件
+    function exportIcs() {
+      const t = new Date();
+      const from = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+      const to = `${t.getFullYear() + 1}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+      const list = companyEvents.value.filter(e => e.date >= from && e.date <= to).sort((a, b) => a.date.localeCompare(b.date));
+      if (!list.length) { alert('一年內沒有觀察標的事件'); return; }
+      downloadIcs(list, '觀察標的事件');
+    }
+
+    async function loadCompany() {
+      try {
+        const res = await fetch('data/company-events.json', { cache: 'no-cache' });
+        if (res.ok) companyCfg.value = await res.json();
+      } catch (e) {}
+    }
+
     function typeColor(type) {
       return { fed: '#ef4444', economic: '#f59e0b', earnings: '#4361ee', dividend: '#14b8a6', custom: '#8b5cf6', stock: '#f97316' }[type] || '#8b5cf6';
     }
 
     onMounted(() => {
       loadCustom();
+      loadCompany();
     });
 
     return {
       viewYear, viewMonth, monthLabel, dayOfWeekLabels,
       calendarCells, upcomingEvents, customEvents, customEventsSorted,
       newEvent, prevMonth, nextMonth, goToday, selectDate,
-      addCustomEvent, removeCustomEvent, formatShortDate, typeColor
+      addCustomEvent, removeCustomEvent, formatShortDate, typeColor,
+      watchTickers, detail, openDetail, gcalUrl, downloadIcs, exportIcs
     };
   }
 }).mount('#app');
