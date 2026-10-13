@@ -1,16 +1,11 @@
 {
-  "_說明": "投資行事曆的觀察標的公司事件。tickers 會自動產生月營收與季報公告期限；events 放法說會等一次性事件（date 為 YYYY-MM-DD，url 為消息來源）。",
+  "_說明": "觀察標的清單。tickers 裡的每一檔，GitHub Actions 每天會從公開資訊觀測站抓法說會、重大訊息，從櫃買／證交所抓除權息預告（寫進 company-events-auto.json），並自動產生月營收與季報公告期限。events 可手動補充觀測站沒有的事件（date 為 YYYY-MM-DD，url 為消息來源）。market：上市 TW、上櫃 TWO。",
   "tickers": [
-    { "code": "7828", "name": "創新服務", "market": "TWO" }
+    {
+      "code": "7828",
+      "name": "創新服務",
+      "market": "TWO"
+    }
   ],
-  "events": [
-    { "ticker": "7828", "date": "2026-03-25", "title": "上櫃前業績發表會", "kind": "conference",
-      "url": "https://vocus.cc/article/69df7736fd89780001aab0c1" },
-    { "ticker": "7828", "date": "2026-06-01", "title": "參加 HSBC 法人說明會", "kind": "conference",
-      "url": "https://www.moneydj.com/kmdj/news/newsviewer.aspx?a=f37897b2-ca31-471d-b1dd-49d3ae762555" },
-    { "ticker": "7828", "date": "2026-06-05", "title": "法說會（2026 Q1 業績）", "kind": "conference", "note": "臺北文創大樓",
-      "url": "https://finance.biggo.com.tw/quote/7828.TW/earnings-call/TW_7828.TW_2026-06-05" },
-    { "ticker": "7828", "date": "2026-09-04", "title": "參加中國信託證券 2026 第三季前瞻論壇", "kind": "conference",
-      "url": "https://tw.stock.yahoo.com/news/%E5%89%B5%E6%96%B0%E6%9C%8D%E5%8B%999-4%E5%8F%83%E5%8A%A0%E4%B8%AD%E5%9C%8B%E4%BF%A1%E8%A8%97%E8%AD%89%E8%88%89%E8%BE%A6%E4%B9%8B%E6%B3%95%E8%AA%AA%E6%9C%83-123100229.html" }
-  ]
+  "events": []
 }

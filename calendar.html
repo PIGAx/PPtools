@@ -300,7 +300,8 @@ function buildCompanyEvents(cfg, years, auto) {
     out.push({
       id: 'a' + i, date: e.date, type: e.kind === 'dividend' ? 'dividend' : 'stock',
       title: `${KIND[e.kind] || ''}${t.code} ${t.name} ${e.title}`.replace(/\s+/g, ' '),
-      note: [e.note, e.source && '來源：' + e.source].filter(Boolean).join('｜'), url: e.url || '', links: links(t)
+      note: [e.note, e.source && '來源：' + e.source].filter(Boolean).join('｜'), url: e.url || '',
+      links: [...(e.links || []).filter(u => u !== e.url).map(u => ({ label: u.replace(/^https?:\/\//, '').slice(0, 50), url: u })), ...links(t)]
     });
   });
   const pad = n => String(n).padStart(2, '0');

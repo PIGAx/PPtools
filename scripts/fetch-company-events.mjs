@@ -29,7 +29,7 @@ const MOPS_PAGE = 'https://mops.twse.com.tw/mops/';
 const DEBUG = !!process.env.DEBUG_EVENTS;
 
 // 重大訊息主旨符合這些關鍵字才放進行事曆
-const NEWS_KEYWORDS = /法人說明會|法說|董事會|股東會|股東常會|股東臨時會|股利|配息|除息|除權|現金增資|私募|合併|收購|處分|取得|營收|財務報告|自結/;
+const NEWS_KEYWORDS = /法人說明會|法說|發表會|說明會|董事會|股東會|股東常會|股東臨時會|股利|配息|除息|除權|現金增資|私募|合併|收購|處分|取得|營收|財務報告|自結/;
 
 const pad = (n) => String(n).padStart(2, '0');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -60,9 +60,9 @@ const postForm = (url, params) =>
 
 /* ── HTML 表格解析（觀測站的表格很規律，不需要完整的 HTML parser） ── */
 const decode = (s) =>
-  s.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  s.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n)).replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-const cellText = (html) => decode(html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).replace(/[ \t\u3000]+/g, ' ').trim();
+const cellText = (html) => decode(html.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '')).replace(/[\s\u3000\u00a0]+/g, ' ').trim();
 
 export function parseRows(html) {
   const rows = [];
@@ -75,6 +75,8 @@ export function parseRows(html) {
 
 // 民國日期「115/06/05」或「115年6月5日」→ 2026-06-05
 export function rocToIso(s) {
+  const c = String(s || '').trim().match(/^(\d{3})(\d{2})(\d{2})$/); // 櫃買 OpenAPI 的「1151005」
+  if (c) return `${+c[1] + 1911}-${c[2]}-${c[3]}`;
   const m = String(s || '').match(/(\d{2,3})\s*[\/年.-]\s*(\d{1,2})\s*[\/月.-]\s*(\d{1,2})/);
   if (!m) return null;
   const y = +m[1] + 1911;
@@ -89,13 +91,17 @@ export function parseConferences(html, code) {
     const [, , dateCell, time, place, summary] = r.cells;
     const date = rocToIso(dateCell);
     if (!date) continue;
-    const pdfs = [...r.html.matchAll(/href\s*=\s*['"]([^'"]+\.pdf)['"]/gi)].map((m) =>
-      m[1].startsWith('http') ? m[1] : MOPS + (m[1].startsWith('/') ? '' : '/') + m[1]);
+    // 主辦券商：「受邀參加富邦證券舉辦之法人說明會」→ 富邦證券
+    const host = (summary.match(/參加(.{2,24}?)(?:舉辦|主辦)/) || [])[1];
+    const links = [...r.html.matchAll(/href\s*=\s*['"](https?:[^'"]+)['"]/gi)].map((m) => m[1]);
+    const pdf = r.cells.find((c) => /^\w+M\d+\.pdf$/i.test(c));
     out.push({
       ticker: code, date, kind: 'conference', source: 'MOPS 法人說明會',
-      title: '法說會',
-      note: [time && '時間 ' + time, place && '地點 ' + place, summary].filter(Boolean).join('｜').slice(0, 400),
-      url: pdfs[0] || '',
+      title: '法說會' + (host ? `（${host.replace(/[“”"]/g, '')}）` : ''),
+      note: [time && '時間 ' + time, place && '地點 ' + place, summary, pdf && '簡報檔 ' + pdf + '（觀測站法說會一覽可下載）']
+        .filter(Boolean).join('｜').slice(0, 500),
+      url: links.find((u) => /youtube|youtu\.be/.test(u)) || links[0] || '',
+      links,
     });
   }
   return out;
@@ -115,6 +121,13 @@ async function fetchConferences(t, rocYear) {
 }
 
 /* ── 2. 重大訊息 ── */
+// 「詳細資料」按鈕 onclick 裡設定的表單欄位，用來查單則公告的內文
+function detailParams(rowHtml) {
+  const p = {};
+  for (const m of rowHtml.matchAll(/t05st01_fm\.(\w+)\.value\s*=\s*['"]([^'"]*)['"]/g)) p[m[1]] = m[2];
+  return p;
+}
+
 export function parseNews(html, code) {
   const out = [];
   for (const r of parseRows(html)) {
@@ -122,18 +135,20 @@ export function parseNews(html, code) {
     const [, , spokeDate, spokeTime, subject] = r.cells;
     const date = rocToIso(spokeDate);
     if (!date || !subject || !NEWS_KEYWORDS.test(subject)) continue;
+    const detail = /召開日期/.test(subject) ? detailParams(r.html) : null;
     const title = subject.replace(/^公告本公司/, '').replace(/^本公司/, '').trim();
     out.push({
       ticker: code, date, kind: 'news', source: 'MOPS 重大訊息',
       title: '公告：' + title.slice(0, 60),
       note: `${spokeDate} ${spokeTime || ''} 發布｜${subject}`.slice(0, 400),
       url: '',
+      ...(detail && Object.keys(detail).length ? { _detail: detail } : {}),
     });
     // 主旨裡寫了未來的召開日期（例如「訂於115年11月6日召開董事會」），另外在那天放一個事件
     const m = subject.match(/(?:訂於|預計於|將於|於)\s*(\d{2,3}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|\d{2,3}\/\d{1,2}\/\d{1,2})/);
     const when = m && rocToIso(m[1]);
     if (when && when > date) {
-      const what = /股東/.test(subject) ? '股東會' : /法人說明會|法說/.test(subject) ? '法說會' : /董事會/.test(subject) ? '董事會' : '預定事項';
+      const what = /股東/.test(subject) ? '股東會' : /法人說明會|法說|發表會|說明會/.test(subject) ? '法說會' : /董事會/.test(subject) ? '董事會' : '預定事項';
       out.push({
         ticker: code, date: when, kind: what === '法說會' ? 'conference' : 'meeting', source: 'MOPS 重大訊息',
         title: what + '（' + title.slice(0, 40) + '）',
@@ -155,7 +170,38 @@ async function fetchNews(t, rocYear) {
     console.log(`[debug] t05st01 ${t.code} ${rocYear}: ${rows.length} rows`);
     rows.slice(0, 40).forEach((r) => console.log('  ', r.cells.slice(2, 5).join(' | ').slice(0, 200)));
   }
-  return parseNews(html, t.code);
+  const events = parseNews(html, t.code);
+  // 「○○財務報告董事會召開日期」的實際日期只寫在內文，逐則查詳細資料
+  for (const e of events.filter((x) => x._detail)) {
+    try {
+      await sleep(1500);
+      const body = await postForm(MOPS + '/mops/web/ajax_t05st01', {
+        encodeURIComponent: 1, firstin: true, off: 1, TYPEK: 'all', co_id: t.code, year: rocYear, month: 'all', step: 2,
+        ...e._detail,
+      });
+      const text = cellText(body);
+      if (DEBUG) console.log(`[debug] detail ${e.date} ${e.title}:`, text.slice(0, 700));
+      const when = extractMeetingDate(text, e.date);
+      if (when) {
+        events.push({
+          ticker: t.code, date: when, kind: 'meeting', source: 'MOPS 重大訊息',
+          title: '董事會（' + e.title.replace(/^公告：/, '').replace(/召開日期$/, '') + '）',
+          note: `${e.date} 公告｜${e.title.replace(/^公告：/, '')}`, url: '',
+        });
+      }
+    } catch (err) {
+      console.warn(`${t.code} 公告內文抓取失敗：${err.message}`);
+    }
+    delete e._detail;
+  }
+  return events;
+}
+
+// 從公告內文找「董事會預定日期／召開日期」之類的日期，取公告日之後的第一個
+export function extractMeetingDate(text, announced) {
+  const near = text.match(/(?:預定|召開|開會)[^。\d]{0,12}日期[^\d]{0,6}(\d{2,3}\s*[\/年]\s*\d{1,2}\s*[\/月]\s*\d{1,2})/);
+  const cand = near ? [near[1]] : [...text.matchAll(/\d{2,3}\s*[\/年]\s*\d{1,2}\s*[\/月]\s*\d{1,2}/g)].map((m) => m[0]);
+  return cand.map(rocToIso).find((d) => d && d > announced) || null;
 }
 
 /* ── 3. 除權除息預告（櫃買／證交所 OpenAPI） ── */
@@ -179,7 +225,7 @@ async function fetchExRights(tickers) {
       for (const row of list) {
         const code = String(pickKey(row, /代號|Code/i) || '').trim();
         if (!codes.has(code)) continue;
-        const date = rocToIso(pickKey(row, /除權息日|除息日|除權日|^Date$/i)) || rocToIso(Object.values(row).join(' '));
+        const date = rocToIso(pickKey(row, /除權息日|除息日|除權日|Date/i));
         if (!date) continue;
         const kind = String(pickKey(row, /權值|類型|權\/息|Exdividend|Type/i) || '除權息');
         const cash = pickKey(row, /現金股利|息值|CashDividend/i);
@@ -303,7 +349,13 @@ async function main() {
 
   // 去重（同一天同標題只留一筆）並排序
   const uniq = new Map();
-  for (const e of events) uniq.set(`${e.ticker}|${e.date}|${e.title}`, e);
+  const confDays = new Set(events.filter((e) => e.source === 'MOPS 法人說明會').map((e) => e.ticker + '|' + e.date));
+  for (const e of events) {
+    // 重大訊息推出來的法說會日期，法說會一覽表已經有就不重複
+    if (e.kind === 'conference' && e.source !== 'MOPS 法人說明會' && confDays.has(e.ticker + '|' + e.date)) continue;
+    delete e._detail;
+    uniq.set(`${e.ticker}|${e.date}|${e.title}`, e);
+  }
   const sorted = [...uniq.values()].sort((a, b) => a.date.localeCompare(b.date) || a.ticker.localeCompare(b.ticker));
 
   const okCount = Object.values(status).filter((s) => s === 'ok').length;
