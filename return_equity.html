@@ -626,6 +626,25 @@
                     <div v-show="positions.length > 0" class="relative h-64 sm:h-72 w-full">
                         <canvas id="allocChart"></canvas>
                     </div>
+                    <table v-if="allocGroups.length" class="w-full text-xs mt-3">
+                        <thead>
+                            <tr class="text-gray-500 border-b">
+                                <th class="text-left font-semibold py-1">標的</th>
+                                <th class="text-right font-semibold py-1">合計</th>
+                                <th class="text-right font-semibold py-1">現股</th>
+                                <th class="text-right font-semibold py-1">槓桿</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="g in allocGroups" :key="g.key" class="border-b last:border-0">
+                                <td class="py-1 font-semibold">{{ g.label }}</td>
+                                <td class="py-1 text-right font-bold">{{ g.pct.toFixed(1) }}%<span class="block text-[10px] text-gray-400 font-normal">{{ formatNumber(Math.round(g.total)) }}</span></td>
+                                <td class="py-1 text-right">{{ g.spot > 0 ? g.spotPct.toFixed(1) + '%' : '-' }}</td>
+                                <td class="py-1 text-right text-indigo-600">{{ g.lev > 0 ? g.levPct.toFixed(1) + '%' : '-' }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p v-if="allocGroups.length" class="text-[10px] text-gray-400 mt-1">槓桿部位以股數 × 現價（總曝險）計算；同一檔的現股為原色、槓桿為同色系淺色。</p>
                 </div>
             </div>
 
@@ -1482,6 +1501,12 @@
         // 圓餅圖固定配色（依部位加入順序指派，不隨市值排名變動）
         const VIZ_COLORS = ['#2a78d6', '#1baf7a', '#eda100', '#008300', '#4a3aa7', '#e34948', '#e87ba4', '#eb6834'];
         const VIZ_OTHER = '#898781';
+        // 兩個 #rrggbb 顏色依比例混合（t = 0 為 a，1 為 b）
+        function mixColor(a, b, t) {
+            const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+            const ch = sh => Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t);
+            return '#' + [16, 8, 0].map(sh => ch(sh).toString(16).padStart(2, '0')).join('');
+        }
 
         // Yahoo Finance 沒開放 CORS，透過公開代理依序嘗試
         const CORS_PROXIES = [
@@ -1566,6 +1591,30 @@
                     const currentTotal = this.calc.currentShares * this.calc.currentPrice;
                     const addTotal = this.calc.addShares * this.calc.addPrice;
                     return (currentTotal + addTotal) / this.newTotalShares;
+                },
+                // 部位比例：同一檔（標的＋市場＋多空）合併成一組，組內再分現股與槓桿單
+                allocGroups() {
+                    const map = new Map();
+                    this.positions.forEach(pos => {
+                        const value = (pos.shares || 0) * (pos.currentPrice || pos.price || 0) * (pos.market === 'US' ? this.exchangeRate : 1);
+                        if (value <= 0) return;
+                        const key = pos.ticker + '|' + pos.market + '|' + (this.isShort(pos) ? 'short' : 'long');
+                        if (!map.has(key)) map.set(key, {
+                            key, label: pos.ticker + (pos.market === 'US' ? ' (US)' : '') + (this.isShort(pos) ? ' 空' : ''),
+                            spot: 0, lev: 0, total: 0
+                        });
+                        const g = map.get(key);
+                        if (this.hasLeverage(pos)) g.lev += value; else g.spot += value;
+                        g.total += value;
+                    });
+                    const groups = [...map.values()];
+                    const sum = groups.reduce((s, g) => s + g.total, 0);
+                    groups.forEach(g => {
+                        g.pct = sum > 0 ? g.total / sum * 100 : 0;
+                        g.spotPct = sum > 0 ? g.spot / sum * 100 : 0;
+                        g.levPct = sum > 0 ? g.lev / sum * 100 : 0;
+                    });
+                    return groups.sort((a, b) => b.total - a.total);
                 },
                 // 補登的損益（原幣）：有填金額就用金額，否則以 股數 ×（平倉價 − 成本）計算
                 adjPnlOrig() {
@@ -3076,6 +3125,12 @@
                                             const total = ctx.dataset.data.reduce((s, v) => s + v, 0);
                                             const pct = total > 0 ? (ctx.raw / total * 100).toFixed(1) : 0;
                                             return `${ctx.label}: ${Number(ctx.raw).toLocaleString('zh-TW')} TWD (${pct}%)`;
+                                        },
+                                        // 同一檔有現股也有槓桿時，多列出整檔合計
+                                        afterLabel: (ctx) => {
+                                            const g = (ctx.dataset.groupMeta || [])[ctx.dataIndex];
+                                            if (!g) return '';
+                                            return `${g.label} 合計: ${Math.round(g.total).toLocaleString('zh-TW')} TWD (${g.pct.toFixed(1)}%)`;
                                         }
                                     }
                                 }
@@ -3085,35 +3140,36 @@
                 },
                 updateAllocChart() {
                     if (!allocChartInstance) return;
-                    // 顏色跟著部位的加入順序走，前 8 檔各自一色，之後合併為「其他」
-                    const labels = [];
-                    const values = [];
-                    const colors = [];
+                    // 同一檔一個顏色：現股用原色、槓桿單用同色系淺色；依合計市值排序，前 8 檔之後合併為「其他」
+                    const bg = PPTheme.isDark() ? '#141a2e' : '#ffffff';
+                    const labels = [], values = [], colors = [], meta = [];
                     let otherValue = 0;
-                    this.positions.forEach((pos, i) => {
-                        const currentP = pos.currentPrice || pos.price || 0;
-                        const valueTWD = (pos.shares || 0) * currentP * (pos.market === 'US' ? this.exchangeRate : 1);
-                        if (valueTWD <= 0) return;
-                        if (i < VIZ_COLORS.length) {
-                            labels.push(pos.ticker + (pos.market === 'US' ? ' (US)' : '') + (this.isShort(pos) ? ' 空' : ''));
-                            values.push(Math.round(valueTWD));
-                            colors.push(VIZ_COLORS[i]);
-                        } else {
-                            otherValue += valueTWD;
+                    this.allocGroups.forEach((g, i) => {
+                        if (i >= VIZ_COLORS.length) { otherValue += g.total; return; }
+                        const both = g.spot > 0 && g.lev > 0;
+                        if (g.spot > 0) {
+                            labels.push(g.label + (both ? ' 現股' : ''));
+                            values.push(Math.round(g.spot)); colors.push(VIZ_COLORS[i]); meta.push(both ? g : null);
+                        }
+                        if (g.lev > 0) {
+                            labels.push(g.label + ' 槓桿');
+                            values.push(Math.round(g.lev)); colors.push(both ? mixColor(VIZ_COLORS[i], bg, 0.45) : VIZ_COLORS[i]); meta.push(both ? g : null);
                         }
                     });
                     if (otherValue > 0) {
                         labels.push('其他');
                         values.push(Math.round(otherValue));
                         colors.push(VIZ_OTHER);
+                        meta.push(null);
                     }
                     allocChartInstance.data.labels = labels;
                     allocChartInstance.data.datasets = [{
                         data: values,
                         backgroundColor: colors,
-                        borderColor: PPTheme.isDark() ? '#141a2e' : '#ffffff',
+                        borderColor: bg,
                         borderWidth: 2,
-                        hoverOffset: 6
+                        hoverOffset: 6,
+                        groupMeta: meta
                     }];
                     allocChartInstance.update();
                 },
