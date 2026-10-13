@@ -185,7 +185,7 @@ async function fetchNews(t, rocYear) {
       if (when) {
         events.push({
           ticker: t.code, date: when, kind: 'meeting', source: 'MOPS 重大訊息',
-          title: '董事會（' + e.title.replace(/^公告：/, '').replace(/召開日期$/, '') + '）',
+          title: '董事會（' + e.title.replace(/^公告：/, '').replace(/董事會召開日期$/, '').replace(/召開日期$/, '') + '）',
           note: `${e.date} 公告｜${e.title.replace(/^公告：/, '')}`, url: '',
         });
       }
