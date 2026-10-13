@@ -1,0 +1,53 @@
+name: Fetch company events
+
+# 每天抓觀察標的的法說會、重大訊息、除權息預告，寫成 data/company-events-auto.json
+# 與 data/company-events.ics（Google 日曆可「從網址新增」訂閱）並 commit 回 repo。
+on:
+  schedule:
+    - cron: '0 10 * * *'     # 18:00 台北
+    - cron: '30 14 * * *'    # 22:30 台北（重大訊息常在盤後晚間發布）
+  workflow_dispatch: {}
+  push:
+    branches: ['**']
+    paths:
+      - '.github/workflows/fetch-company-events.yml'
+      - 'scripts/fetch-company-events.mjs'
+      - 'data/company-events.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fetch-company-events
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch company events
+        run: node scripts/fetch-company-events.mjs
+        env:
+          # 改到抓取程式時多印解析細節，方便核對
+          DEBUG_EVENTS: ${{ github.event_name == 'push' && '1' || '' }}
+
+      - name: Commit updated events
+        run: |
+          git config user.name "pptools-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/company-events-auto.json data/company-events.ics
+          if git diff --cached --quiet; then
+            echo "公司事件無變化，略過 commit。"
+          else
+            git commit -m "chore(data): 自動更新觀察標的公司事件 [skip ci]"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push
+          fi
