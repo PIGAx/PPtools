@@ -101,13 +101,23 @@
       html .border-green-500 { border-color: var(--green); }
       html .border-red-500 { border-color: var(--red); }
       html .border-indigo-500 { border-color: var(--purple); }
+
+      /* ── 精簡版面：區塊可收合、說明文字預設隱藏 ── */
+      .pp-fold-head { cursor: pointer; user-select: none; }
+      .pp-fold-head button { cursor: pointer; }
+      .pp-chev { display: inline-block; margin-left: 6px; font-size: .8em; color: #9ca3af; transition: transform .15s; }
+      .pp-folded .pp-chev { transform: rotate(-90deg); }
+      .pp-folded > :not(.pp-fold-head) { display: none !important; }
+      .pp-folded > .pp-fold-head { margin-bottom: 0 !important; }
+      .pp-folded.max-h-\[500px\] { max-height: none; }
+      body:not(.pp-show-help) .pp-help { display: none !important; }
     </style>
 </head>
 <body class="bg-gray-100 font-sans text-gray-800 antialiased">
     <div id="app" class="max-w-7xl mx-auto p-4 md:p-6">
         
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b pb-4 mb-6 gap-4">
-            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">📊 交易部位與績效追蹤儀表板</h1>
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b pb-3 mb-5 gap-3">
+            <h1 class="text-xl sm:text-2xl font-bold text-gray-900">📊 交易部位與績效追蹤儀表板</h1>
             
             <div class="flex flex-col items-stretch sm:items-end gap-1 w-full sm:w-auto">
                 <div class="bg-white px-4 py-2 rounded-lg shadow border border-gray-200 flex items-center justify-between sm:justify-start space-x-2 w-full sm:w-auto">
@@ -117,12 +127,13 @@
                             class="text-xs bg-blue-600 text-white px-3 py-1.5 rounded font-bold hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-wait whitespace-nowrap">
                         {{ quoteLoading ? '更新中…' : '🔄 更新報價' }}
                     </button>
+                    <button @click="toggleHelp" class="text-xs px-2.5 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 font-semibold whitespace-nowrap" :title="showHelp ? '隱藏公式與說明文字' : '顯示公式與說明文字'">{{ showHelp ? '隱藏說明' : 'ℹ️ 說明' }}</button>
                 </div>
                 <p class="text-[11px] text-gray-400 text-right pr-1">{{ quoteStatus || '報價每日自動更新一次 (Yahoo Finance)' }}</p>
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
             <div class="grid grid-cols-1 sm:grid-cols-3 lg:flex lg:flex-col gap-4">
                 <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-blue-500">
                     <h3 class="text-gray-500 text-xs font-semibold mb-1">總投入成本 (約當 TWD)</h3>
@@ -164,7 +175,7 @@
             </div>
             <div class="bg-white p-4 sm:p-5 rounded-lg shadow-md">
                 <div class="flex items-start justify-between gap-2 mb-2">
-                    <h3 class="text-gray-800 text-base font-bold">🥧 部位比例 (約當 TWD 市值)</h3>
+                    <h3 class="text-gray-800 text-base font-bold">🥧 部位比例 <span class="text-xs font-normal text-gray-400">TWD 市值</span></h3>
                     <div v-if="positions.length" class="flex-none bg-gray-50 border border-gray-200 rounded px-2 py-1 text-right" title="整體槓桿 = 總名目曝險 ÷ 總淨資產">
                         <div class="text-[10px] text-gray-500 font-semibold leading-tight">整體槓桿</div>
                         <div class="text-sm font-bold leading-tight" :class="levelClass">{{ grossLeverage.toFixed(2) }}x</div>
@@ -192,14 +203,14 @@
                         </tr>
                     </tbody>
                 </table>
-                <p v-if="allocGroups.length" class="text-[10px] text-gray-400 mt-1">槓桿部位以股數 × 現價（總曝險）計算；同一檔的現股為原色、槓桿為同色系淺色。</p>
+                <p v-if="allocGroups.length" class="pp-help text-[10px] text-gray-400 mt-1">槓桿部位以股數 × 現價（總曝險）計算；同一檔的現股為原色、槓桿為同色系淺色。</p>
             </div>
         </div>
 
         <!-- ══════ 帳務計算與風險控管 ══════ -->
-        <div class="bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500 mb-8">
-            <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-4">
-                <h2 class="text-lg font-bold">🧾 帳務計算與風險控管</h2>
+        <div class="bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500 mb-6" :class="{ 'pp-folded': fold.risk }">
+            <div class="pp-fold-head flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-4" @click="toggleFold('risk')">
+                <h2 class="text-lg font-bold">🧾 帳務計算與風險控管<span class="pp-chev">▾</span></h2>
                 <p class="text-xs text-gray-500">把使用槓桿的個股一併納入，計算整體持股水位與風險</p>
             </div>
 
@@ -217,7 +228,7 @@
                     <input v-model.number="riskCfg.stressPct" type="number" step="1" class="border p-2 rounded w-full text-sm" @change="saveData">
                 </div>
             </div>
-            <p class="text-[11px] text-gray-400 mb-5 leading-relaxed">
+            <p class="pp-help text-[11px] text-gray-400 mb-5 leading-relaxed">
                 虧損上限是全站預設值，個別部位可在庫存卡片的「槓桿／費用設定」單獨指定。
                 新金鑽等槓桿商品以「自備保證金虧損到 X%」為停損／追繳點，預估停損價 ＝ 成本 × (1 − X% ÷ 槓桿)，例如 2 倍、虧損上限 50% → 成本下跌 25% 即觸發。
             </p>
@@ -263,7 +274,7 @@
                         <div class="h-full" :style="{ width: equityShareOfExposure + '%', background: 'linear-gradient(90deg,#6d96ff,#2a78d6)' }" :title="'部位權益 ' + formatNumber(totalPosEquityTWD)"></div>
                         <div class="h-full" :style="{ width: (100 - equityShareOfExposure) + '%', background: 'linear-gradient(90deg,#a78bfa,#7c3aed)' }" :title="'借款 ' + formatNumber(totalBorrowTWD)"></div>
                     </div>
-                    <p class="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
+                    <p class="pp-help text-[11px] text-gray-500 mt-1.5 leading-relaxed">
                         持股水位 = 總名目曝險 ÷ 總淨資產（部位權益 + 現金）。100% 表示滿倉但無槓桿，超過 100% 代表整體已經放大曝險。
                     </p>
                 </div>
@@ -461,7 +472,7 @@
                             </tbody>
                         </table>
                     </div>
-                    <p class="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                    <p class="pp-help text-[11px] text-gray-400 mt-1.5 leading-relaxed">
                         年息填在各部位「槓桿／費用設定」的「借款年息／庫存費」，利息以借款餘額單利計算（借款 × 年息 ÷ 365 ＝ 每日利息）；資金來源可填券商名稱，自動依來源彙總。未填年息的部位會把平均年息拉低。
                     </p>
                 </div>
@@ -479,11 +490,11 @@
             </template>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
             <div class="space-y-6">
-                <div class="bg-white p-5 rounded-lg shadow-md">
-                    <h2 class="text-lg font-bold mb-3">➕ 新增建倉</h2>
+                <div class="bg-white p-5 rounded-lg shadow-md" :class="{ 'pp-folded': fold.add }">
+                    <h2 class="pp-fold-head text-lg font-bold mb-3" @click="toggleFold('add')">➕ 新增建倉<span class="pp-chev">▾</span></h2>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                         <input v-model="newPosition.ticker" type="text" placeholder="股票代號 (例: 2330 / AAPL)" class="border p-2 rounded uppercase text-sm w-full">
                         <select v-model="newPosition.market" class="border p-2 rounded text-sm w-full bg-white">
@@ -501,12 +512,12 @@
                         <input v-model="newPosition.source" type="text" list="fundingSources" placeholder="資金來源（券商，例：康和）" class="border p-2 rounded text-sm w-full">
                         <datalist id="fundingSources"><option v-for="n in fundingSourceNames" :key="n" :value="n"></option></datalist>
                     </div>
-                    <p class="text-[11px] text-gray-400 mb-3 leading-relaxed">槓桿倍數是「這一筆」的槓桿：買進金額 ÷ 槓桿算自有資金，其餘計入借款。對已有的部位加碼時只會加上這筆的借款，原有股數的融資條件不受影響。看多與看空是不同部位，同一檔可以各自持有。停損價依每一筆成交價與倍數各自計算（做多：成交價 − 價格÷倍數×虧損上限；做空：成交價 ＋ 價格÷倍數×虧損上限）。細部費率與借款餘額可在庫存卡片內調整。</p>
+                    <p class="pp-help text-[11px] text-gray-400 mb-3 leading-relaxed">槓桿倍數是「這一筆」的槓桿：買進金額 ÷ 槓桿算自有資金，其餘計入借款。對已有的部位加碼時只會加上這筆的借款，原有股數的融資條件不受影響。看多與看空是不同部位，同一檔可以各自持有。停損價依每一筆成交價與倍數各自計算（做多：成交價 − 價格÷倍數×虧損上限；做空：成交價 ＋ 價格÷倍數×虧損上限）。細部費率與借款餘額可在庫存卡片內調整。</p>
                     <button @click="addPosition" class="w-full bg-blue-600 text-white p-2.5 rounded hover:bg-blue-700 font-bold transition text-sm shadow-sm">加入庫存</button>
                 </div>
 
-                <div class="bg-white p-5 rounded-lg shadow-md">
-                    <h2 class="text-lg font-bold mb-3">📦 當前庫存部位</h2>
+                <div class="bg-white p-5 rounded-lg shadow-md" :class="{ 'pp-folded': fold.pos }">
+                    <h2 class="pp-fold-head text-lg font-bold mb-3" @click="toggleFold('pos')">📦 當前庫存部位<span class="pp-chev">▾</span></h2>
                     <div v-if="positions.length === 0" class="text-gray-500 text-sm py-4 text-center border border-dashed rounded">目前無庫存部位。</div>
                     
                     <div v-for="(pos, index) in positions" :key="index" class="border-b pb-5 mb-5 last:border-0 last:mb-0 relative group">
@@ -655,8 +666,8 @@
             </div>
 
             <div class="space-y-6">
-                <div class="bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500">
-                    <h2 class="text-lg font-bold mb-3">⚖️ 加碼 / 攤平試算器</h2>
+                <div class="bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500" :class="{ 'pp-folded': fold.calc }">
+                    <h2 class="pp-fold-head text-lg font-bold mb-3" @click="toggleFold('calc')">⚖️ 加碼 / 攤平試算器<span class="pp-chev">▾</span></h2>
                     <div v-if="calc.selectedTicker" class="bg-indigo-50 p-3 rounded mb-3 border border-indigo-100 text-sm">
                         <p class="font-bold text-indigo-800 text-base mb-0.5">正在試算: {{ calc.selectedTicker }}（{{ calc.dir === 'short' ? '看空' : '看多' }}）</p>
                         <p class="text-xs text-indigo-600">原持有股數: {{ calc.currentShares }} | 原均價: {{ calc.currentPrice }}</p>
@@ -779,7 +790,7 @@
                                     </tbody>
                                 </table>
                             </div>
-                            <p class="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                            <p class="pp-help text-[10px] text-gray-400 mt-2 leading-relaxed">
                                 兩案的名目曝險與淨資產相同，差別在於：槓桿少付 {{ formatNumber(addCompare.cash.cashNeed - addCompare.lev.cashNeed) }} 現金保留彈性，
                                 但換來每年 {{ formatNumber(addCompare.lev.carryAdd) }} 的持有成本，以及跌破下限價時被強制收回的風險。
                                 <template v-if="calc.dir === 'short'">庫存費率沿用此部位設定的 {{ Number(positions[calc.selectedIndex] && positions[calc.selectedIndex].carryFee) || 0 }}%／年。</template>
@@ -808,7 +819,7 @@
                             <div>
                                 <label class="block text-xs font-semibold text-gray-600 mb-1">預計持有天數</label>
                                 <input v-model.number="calc.holdDays" type="number" min="0" step="1" class="border p-2 rounded w-full bg-gray-50 focus:bg-white text-sm">
-                                <p class="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
+                                <p class="pp-help text-[10px] text-gray-400 mt-1.5 leading-relaxed">
                                     期間成本 {{ formatNumber(targetSim.costs.fixed) }} TWD
                                     <template v-if="targetSim.costs.fixed > 0">（<template v-if="targetSim.costs.stockCarry > 0">原部位借款利息 {{ formatNumber(targetSim.costs.stockCarry) }}</template><template v-if="targetSim.costs.addCarry > 0">{{ targetSim.costs.stockCarry > 0 ? ' ＋ ' : '' }}{{ targetSim.optMode ? '加碼庫存費' : '加碼借款利息' }} {{ formatNumber(targetSim.costs.addCarry) }}</template><template v-if="targetSim.costs.buyFee > 0">{{ targetSim.costs.stockCarry + targetSim.costs.addCarry > 0 ? ' ＋ ' : '' }}{{ targetSim.optMode ? '買進作業處理費' : '買進手續費' }} {{ formatNumber(targetSim.costs.buyFee) }}</template>）</template>，
                                     表中損益已全數扣除；出場{{ targetSim.optMode ? '作業處理費' : '' }}{{ targetSim.optMode && targetSim.exitCostPct > 0 ? '與現股' : '' }}{{ targetSim.exitCostPct > 0 ? '手續費、證交稅' : '' }}依出場價另計。
@@ -838,7 +849,7 @@
                                     <input v-model.number="optCfg.stockTaxPct" type="number" step="0.01" min="0" class="border p-1.5 rounded w-full bg-gray-50 text-sm" @change="saveData">
                                 </div>
                             </div>
-                            <p v-if="targetSim.optMode" class="text-[10px] text-gray-400 px-3 pb-2 leading-relaxed">
+                            <p v-if="targetSim.optMode" class="pp-help text-[10px] text-gray-400 px-3 pb-2 leading-relaxed">
                                 槓桿倍數即上方「倍數」欄（預設 2.5，由下限價 1,472 = 1,840 × 0.8 反推，請以成交單確認）。庫存費率以康和官網公告為準（契約範例為 3.5%）。
                             </p>
                         </details>
@@ -968,7 +979,7 @@
                                 </tbody>
                             </table>
                         </div>
-                        <p class="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                        <p class="pp-help text-[10px] text-gray-400 mt-2 leading-relaxed">
                             <template v-if="targetSim.optMode">
                                 加碼部位為康和新金鑽「自訂槓桿股權選擇權（買權）」：每股權利金 ＝ 加碼價 ÷ {{ targetSim.terms.lev }}，履約價 ＝ 加碼價 − 每股權利金，下限價 ＝ 履約價 ＋ 每股權利金 × 50%。
                                 庫存費以名目全額 × {{ targetSim.terms.carryPct }}% × {{ targetSim.days }} ÷ 365 計，作業處理費買賣各 {{ targetSim.terms.handlePct }}%，無證交稅；加碼部位最多損失權利金總額加上全部費用。
@@ -984,9 +995,9 @@
                     <button @click="executeAddOn" v-if="calc.selectedTicker" class="w-full mt-4 bg-indigo-600 text-white p-2.5 rounded hover:bg-indigo-700 font-bold text-base transition shadow-sm">確認執行加碼 (寫入庫存與明細)</button>
                 </div>
 
-                <div id="convertCard" class="bg-white p-5 rounded-lg shadow-md border-t-4 border-amber-500">
-                    <h2 class="text-lg font-bold mb-1">🔄 現股轉槓桿試算</h2>
-                    <p class="text-[11px] text-gray-500 mb-3">賣出一部分現股，把拿回的錢轉成新金鑽等槓桿部位，先預覽倍數、股數、停損價與整體槓桿。</p>
+                <div id="convertCard" class="bg-white p-5 rounded-lg shadow-md border-t-4 border-amber-500" :class="{ 'pp-folded': fold.convert }">
+                    <h2 class="pp-fold-head text-lg font-bold mb-1" @click="toggleFold('convert')">🔄 現股轉槓桿試算<span class="pp-chev">▾</span></h2>
+                    <p class="pp-help text-[11px] text-gray-500 mb-3">賣出一部分現股，把拿回的錢轉成新金鑽等槓桿部位，先預覽倍數、股數、停損價與整體槓桿。</p>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                         <div class="sm:col-span-2">
                             <label class="block text-xs font-semibold text-gray-600 mb-1">要轉換的部位</label>
@@ -1076,7 +1087,7 @@
                                 </tbody>
                             </table>
                         </div>
-                        <p class="text-[10px] text-gray-500 mt-2 leading-relaxed">
+                        <p class="pp-help text-[10px] text-gray-500 mt-2 leading-relaxed">
                             整體槓桿＝{{ convertSim.pos.ticker }} 所有看多部位以 {{ formatNumber(convertSim.P) }} 計的市值 ÷（市值 − 借款）；持股水位＝全組合曝險 ÷ 淨資產。
                             停損價依新金鑽公式：成交價 −（價格 ÷ 倍數）× {{ posLossPct(convertSim.pos) }}%。金額為原幣，未計手續費與交易稅。
                         </p>
@@ -1129,7 +1140,7 @@
                                     </tbody>
                                 </table>
                             </div>
-                            <p class="text-[10px] text-gray-500 mt-2 leading-relaxed">
+                            <p class="pp-help text-[10px] text-gray-500 mt-2 leading-relaxed">
                                 <template v-if="convertSim.scen.fromCost">損益以原成本 {{ formatNumber(convertSim.pos.price) }} 計算整個部位的總損益（轉換後含賣出時已實現的 {{ formatNumber(convertSim.realized) }}），百分比以原投入成本 {{ formatNumber(convertSim.scen.baseCapital) }} 為本金。</template>
                                 <template v-else>損益從現在（{{ formatNumber(convertSim.P) }}）起算，百分比以部位目前市值 {{ formatNumber(convertSim.scen.baseCapital) }} 為本金。</template>
                                 轉換後已扣 {{ convertSim.scen.days }} 天庫存費約 {{ formatNumber(convertSim.scen.carry) }}，損益兩平價約 {{ formatNumber(convertSim.scen.be) }}；
@@ -1145,9 +1156,9 @@
                     <div v-else-if="conv.index !== null" class="text-gray-400 text-xs p-3 border border-dashed rounded text-center">輸入賣出股數就會出現預覽</div>
                 </div>
 
-                <div ref="histCard" class="bg-white p-5 rounded-lg shadow-md max-h-[500px] overflow-y-auto">
-                    <div class="flex items-center justify-between mb-3">
-                        <h2 class="text-lg font-bold">📜 歷次交易明細帳</h2>
+                <div ref="histCard" class="bg-white p-5 rounded-lg shadow-md max-h-[500px] overflow-y-auto" :class="{ 'pp-folded': fold.hist }">
+                    <div class="pp-fold-head flex items-center justify-between mb-3">
+                        <h2 class="text-lg font-bold flex-1" @click="toggleFold('hist')">📜 歷次交易明細帳<span class="pp-chev">▾</span></h2>
                         <button v-if="!adj.open" @click="openAdj()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded font-semibold">＋ 補登已實現損益</button>
                     </div>
                     <div v-if="adj.open" class="border border-amber-300 bg-amber-50 rounded p-3 mb-3 text-xs space-y-2">
@@ -1259,9 +1270,9 @@
         </div>
 
         <!-- ══════ 價格 × 股數 損益矩陣 ══════ -->
-        <div v-if="mxGroups.length" class="bg-white p-4 sm:p-5 rounded-lg shadow-md border-t-4 border-red-400 mt-6 md:mt-8">
-            <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-3">
-                <h2 class="text-lg font-bold">📊 價格 × 股數 損益矩陣</h2>
+        <div v-if="mxGroups.length" class="bg-white p-4 sm:p-5 rounded-lg shadow-md border-t-4 border-red-400 mt-6" :class="{ 'pp-folded': fold.matrix }">
+            <div class="pp-fold-head flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-3" @click="toggleFold('matrix')">
+                <h2 class="text-lg font-bold">📊 價格 × 股數 損益矩陣<span class="pp-chev">▾</span></h2>
                 <span class="text-[11px] text-gray-400">同一檔的現股與槓桿單合併計算，金額為{{ mxSim && mxSim.group.market === 'US' ? ' USD' : ' TWD' }}</span>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-3 text-xs">
@@ -1330,7 +1341,7 @@
                 </table>
             </div>
             <p v-else class="text-gray-400 text-sm p-4 border border-dashed rounded text-center">請確認價格與股數的起迄、間距（間距需大於 0）。</p>
-            <p v-if="mxSim" class="text-[10px] text-gray-400 mt-2 leading-relaxed">
+            <p v-if="mxSim" class="pp-help text-[10px] text-gray-400 mt-2 leading-relaxed">
                 損益 ＝（價格 − 成本均價 {{ formatNumber(mx.cost) }}）× 股數{{ mxSim.exitCostPct > 0 ? '，並扣出場手續費 ' + optCfg.stockFeePct + '%' + (mxSim.group.dir === 'short' ? '' : '＋證交稅 ' + optCfg.stockTaxPct + '%') : '' }}。
                 紅字欄為目前持股 {{ formatNumber(mxSim.group.shares) }} 股，紫字列為最接近現價 {{ formatNumber(mxSim.group.currentPrice) }} 的價位；底色越深代表{{ mxSim.maxAbs > 0 ? '獲利（紅）或虧損（綠）' : '' }}越大。
                 未計庫存費／借款利息，槓桿單也以線性損益計（未套用強制收回與權利金全賠上限），細部請用上方目標價模擬。
@@ -1339,9 +1350,9 @@
         </div>
 
         <!-- ══════ 強制收回後重新承作試算 ══════ -->
-        <div class="bg-white p-4 sm:p-5 rounded-lg shadow-md border-t-4 border-amber-500 mt-6 md:mt-8">
-            <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-3">
-                <h2 class="text-lg font-bold">🧯 強制收回後重新承作試算</h2>
+        <div class="bg-white p-4 sm:p-5 rounded-lg shadow-md border-t-4 border-amber-500 mt-6" :class="{ 'pp-folded': fold.rebuy }">
+            <div class="pp-fold-head flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-3" @click="toggleFold('rebuy')">
+                <h2 class="text-lg font-bold">🧯 強制收回後重新承作試算<span class="pp-chev">▾</span></h2>
                 <span class="text-[11px] text-gray-400">新金鑽被強制收回後，要補多少錢才能把同樣股數買回來</span>
             </div>
 
@@ -1478,7 +1489,7 @@
             </template>
             <p v-else class="text-gray-400 text-sm p-4 border border-dashed rounded text-center">請輸入原成交價、原股數與槓桿倍數（需大於 1）。</p>
 
-            <p class="text-[10px] text-gray-400 mt-2 leading-relaxed">
+            <p class="pp-help text-[10px] text-gray-400 mt-2 leading-relaxed">
                 拿回金額 ＝ max(結算價 − 履約價, 0) × N − 賣出處理費 − 已累積庫存費（名目 P0 × N × 費率 × 天數 ÷ 365）；
                 需補款 ＝ 新權利金（R ÷ L1 × N1）＋ 買進處理費 − 拿回金額。實際結算價為隔日最低第一委買，重新承作有買賣價差，結果僅供試算。
             </p>
@@ -1520,9 +1531,17 @@
             u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
         ];
 
+        // 區塊收合狀態（每台裝置各自記住）；較少用的試算工具預設收起
+        function loadFold() {
+            const def = { risk: false, add: false, pos: false, calc: false, convert: true, hist: false, matrix: true, rebuy: true };
+            try { return Object.assign(def, JSON.parse(localStorage.getItem('pp_re_fold') || '{}')); } catch (e) { return def; }
+        }
+
         createApp({
             data() {
                 return {
+                    fold: loadFold(),
+                    showHelp: (() => { try { return localStorage.getItem('pp_re_help') === '1'; } catch (e) { return false; } })(),
                     exchangeRate: 32.50,
                     newPosition: { ticker: '', market: 'TW', dir: 'long', shares: null, price: null, lev: null, carryFee: null, source: '' },
                     positions: [],
@@ -2183,6 +2202,7 @@
                 }
             },
             mounted() {
+                document.body.classList.toggle('pp-show-help', this.showHelp);
                 this.loadData();
                 this.mxEnsure();
                 if (!this.rb.P0 && this.rbSources.length) this.rbPick(this.rbSources[0].key);
@@ -2201,6 +2221,19 @@
                 }
             },
             methods: {
+                toggleFold(k) {
+                    this.fold[k] = !this.fold[k];
+                    try { localStorage.setItem('pp_re_fold', JSON.stringify(this.fold)); } catch (e) {}
+                },
+                // 從其他卡片跳進某個工具時，確保該區塊是展開的
+                unfold(k) {
+                    if (this.fold[k]) this.toggleFold(k);
+                },
+                toggleHelp() {
+                    this.showHelp = !this.showHelp;
+                    document.body.classList.toggle('pp-show-help', this.showHelp);
+                    try { localStorage.setItem('pp_re_help', this.showHelp ? '1' : '0'); } catch (e) {}
+                },
                 generateId() {
                     return Date.now().toString() + Math.random().toString(36).substr(2, 5);
                 },
@@ -2296,6 +2329,7 @@
                     this.conv.sellPrice = pos ? (pos.currentPrice || pos.price) : null;
                     this.conv.buyPrice = null;
                     this.conv.sellShares = null;
+                    this.unfold('convert');
                     this.$nextTick && this.$nextTick(() => {
                         const el = document.getElementById('convertCard');
                         if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2414,6 +2448,7 @@
                     } else {
                         this.adj = { open: true, editId: null, ticker: '', market: 'TW', dir: 'long', date: this.todayStr(), shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '' };
                     }
+                    this.unfold('hist');
                     // 表單在明細卡最上方，從下面點「修改」時要捲回去
                     if (this.$refs.histCard) this.$refs.histCard.scrollTop = 0;
                 },
@@ -2859,6 +2894,7 @@
                     if (this.calc.useLev && !this.calc.addLev) this.calc.addLev = 2.5;
                 },
                 selectForCalc(pos) {
+                    this.unfold('calc');
                     const index = this.positions.indexOf(pos);
                     this.calc.selectedIndex = index;
                     this.calc.dir = pos.dir === 'short' ? 'short' : 'long';

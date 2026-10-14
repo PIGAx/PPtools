@@ -82,12 +82,27 @@
   }
   .nav-icon { width: 22px; text-align: center; font-size: 16px; flex-shrink: 0; }
 
-  .sidebar-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--stroke);
-    font-size: 11px;
-    color: var(--text-muted);
-    opacity: .6;
+  /* ── 桌面版收合：只留圖示的窄欄 ── */
+  .sidebar { transition: transform .32s cubic-bezier(.32, .72, .28, 1), width .22s ease; overflow: hidden; }
+  .nav-label { white-space: nowrap; overflow: hidden; }
+  .brand-mini { display: none; }
+  @media (min-width: 769px) {
+    body.nav-collapsed { --sidebar-w: 64px; }
+    body.nav-collapsed .sidebar-brand { padding: 20px 0 10px; text-align: center; }
+    body.nav-collapsed .sidebar-brand h1, body.nav-collapsed .sidebar-brand p { display: none; }
+    body.nav-collapsed .brand-mini { display: block; }
+    body.nav-collapsed .sidebar-nav { padding: 4px 8px 12px; }
+    body.nav-collapsed .nav-section { font-size: 0; padding: 10px 6px 6px; }
+    body.nav-collapsed .nav-section::before { content: ''; display: block; border-top: 1px solid var(--stroke); }
+    body.nav-collapsed .nav-section:first-child::before { border-top: none; }
+    body.nav-collapsed .nav-item { justify-content: center; padding: 10px 0; gap: 0; }
+    body.nav-collapsed .nav-label { display: none; }
+  }
+  .brand-mini {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--accent);
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
   }
 
   /* ── 主區域 ── */
@@ -103,7 +118,7 @@
     flex-shrink: 0;
   }
   .menu-btn {
-    display: none;
+    display: block;
     background: none;
     border: none;
     color: var(--text);
@@ -301,19 +316,17 @@
     <div class="sidebar-brand">
       <h1>PPtools</h1>
       <p>個人投資工具平台</p>
+      <div class="brand-mini" title="PPtools">PP</div>
     </div>
     <nav class="sidebar-nav" id="sidebarNav">
       <!-- Populated by JS -->
     </nav>
-    <div class="sidebar-footer">
-      新增模組：編輯 modules 陣列
-    </div>
   </aside>
 
   <!-- 主區域 -->
   <div class="main">
     <header class="header glass">
-      <button class="menu-btn" onclick="toggleSidebar()" aria-label="開啟選單">&#9776;</button>
+      <button class="menu-btn" onclick="toggleSidebar()" aria-label="收合／展開選單" title="收合／展開選單">&#9776;</button>
       <span class="header-title" id="headerTitle">市場指標</span>
       <div class="header-right">
         <button class="btn btn-sm" onclick="openDataHub()" id="syncBtn" title="資料中心">☁ 同步</button>
@@ -409,7 +422,8 @@ function buildNav() {
     const item = document.createElement('div');
     item.className = 'nav-item';
     item.dataset.id = m.id;
-    item.innerHTML = `<span class="nav-icon">${m.icon}</span> ${m.title}`;
+    item.title = m.title;
+    item.innerHTML = `<span class="nav-icon">${m.icon}</span><span class="nav-label">${m.title}</span>`;
     item.onclick = () => loadModule(m);
     nav.appendChild(item);
   });
@@ -434,10 +448,18 @@ function loadModule(mod) {
   document.getElementById('sidebarOverlay').classList.remove('open');
 }
 
+const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
 function toggleSidebar() {
+  if (!isMobile()) {
+    // 桌面版：收合成只有圖示的窄欄，並記住偏好
+    const collapsed = document.body.classList.toggle('nav-collapsed');
+    try { localStorage.setItem('pp_nav_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+    return;
+  }
   document.getElementById('sidebar').classList.toggle('open');
   document.getElementById('sidebarOverlay').classList.toggle('open');
 }
+try { if (localStorage.getItem('pp_nav_collapsed') === '1') document.body.classList.add('nav-collapsed'); } catch (e) {}
 
 // ── 主題：引擎在 pp-theme.js，storage 事件會同步到 iframe 內的模組 ──
 const THEME_LABEL = { system: '⚙ 系統', light: '☀ 淺色', dark: '☾ 深色' };
