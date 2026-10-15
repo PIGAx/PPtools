@@ -65,7 +65,7 @@ const statePath = env.STOP_ALERT_STATE || '.stop-alert-state.json';
 const state = await readState(statePath);
 const quoteDay = a => a.market === 'US'
   ? String(((quotes.us || {})[a.ticker] || {}).asOf || quotes.generatedAt || '').slice(0, 10)
-  : String((quotes.tw && quotes.tw.date) || '');
+  : String(((quotes.tw && quotes.tw.marketDates) || {})[((quotes.tw.stocks || {})[a.ticker] || {}).market] || (quotes.tw && quotes.tw.date) || '');
 const fresh = alerts.filter(a => {
   const prev = state[A.alertKey(a)];
   return !prev || prev.day !== quoteDay(a) || (prev.level !== 'hit' && a.level === 'hit');

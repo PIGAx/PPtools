@@ -3088,7 +3088,7 @@
                         if (q && q.price > 0) pos.currentPrice = Math.round(q.price * 100) / 100;
                     }
                     res.quotes.forEach((q, k) => {
-                        if (q.price > 0) this.tickerQuotes[k] = { price: Math.round(q.price * 100) / 100, at: Date.now(), source: q.source, name: q.name || (this.tickerQuotes[k] || {}).name || '' };
+                        if (q.price > 0) this.tickerQuotes[k] = { price: Math.round(q.price * 100) / 100, at: Date.now(), source: q.source, date: q.date || null, name: q.name || (this.tickerQuotes[k] || {}).name || '' };
                     });
                     this.lastQuoteAt = Date.now();
                     this.quoteStatus = PPQuotes.statusText(res);
@@ -3185,6 +3185,15 @@
                 },
                 /* ── 停損預警通知 ── */
                 alertKey(a) { return PPStopAlert.alertKey(a); },
+                // 通知裡標示所用報價的資料日期，例「報價日 10/15（即時）」
+                alertQuoteNote(alerts) {
+                    const tags = new Set();
+                    alerts.forEach(a => {
+                        const q = this.tickerQuotes[PPQuotes.keyOf(a.ticker, a.market)];
+                        if (q && q.date) tags.add(q.date.slice(5).replace('-', '/') + (q.source === 'close' ? '（收盤價）' : '（即時）'));
+                    });
+                    return tags.size ? '報價日 ' + [...tags].sort().join('、') : '';
+                },
                 describeAlert(a) { return PPStopAlert.describe(a); },
                 loadTgCfg() {
                     try { Object.assign(this.tgCfg, JSON.parse(localStorage.getItem('pptools-stop-alert') || '{}').cfg || {}); }
@@ -3203,7 +3212,7 @@
                     this.tgStatus = '傳送中…';
                     try {
                         const text = this.stopAlerts.length
-                            ? PPStopAlert.formatMessage(this.stopAlerts, { alertPct: this.alertPct, note: '（測試訊息）' })
+                            ? PPStopAlert.formatMessage(this.stopAlerts, { alertPct: this.alertPct, note: ['（測試訊息）', this.alertQuoteNote(this.stopAlerts)].filter(Boolean).join(' ') })
                             : '✅ PPtools 停損通知測試成功，目前沒有緩衝低於 ' + this.alertPct + '% 的槓桿部位。';
                         await PPStopAlert.sendTelegram(this.tgCfg.token, this.tgCfg.chatId, text);
                         this.tgStatus = '測試訊息已送出';
@@ -3219,7 +3228,7 @@
                     const fresh = alerts.filter(a => { const k = this.alertKey(a); return !sent[k] || (sent[k] !== 'hit' && a.level === 'hit'); });
                     if (!fresh.length) return;
                     try {
-                        await PPStopAlert.sendTelegram(this.tgCfg.token, this.tgCfg.chatId, PPStopAlert.formatMessage(fresh, { alertPct: this.alertPct }));
+                        await PPStopAlert.sendTelegram(this.tgCfg.token, this.tgCfg.chatId, PPStopAlert.formatMessage(fresh, { alertPct: this.alertPct, note: this.alertQuoteNote(fresh) }));
                         fresh.forEach(a => { sent[this.alertKey(a)] = a.level; });
                         const st2 = this.tgStore();
                         st2.sent = { date: today, keys: sent };

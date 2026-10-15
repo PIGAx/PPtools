@@ -54,7 +54,8 @@
         }
         if (price == null || isNaN(price)) throw new Error('no price');
         const prev = meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose;
-        return { price: Number(price), prevClose: prev != null ? Number(prev) : null };
+        const date = meta.regularMarketTime ? new Date((meta.regularMarketTime + (meta.gmtoffset || 0)) * 1000).toISOString().slice(0, 10) : null;
+        return { price: Number(price), prevClose: prev != null ? Number(prev) : null, date };
     }
 
     let snapPromise = null;
@@ -81,7 +82,7 @@
         return {
             price: s.close,
             prevClose: s.change != null ? Math.round((s.close - s.change) * 10000) / 10000 : null,
-            date: snap.tw.date, name: s.name, exchange: s.market
+            date: (snap.tw.marketDates && snap.tw.marketDates[s.market]) || snap.tw.date, name: s.name, exchange: s.market
         };
     }
 
@@ -218,16 +219,29 @@
 
     function quoteFor(result, pos) { return result.quotes.get(keyOf(pos.ticker, pos.market)) || null; }
 
-    // 狀態列文字：例「報價已更新 (13:05)，7828 用 10/14 收盤價；抓不到：XYZ」
+    // 報價資料日期摘要：例「台股 10/15、美股 10/14」，日期一致就只寫一個
+    const mmdd = d => String(d).slice(5).replace('-', '/');
+    function quoteDates(result, keys) {
+        const by = { TW: new Set(), US: new Set() };
+        result.quotes.forEach((q, k) => {
+            if (keys && !keys.includes(k)) return;
+            if (q.date) by[k.startsWith('US:') ? 'US' : 'TW'].add(q.date);
+        });
+        const part = (label, set) => set.size ? label + ' ' + [...set].sort().map(mmdd).join('／') : '';
+        return [part('台股', by.TW), part('美股', by.US)].filter(Boolean).join('、');
+    }
+
+    // 狀態列文字：例「報價已更新 (13:05)・報價日 台股 10/15；即時報價抓不到、改用收盤價：7828（10/14）」
     function statusText(result, positions) {
         const time = new Date().toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
         const closeOnly = [];
-        result.quotes.forEach((q, k) => { if (q.source === 'close') closeOnly.push(k.split(':')[1] + (q.date ? '（' + q.date.slice(5).replace('-', '/') + '）' : '')); });
-        let msg = '報價已更新 (' + time + ')';
+        result.quotes.forEach((q, k) => { if (q.source === 'close') closeOnly.push(k.split(':')[1] + (q.date ? '（' + mmdd(q.date) + '）' : '')); });
+        const dates = quoteDates(result);
+        let msg = '報價已更新 (' + time + ')' + (dates ? '・報價日 ' + dates : '');
         if (closeOnly.length) msg += '，即時報價抓不到、改用收盤價：' + closeOnly.join('、');
         if (result.failed.length) msg += '；完全抓不到：' + result.failed.join('、');
         return msg;
     }
 
-    root.PPQuotes = { fetchQuotes, history, tradingViewSymbol, quoteFor, statusText, yahooQuote, fetchJsonViaProxy, keyOf };
+    root.PPQuotes = { fetchQuotes, history, tradingViewSymbol, quoteFor, statusText, quoteDates, yahooQuote, fetchJsonViaProxy, keyOf };
 })(typeof window !== 'undefined' ? window : globalThis);
