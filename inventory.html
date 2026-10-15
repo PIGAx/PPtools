@@ -66,29 +66,37 @@ section{margin-top:20px}
 .sorter{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .sortbtn{border:1px solid var(--stroke);background:var(--glass);color:var(--text-muted);border-radius:var(--radius-sm);padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit}
 .sortbtn[aria-pressed="true"]{color:var(--accent);border-color:var(--accent);background:var(--accent-light)}
-.holding{border-bottom:1px solid var(--stroke);padding:12px 14px;cursor:pointer}
+.hold-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px 8px}
+.hold-head .sorter{margin:0}
+/* 一檔一列：標的｜現價｜股數｜今日｜總損益，下方細長條為損益佔比 */
+.hrow{display:grid;grid-template-columns:minmax(150px,2fr) 1fr 1fr 1.5fr 1.4fr;gap:10px;align-items:center}
+.hrow>span:not(:first-child){text-align:right}
+.hcols{padding:0 14px 6px;font-size:10px;color:var(--text-muted);border-bottom:1px solid var(--stroke)}
+.h-cell{font-size:12.5px}
+.h-cell small{display:block;font-size:10px;color:var(--text-muted)}
+.holding{border-bottom:1px solid var(--stroke);padding:7px 14px 6px;cursor:pointer}
 .holding:last-child{border-bottom:0}
 .holding:hover{background:var(--surface-alt)}
 .h-top{display:flex;align-items:flex-start;gap:10px}
-.h-name{font-weight:700;font-size:15px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.h-name{font-weight:700;font-size:13px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .h-ticker{font-size:11px;color:var(--text-muted);letter-spacing:.3px}
 .h-right{margin-left:auto;text-align:right}
-.h-total{font-size:17px;font-weight:700;line-height:1.2}
-.h-pct{font-size:12px}
+.h-total{font-size:13.5px;font-weight:700;line-height:1.2}
+.h-pct{font-size:10.5px}
 .h-meta{display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--text-muted);flex-wrap:wrap}
 .h-meta b{color:var(--text);font-weight:600}
-.bar{height:6px;border-radius:3px;background:var(--surface-alt);margin-top:10px;position:relative;overflow:hidden}
+.bar{height:3px;border-radius:2px;background:var(--surface-alt);margin-top:5px;position:relative;overflow:hidden}
 .bar i{position:absolute;top:0;bottom:0;display:block;border-radius:3px}
 .bar .zero{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--stroke)}
-.h-detail{margin-top:10px;padding-top:10px;border-top:1px dashed var(--stroke);display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px 12px;font-size:11px}
+.h-detail{margin-top:8px;padding-top:8px;border-top:1px dashed var(--stroke);display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px 12px;font-size:11px}
 .h-detail .k{color:var(--text-muted)}
 .h-detail .v{font-weight:700;font-size:13px;margin-top:1px}
 
 /* ── 槓桿 ── */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:1px;background:var(--stroke);border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--glass-border)}
-.kpi{background:var(--glass);padding:11px 12px}
+.kpi{background:var(--glass);padding:8px 10px}
 .kpi .k{font-size:11px;color:var(--text-muted);letter-spacing:.5px}
-.kpi .v{font-size:18px;font-weight:700;margin-top:2px}
+.kpi .v{font-size:15px;font-weight:700;margin-top:1px}
 .kpi .s{font-size:10px;color:var(--text-muted);opacity:.8}
 .stack{height:26px;border-radius:var(--radius-sm);overflow:hidden;display:flex;border:1px solid var(--stroke);background:var(--surface-alt)}
 .stack div{display:grid;place-items:center;font-size:10px;font-weight:700;color:#141410;white-space:nowrap;overflow:hidden}
@@ -101,9 +109,9 @@ input[type=range]{width:100%;accent-color:var(--accent);height:24px}
 .cal-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .cal-title{font-weight:700;font-size:14px}
 .tblwrap{overflow-x:auto}
-table.cal{width:100%;min-width:580px;border-collapse:separate;border-spacing:3px}
+table.cal{width:100%;min-width:420px;border-collapse:separate;border-spacing:2px}
 table.cal th{font-size:10px;color:var(--text-muted);font-weight:500;padding-bottom:2px;white-space:nowrap}
-table.cal td{height:52px;vertical-align:top;border-radius:var(--radius-sm);background:var(--surface-alt);padding:4px 5px;border:1px solid transparent}
+table.cal td{height:40px;vertical-align:top;border-radius:var(--radius-sm);background:var(--surface-alt);padding:4px 5px;border:1px solid transparent}
 table.cal td.empty{background:transparent}
 table.cal td.wk{background:transparent;border:1px dashed var(--stroke)}
 table.cal .d{font-size:10px;color:var(--text-muted)}
@@ -114,13 +122,33 @@ table.cal td.today{border-color:var(--accent)}
 .chart{width:100%;height:auto;display:block}
 .cap{font-size:11px;color:var(--text-muted);margin-top:6px}
 .switch{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);cursor:pointer}
-table.edit{width:100%;border-collapse:collapse;min-width:560px}
+table.edit{width:100%;border-collapse:collapse;min-width:420px}
 table.edit th{font-size:10px;color:var(--text-muted);text-align:left;font-weight:500;padding:6px;border-bottom:1px solid var(--stroke);white-space:nowrap}
 table.edit td{padding:4px 6px;border-bottom:1px solid var(--stroke);white-space:nowrap}
-table.edit input{width:100%;min-width:92px}
+table.edit input{width:100%;min-width:76px}
 table.edit input.num{text-align:right;font-family:'SF Mono','Menlo','Consolas',monospace}
 table.edit tr.odd td{background:color-mix(in srgb,var(--red) 7%,transparent)}
 .settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+/* 下半部：兩張卡片並排，標題放在卡片內（同最上方的圖表列） */
+.duo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+@media(max-width:860px){.duo{grid-template-columns:minmax(0,1fr)}}
+.card-head{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+.nh-scroll{max-height:300px;overflow-y:auto}
+.stress-out .st-full{grid-column:1 / -1}
+.stress-out .st-full .v{font-size:13px}
+/* 卡片內的輸入框縮小 */
+table.edit .pp-field,.duo .settings .pp-field{padding:4px 8px;font-size:12px}
+table.edit td{padding:3px 4px}
+table.edit .btn{padding:3px 8px;font-size:11px}
+.nh-scroll thead th{position:sticky;top:0;background:var(--surface)}
+@media(max-width:640px){
+  .hrow{grid-template-columns:1fr auto;row-gap:2px}
+  .hcols{display:none}
+  .hrow .h-cell:nth-child(2),.hrow .h-cell:nth-child(3){display:none}
+  .hrow .h-cell:nth-child(4){grid-column:1;grid-row:2;text-align:left!important}
+  .hrow .h-cell:nth-child(4) small{display:inline;margin-left:6px}
+  .hrow .h-cell:nth-child(5){grid-row:1 / span 2;grid-column:2}
+}
 .field{display:grid;gap:4px}
 .field label{font-size:10px;color:var(--text-muted);letter-spacing:.5px}
 .field input{width:100%}
@@ -192,28 +220,31 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
   </section>
 
   <section id="sec-holdings">
-    <div class="sec-head"><div class="sec-title">持股明細</div><div class="sec-note">點一列展開成本、槓桿與停損資訊</div></div>
-    <div class="sorter" id="sorter"></div>
-    <div class="panel" id="holdings"></div>
-    <div class="cap">長條為各檔總損益佔整體絕對損益的比重，紅漲綠跌（台股慣例）。部位增刪請到「部位控管」。</div>
-  </section>
-
-  <section id="sec-leverage">
-    <div class="sec-head"><div class="sec-title">槓桿與風險</div><div class="sec-note" id="callMode">—</div></div>
-    <div class="kpis" id="levKpis"></div>
-    <div class="panel pad" style="margin-top:12px">
-      <div class="hero-label" style="margin-bottom:8px">資金結構（市值 ＝ 自有權益 ＋ 借款負債）</div>
-      <div class="stack" id="capStack"></div>
-      <div class="cap" id="capCap">—</div>
-      <div class="hero-label" style="margin:16px 0 4px">壓力測試：全倉下跌 <b class="num" id="stressPctOut">15%</b></div>
-      <input type="range" id="stress" min="0" max="50" step="1" value="15" aria-label="壓力測試下跌幅度">
-      <div class="stress-out" id="stressOut"></div>
+    <div class="panel">
+      <div class="hold-head">
+        <span class="hero-label">持股明細</span>
+        <div class="sorter" id="sorter"></div>
+        <span class="sec-note">點一列展開成本、槓桿與停損 · 部位增刪請到「部位控管」</span>
+      </div>
+      <div class="hrow hcols" aria-hidden="true"><span>標的</span><span>現價</span><span>股數</span><span>今日</span><span>總損益</span></div>
+      <div id="holdings"></div>
     </div>
   </section>
 
-  <section id="sec-calendar">
-    <div class="sec-head"><div class="sec-title">報酬日曆</div><div class="sec-note">由每日淨值紀錄推算，已扣掉當日新增／減少的成本</div></div>
-    <div class="panel pad">
+  <!-- 槓桿與風險 ｜ 報酬日曆 -->
+  <section class="duo">
+    <div class="panel pad" id="sec-leverage">
+      <div class="card-head"><span class="hero-label">槓桿與風險</span><span class="sec-note" id="callMode">—</span></div>
+      <div class="kpis" id="levKpis"></div>
+      <div class="hero-label" style="margin:12px 0 6px">資金結構（市值 ＝ 自有權益 ＋ 借款負債）</div>
+      <div class="stack" id="capStack"></div>
+      <div class="cap" id="capCap">—</div>
+      <div class="hero-label" style="margin:12px 0 2px">壓力測試：全倉下跌 <b class="num" id="stressPctOut">15%</b></div>
+      <input type="range" id="stress" min="0" max="50" step="1" value="15" aria-label="壓力測試下跌幅度">
+      <div class="stress-out" id="stressOut"></div>
+    </div>
+    <div class="panel pad" id="sec-calendar">
+      <div class="card-head"><span class="hero-label">報酬日曆</span><span class="sec-note">由每日淨值推算，已扣當日新增／減少的成本</span></div>
       <div class="cal-head">
         <button class="btn btn-sm" id="prevM" aria-label="上個月">‹</button>
         <div class="cal-title num" id="calTitle">—</div>
@@ -227,27 +258,25 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
     </div>
   </section>
 
-  <section id="sec-nethistory">
-    <div class="sec-head"><div class="sec-title">淨值紀錄</div><div class="sec-note">日曆、曲線與部位控管的每日淨值走勢都來自這份紀錄，改這裡三邊一起更正</div></div>
-    <div class="panel pad">
-      <div class="tblwrap">
+  <!-- 淨值紀錄 ｜ 風險參數 -->
+  <section class="duo">
+    <div class="panel pad" id="sec-nethistory">
+      <div class="card-head"><span class="hero-label">淨值紀錄</span><span class="sec-note">日曆、曲線與部位控管的淨值走勢都來自這份紀錄</span></div>
+      <div class="tblwrap nh-scroll">
         <table class="edit" id="nhTbl">
           <thead><tr><th>日期</th><th>市值 (TWD)</th><th>投入成本 (TWD)</th><th>當日損益</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
       <div class="btnrow">
-        <button class="btn" id="nhAdd">＋ 新增一天</button>
-        <button class="btn btn-primary" id="nhSave">儲存紀錄</button>
+        <button class="btn btn-sm" id="nhAdd">＋ 新增一天</button>
+        <button class="btn btn-sm btn-primary" id="nhSave">儲存紀錄</button>
         <span class="msg" id="nhMsg"></span>
       </div>
       <div class="cap">標紅底的是明顯偏離中位數的紀錄（多半是誤植），可直接改數字或刪掉整列。</div>
     </div>
-  </section>
-
-  <section id="sec-risk">
-    <div class="sec-head"><div class="sec-title">風險參數</div><div class="sec-note">與部位控管共用 riskCfg，改完按儲存兩邊都會生效</div></div>
-    <div class="panel pad">
+    <div class="panel pad" id="sec-risk">
+      <div class="card-head"><span class="hero-label">風險參數</span><span class="sec-note">與部位控管共用，改完按儲存兩邊都生效</span></div>
       <div class="settings">
         <div class="field"><label for="fxIn">USD/TWD 匯率</label><input class="pp-field num" type="number" id="fxIn" step="0.01"></div>
         <div class="field"><label for="cashIn">可動用現金 (TWD)</label><input class="pp-field num" type="number" id="cashIn" step="1"></div>
@@ -255,7 +284,7 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
         <div class="field"><label for="stressIn">預設壓力測試跌幅 (%)</label><input class="pp-field num" type="number" id="stressIn" step="1"></div>
       </div>
       <div class="btnrow">
-        <button class="btn btn-primary" id="saveBtn">儲存參數</button>
+        <button class="btn btn-sm btn-primary" id="saveBtn">儲存參數</button>
         <span class="msg" id="saveMsg"></span>
       </div>
     </div>
@@ -421,18 +450,19 @@ function renderHoldings(rs,T){
   document.getElementById('holdings').innerHTML=list.map(r=>{
     const w=Math.abs(r.pnl)/maxAbs*50, open=openRow===r.id;
     return '<div class="holding" data-id="'+r.id+'" role="button" tabindex="0" aria-expanded="'+open+'">'+
-      '<div class="h-top"><div><div class="h-name">'+r.name+
-        (r.dir<0?' <span class="tag">看空</span>':'')+(r.borrow>0?' <span class="tag lev">槓桿</span>':'')+(r.market==='US'?' <span class="tag">US</span>':'')+'</div>'+
-        '<div class="h-ticker num">'+r.ticker+' · 市值 '+fmt(r.mv)+'</div></div>'+
-        '<div class="h-right"><div class="h-total num '+cls(r.pnl)+'">'+signed(r.pnl)+'</div>'+
-        '<div class="h-pct num '+cls(r.pnl)+'">'+pct(r.pnlPct)+'</div></div></div>'+
-      '<div class="h-meta"><span>現價 <b class="num">'+r.currentPrice+'</b></span>'+
-        '<span>成本 <b class="num">'+Number(r.price).toFixed(2)+'</b></span>'+
-        '<span>股數 <b class="num">'+fmt(r.shares)+'</b></span>'+
-        '<span>今日 <b class="num '+(r.day===null?'flat':cls(r.day))+'">'+(r.day===null?'待更新報價':signed(r.day)+' / '+pct(r.dayPct))+'</b></span>'+
-        '<span>佔比 <b class="num">'+(T.mv?(r.mv/T.mv*100).toFixed(1):0)+'%</b></span></div>'+
+      '<div class="hrow">'+
+        '<div class="h-cell"><div class="h-name">'+r.name+
+          (r.dir<0?' <span class="tag">看空</span>':'')+(r.borrow>0?' <span class="tag lev">槓桿</span>':'')+(r.market==='US'?' <span class="tag">US</span>':'')+'</div>'+
+          '<small class="num">'+r.ticker+' · 市值 '+fmt(r.mv)+'</small></div>'+
+        '<div class="h-cell num" style="text-align:right">'+r.currentPrice+'</div>'+
+        '<div class="h-cell num" style="text-align:right">'+fmt(r.shares)+'</div>'+
+        '<div class="h-cell num '+(r.day===null?'flat':cls(r.day))+'" style="text-align:right">'+(r.day===null?'<small>待更新報價</small>':signed(r.day)+'<small>'+pct(r.dayPct)+'</small>')+'</div>'+
+        '<div class="h-cell" style="text-align:right"><div class="h-total num '+cls(r.pnl)+'">'+signed(r.pnl)+'</div>'+
+          '<div class="h-pct num '+cls(r.pnl)+'">'+pct(r.pnlPct)+'</div></div>'+
+      '</div>'+
       '<div class="bar"><span class="zero" style="left:50%"></span><i style="background:'+cssv(r.pnl)+';'+(r.pnl>=0?'left:50%;width:'+w+'%':'right:50%;width:'+w+'%')+'"></i></div>'+
       (open?'<div class="h-detail">'+
+        cell('成本均價',Number(r.price).toFixed(2))+cell('市值佔比',(T.mv?(r.mv/T.mv*100).toFixed(1):0)+'%')+
         cell('投入成本',fmt(r.cost))+cell('自有資金',fmt(r.own))+
         cell('借款金額',r.borrow>0?fmt(r.borrow):'—')+
         cell('最低權益比',r.eqRatio!==null?(r.eqRatio*100).toFixed(0)+'%':'—',r.eqRatio!==null&&r.eqRatio<r.trig?'up':'')+
@@ -484,7 +514,7 @@ function renderStress(T){
     ['權益衝擊',T.equity?pct(loss/T.equity):'—',cls(loss)],
     ['槓桿部位權益比',m2!==null?m2.toFixed(0)+'%':'無槓桿',hit?'up':''],
     ['狀態',m2===null?'無停損風險':(hit?'已觸發停損（'+A.hit.map(r=>r.ticker+(r.dir<0?'空':'')).join('、')+'）':'安全'),hit?'up':'down']
-  ].map(k=>'<div><div class="k">'+k[0]+'</div><div class="v num '+k[2]+'">'+k[1]+'</div></div>').join('');
+  ].map((k,i,a)=>'<div'+(i===a.length-1?' class="st-full"':'')+'><div class="k">'+k[0]+'</div><div class="v num '+k[2]+'">'+k[1]+'</div></div>').join('');
 }
 
 /* ── 報酬日曆 ── */
