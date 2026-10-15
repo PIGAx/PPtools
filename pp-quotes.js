@@ -138,12 +138,39 @@
         return { quotes, failed, snapDate: snap && snap.tw && snap.tw.date, fx };
     }
 
-    /* 日線歷史收盤：回傳 { dates: ['YYYY-MM-DD'], closes: [Number], symbol }，range 例 '3mo'、'6mo'、'1y' */
-    async function history(ticker, market, range) {
-        const snap = await loadSnapshot();
-        const t = String(ticker).toUpperCase(), m = market === 'US' ? 'US' : 'TW';
+    /* 日線歷史收盤：回傳 { dates: ['YYYY-MM-DD'], closes: [Number], source }，range 例 '3mo'、'6mo'、'1y'
+       來源依序：FinMind（瀏覽器可直接呼叫，不經代理）→ Yahoo（經代理）→ FinMind（經代理） */
+    const RANGE_DAYS = { '1mo': 31, '3mo': 92, '6mo': 183, '1y': 366, '2y': 731 };
+
+    function finmindUrl(t, m, range) {
+        const start = new Date(Date.now() - (RANGE_DAYS[range] || 183) * 86400000).toISOString().slice(0, 10);
+        const ds = m === 'US' ? 'USStockPrice' : 'TaiwanStockPrice';
+        return 'https://api.finmindtrade.com/api/v4/data?dataset=' + ds + '&data_id=' + encodeURIComponent(t) + '&start_date=' + start;
+    }
+    function parseFinmind(j) {
+        const rows = (j && j.data) || [];
+        const dates = [], closes = [];
+        rows.forEach(r => {
+            const c = r.close != null ? r.close : r.Close;   // 台股欄位 close、美股欄位 Close
+            if (c == null || !r.date) return;
+            dates.push(String(r.date).slice(0, 10));
+            closes.push(Math.round(Number(c) * 100) / 100);
+        });
+        if (!dates.length) throw new Error((j && j.msg) || 'no series');
+        return { dates, closes, source: 'FinMind' };
+    }
+    async function finmindDirect(t, m, range) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+        try {
+            const r = await fetch(finmindUrl(t, m, range), { signal: ctrl.signal });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return parseFinmind(await r.json());
+        } finally { clearTimeout(timer); }
+    }
+    async function yahooHistory(t, m, range, sq) {
         let err = null;
-        for (const sym of yahooSymbols(t, m, snapQuote(snap, t, m))) {
+        for (const sym of yahooSymbols(t, m, sq)) {
             try {
                 const url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(sym) + '?interval=1d&range=' + (range || '6mo');
                 const d = await fetchJsonViaProxy(url);
@@ -158,10 +185,32 @@
                     closes.push(Math.round(cl[i] * 100) / 100);
                 });
                 if (!dates.length) throw new Error('no series');
-                return { dates, closes, symbol: sym };
+                return { dates, closes, source: 'Yahoo' };
             } catch (e) { err = e; }
         }
         throw err || new Error('no series');
+    }
+    async function history(ticker, market, range) {
+        const snap = await loadSnapshot();
+        const t = String(ticker).toUpperCase(), m = market === 'US' ? 'US' : 'TW';
+        const sources = [
+            () => finmindDirect(t, m, range),
+            () => yahooHistory(t, m, range, snapQuote(snap, t, m)),
+            async () => parseFinmind(await fetchJsonViaProxy(finmindUrl(t, m, range)))
+        ];
+        let err = null;
+        for (const src of sources) {
+            try { return await src(); } catch (e) { err = e; }
+        }
+        throw err || new Error('no series');
+    }
+
+    // TradingView 代碼：台股依快照分上市（TWSE）／上櫃（TPEX），美股直接用代碼
+    async function tradingViewSymbol(ticker, market) {
+        const t = String(ticker).toUpperCase();
+        if (market === 'US') return t;
+        const sq = snapQuote(await loadSnapshot(), t, 'TW');
+        return (sq && sq.exchange === 'TPEX' ? 'TPEX:' : 'TWSE:') + t;
     }
 
     function quoteFor(result, pos) { return result.quotes.get(keyOf(pos.ticker, pos.market)) || null; }
@@ -177,5 +226,5 @@
         return msg;
     }
 
-    root.PPQuotes = { fetchQuotes, history, quoteFor, statusText, yahooQuote, fetchJsonViaProxy, keyOf };
+    root.PPQuotes = { fetchQuotes, history, tradingViewSymbol, quoteFor, statusText, yahooQuote, fetchJsonViaProxy, keyOf };
 })(typeof window !== 'undefined' ? window : globalThis);
