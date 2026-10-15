@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="pp-ui.css">
     <script src="pp-theme.js"></script>
     <script src="pp-target-sim.js"></script>
+    <script src="pp-stop-alert.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script>window.Vue || document.write('<script src="vue.global.prod.js"><\/script>')</script>
@@ -122,6 +123,23 @@
             </div>
         </div>
 
+        <!-- 停損預警：任一槓桿部位緩衝低於門檻就顯示 -->
+        <div v-if="stopAlerts.length" class="mb-6 rounded-lg border-2 p-4 shadow-md"
+             :class="stopAlerts.some(a => a.level === 'hit') ? 'border-red-500 bg-red-50' : 'border-amber-400 bg-amber-50'">
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                <h2 class="text-base font-bold" :class="stopAlerts.some(a => a.level === 'hit') ? 'text-red-700' : 'text-amber-800'">
+                    {{ stopAlerts.some(a => a.level === 'hit') ? '🚨 槓桿部位已觸及停損' : '⚠️ 槓桿部位即將敲停損' }}（{{ stopAlerts.length }} 筆）
+                </h2>
+                <span class="text-[11px] text-gray-500">預警門檻：緩衝 &lt; {{ alertPct }}%<span v-if="tgStatus"> · {{ tgStatus }}</span></span>
+            </div>
+            <ul class="space-y-1.5 text-sm">
+                <li v-for="a in stopAlerts" :key="alertKey(a)" class="leading-snug">
+                    <span class="font-bold">{{ a.level === 'hit' ? '🔴' : '🟠' }} {{ describeAlert(a).head }}</span>
+                    <span class="block sm:inline sm:ml-2" :class="a.level === 'hit' ? 'text-red-700 font-bold' : 'text-amber-900'">{{ describeAlert(a).body }}</span>
+                </li>
+            </ul>
+        </div>
+
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
             <div class="grid grid-cols-1 sm:grid-cols-3 lg:flex lg:flex-col gap-4">
                 <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-blue-500">
@@ -216,11 +234,38 @@
                     <label class="block text-xs font-semibold text-gray-600 mb-1">自訂壓力測試跌幅 (%)</label>
                     <input v-model.number="riskCfg.stressPct" type="number" step="1" class="border p-2 rounded w-full text-sm" @change="saveData">
                 </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">停損預警門檻（緩衝 &lt; %）</label>
+                    <input v-model.number="riskCfg.alertPct" type="number" step="1" min="1" max="100" class="border p-2 rounded w-full text-sm" @change="saveData(); checkStopAlerts()">
+                </div>
             </div>
             <p class="text-[11px] text-gray-400 mb-5 leading-relaxed">
                 虧損上限是全站預設值，個別部位可在庫存卡片的「槓桿／費用設定」單獨指定。
                 新金鑽等槓桿商品以「自備保證金虧損到 X%」為停損／追繳點，預估停損價 ＝ 成本 × (1 − X% ÷ 槓桿)，例如 2 倍、虧損上限 50% → 成本下跌 25% 即觸發。
             </p>
+
+            <details class="mb-5 border border-gray-200 rounded bg-gray-50 p-3 text-xs">
+                <summary class="cursor-pointer font-semibold text-gray-700">📨 Telegram 停損通知 <span class="font-normal text-gray-500">{{ tgCfg.enabled && tgCfg.token && tgCfg.chatId ? '（已啟用）' : '（未啟用）' }}</span></summary>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                    <div>
+                        <label class="block font-semibold text-gray-600 mb-1">Bot Token</label>
+                        <input v-model.trim="tgCfg.token" type="password" autocomplete="off" placeholder="123456:ABC-DEF…" class="border p-2 rounded w-full text-sm bg-white" @change="saveTgCfg">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-gray-600 mb-1">Chat ID</label>
+                        <input v-model.trim="tgCfg.chatId" type="text" placeholder="例如 123456789" class="border p-2 rounded w-full text-sm bg-white" @change="saveTgCfg">
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-3 mt-3">
+                    <label class="flex items-center gap-1.5"><input type="checkbox" v-model="tgCfg.enabled" @change="saveTgCfg"> 報價更新後，緩衝低於門檻就發通知（同一筆每天最多一次，觸及停損時會再發）</label>
+                    <button @click="testTelegram" class="bg-blue-600 text-white px-3 py-1.5 rounded font-bold hover:bg-blue-700">傳送測試訊息</button>
+                    <span v-if="tgStatus" class="text-gray-500">{{ tgStatus }}</span>
+                </div>
+                <p class="text-[11px] text-gray-400 mt-2 leading-relaxed">
+                    找 @BotFather 建立 Bot 取得 Token，先對 Bot 傳一則訊息，再到 https://api.telegram.org/bot&lt;Token&gt;/getUpdates 查自己的 chat.id。
+                    Token 只存在這台裝置的瀏覽器，不會進入雲端備份。網頁版只在開啟本頁時檢查；要在沒開網頁時也收到通知，請在 GitHub repo 設定 Actions secrets（TELEGRAM_BOT_TOKEN、TELEGRAM_CHAT_ID、PP_BACKUP_REPO、PP_BACKUP_TOKEN），每日收盤抓完報價後會自動檢查。
+                </p>
+            </details>
 
             <div v-if="positions.length === 0" class="text-gray-500 text-sm py-6 text-center border border-dashed rounded">尚無庫存部位，加入庫存後這裡會自動計算。</div>
 
@@ -1527,7 +1572,10 @@
                     newPosition: { ticker: '', market: 'TW', dir: 'long', shares: null, price: null, lev: null, carryFee: null, source: '' },
                     positions: [],
                     cash: 0,
-                    riskCfg: { lossPct: 50, stressPct: 15 },
+                    riskCfg: { lossPct: 50, stressPct: 15, alertPct: 10 },
+                    // Telegram 停損通知（存在獨立的 localStorage key，不進雲端備份）
+                    tgCfg: { token: '', chatId: '', enabled: false },
+                    tgStatus: '',
                     // 新金鑽（自訂槓桿股權選擇權）與現股費率；庫存費率以官網公告為準
                     optCfg: { carryPct: 4, handlePct: 0.12, stockFeePct: 0.1425, stockTaxPct: 0.3 },
                     // 價格 × 股數損益矩陣的設定（標的、成本、範圍）
@@ -2062,6 +2110,13 @@
                 weakestPosition() {
                     return this.leveragedPositions[0] || {};
                 },
+                alertPct() {
+                    return Number(this.riskCfg.alertPct) || PPStopAlert.DEFAULT_ALERT_PCT;
+                },
+                stopAlerts() {
+                    // 與表格同一份現價（含手動更新報價），算法見 pp-stop-alert.js
+                    return PPStopAlert.scan({ positions: this.positions, riskCfg: this.riskCfg }, { alertPct: this.alertPct });
+                },
 
                 /* ══ 集中度 ══ */
                 exposureBreakdown() {
@@ -2184,6 +2239,7 @@
             },
             mounted() {
                 this.loadData();
+                this.loadTgCfg();
                 this.mxEnsure();
                 if (!this.rb.P0 && this.rbSources.length) this.rbPick(this.rbSources[0].key);
                 setTimeout(() => {
@@ -2198,6 +2254,7 @@
                     this.refreshQuotes(true);
                 } else if (this.lastQuoteAt) {
                     this.quoteStatus = '上次報價更新: ' + new Date(this.lastQuoteAt).toLocaleString('zh-TW', { hour12: false });
+                    this.checkStopAlerts();
                 }
             },
             methods: {
@@ -2945,6 +3002,51 @@
                         : `報價已更新 (${time})`;
                     this.saveData();
                     this.quoteLoading = false;
+                    this.checkStopAlerts();
+                },
+                /* ── 停損預警通知 ── */
+                alertKey(a) { return PPStopAlert.alertKey(a); },
+                describeAlert(a) { return PPStopAlert.describe(a); },
+                loadTgCfg() {
+                    try { Object.assign(this.tgCfg, JSON.parse(localStorage.getItem('pptools-stop-alert') || '{}').cfg || {}); }
+                    catch (e) { /* 設定壞掉就當未設定 */ }
+                },
+                tgStore() {
+                    try { return JSON.parse(localStorage.getItem('pptools-stop-alert') || '{}'); }
+                    catch (e) { return {}; }
+                },
+                saveTgCfg() {
+                    const st = this.tgStore();
+                    st.cfg = Object.assign({}, this.tgCfg);
+                    localStorage.setItem('pptools-stop-alert', JSON.stringify(st));
+                },
+                async testTelegram() {
+                    this.tgStatus = '傳送中…';
+                    try {
+                        const text = this.stopAlerts.length
+                            ? PPStopAlert.formatMessage(this.stopAlerts, { alertPct: this.alertPct, note: '（測試訊息）' })
+                            : '✅ PPtools 停損通知測試成功，目前沒有緩衝低於 ' + this.alertPct + '% 的槓桿部位。';
+                        await PPStopAlert.sendTelegram(this.tgCfg.token, this.tgCfg.chatId, text);
+                        this.tgStatus = '測試訊息已送出';
+                    } catch (e) { this.tgStatus = e.message; }
+                },
+                async checkStopAlerts() {
+                    const alerts = this.stopAlerts;
+                    if (!alerts.length || !this.tgCfg.enabled || !this.tgCfg.token || !this.tgCfg.chatId) return;
+                    // 同一筆每天只發一次；當天已發過預警、之後觸及停損會再發一次
+                    const today = this.todayStr();
+                    const st = this.tgStore();
+                    const sent = (st.sent && st.sent.date === today) ? st.sent.keys : {};
+                    const fresh = alerts.filter(a => { const k = this.alertKey(a); return !sent[k] || (sent[k] !== 'hit' && a.level === 'hit'); });
+                    if (!fresh.length) return;
+                    try {
+                        await PPStopAlert.sendTelegram(this.tgCfg.token, this.tgCfg.chatId, PPStopAlert.formatMessage(fresh, { alertPct: this.alertPct }));
+                        fresh.forEach(a => { sent[this.alertKey(a)] = a.level; });
+                        const st2 = this.tgStore();
+                        st2.sent = { date: today, keys: sent };
+                        localStorage.setItem('pptools-stop-alert', JSON.stringify(st2));
+                        this.tgStatus = '已發送 Telegram 通知（' + fresh.length + ' 筆）';
+                    } catch (e) { this.tgStatus = e.message; }
                 },
                 recordTodayNetValue() {
                     if (this.positions.length === 0) return;
@@ -3020,7 +3122,7 @@
                         if (parsed.optCfg) this.optCfg = Object.assign({}, this.optCfg, parsed.optCfg);
                         if (parsed.mx) this.mx = Object.assign({}, this.mx, parsed.mx);
                         if (parsed.rb) this.rb = Object.assign({}, this.rb, parsed.rb);
-                        if (parsed.riskCfg) this.riskCfg = Object.assign({ lossPct: 50, stressPct: 15 }, { stressPct: parsed.riskCfg.stressPct, lossPct: parsed.riskCfg.lossPct });
+                        if (parsed.riskCfg) this.riskCfg = Object.assign({ lossPct: 50, stressPct: 15, alertPct: 10 }, { stressPct: parsed.riskCfg.stressPct, lossPct: parsed.riskCfg.lossPct, alertPct: parsed.riskCfg.alertPct || 10 });
                     } else if (dataOld) {
                         const parsed = JSON.parse(dataOld);
                         if(parsed.exchangeRate) this.exchangeRate = parsed.exchangeRate;
