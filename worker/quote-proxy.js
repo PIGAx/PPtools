@@ -3,12 +3,13 @@
    用法：GET https://<你的worker>.workers.dev/?url=<編碼後的目標網址>
    只允許白名單網域，避免被當成開放代理濫用。 */
 const ALLOW_HOSTS = ['query1.finance.yahoo.com', 'query2.finance.yahoo.com', 'api.finmindtrade.com'];
-const ALLOW_ORIGINS = []; // 例：['https://pigax.github.io']；留空 = 不限來源
+// 只允許這些網站的網頁呼叫；沒有 Origin 的請求（直接在網址列打開測試）也放行
+const ALLOW_ORIGINS = ['https://pigax.github.io'];
 
 export default {
   async fetch(request) {
     const origin = request.headers.get('Origin') || '';
-    const okOrigin = !ALLOW_ORIGINS.length || ALLOW_ORIGINS.includes(origin);
+    const okOrigin = !origin || !ALLOW_ORIGINS.length || ALLOW_ORIGINS.includes(origin);
     const cors = {
       'Access-Control-Allow-Origin': okOrigin ? (origin || '*') : 'null',
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
