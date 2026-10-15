@@ -137,8 +137,15 @@
                 <li v-for="a in stopAlerts" :key="alertKey(a)" class="leading-snug">
                     <span class="font-bold">{{ a.level === 'hit' ? '🔴' : '🟠' }} {{ describeAlert(a).head }}</span>
                     <span class="block sm:inline sm:ml-2" :class="a.level === 'hit' ? 'text-red-700 font-bold' : 'text-amber-900'">{{ describeAlert(a).body }}</span>
+                    <span class="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-700 mt-1 ml-5">
+                        <span class="text-gray-500">若以停損價 {{ formatNumber(Math.round(a.stop * 100) / 100) }} 買回 {{ formatNumber(a.shares) }} 股：</span>
+                        <span v-if="rebuyCash(a).cash != null">現股需 <b>{{ formatInt(rebuyCash(a).cash * alertFx(a)) }}</b>（淨補 <b class="text-amber-800">{{ formatInt(rebuyCash(a).cashNet * alertFx(a)) }}</b>）</span>
+                        <span>槓桿 {{ Math.round(a.lev * 100) / 100 }}x 需 <b>{{ formatInt(rebuyCash(a).lev * alertFx(a)) }}</b>（淨補 <b class="text-amber-800">{{ formatInt(rebuyCash(a).levNet * alertFx(a)) }}</b>）</span>
+                        <span class="text-gray-400">停損後可拿回 {{ formatInt(rebuyCash(a).back * alertFx(a)) }}<template v-if="a.market === 'US'">・皆以 TWD 計</template></span>
+                    </span>
                 </li>
             </ul>
+            <p class="text-[11px] text-gray-500 mt-2">淨補 = 買回金額 − 停損後拿回的剩餘保證金（自備保證金扣掉虧損上限後的部分），也就是要另外準備的現金；未計手續費、處理費與庫存費。<template v-if="stopAlerts.length > 1">全部以槓桿買回合計淨補 <b>{{ formatInt(stopAlerts.reduce((s, a) => s + rebuyCash(a).levNet * alertFx(a), 0)) }}</b>，可動用現金 {{ formatInt(cash) }}。</template><template v-else>可動用現金 {{ formatInt(cash) }}。</template></p>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
@@ -3267,6 +3274,8 @@
                 },
                 /* ── 停損預警通知 ── */
                 alertKey(a) { return PPStopAlert.alertKey(a); },
+                rebuyCash(a) { return PPStopAlert.rebuyCash(a); },
+                alertFx(a) { return a.market === 'US' ? (this.exchangeRate || 1) : 1; },
                 // 通知裡標示所用報價的資料日期，例「報價日 10/15（即時）」
                 alertQuoteNote(alerts) {
                     const tags = new Set();

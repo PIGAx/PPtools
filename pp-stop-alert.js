@@ -98,6 +98,19 @@
         return out.sort((a, b) => a.bufferPct - b.bufferPct);
     }
 
+    /* 被停損後「以停損價買回原股數」要準備的現金（原幣）。
+       停損時自備保證金虧掉 lossPct%，剩下的拿回來：back = 成交價 × 股數 ÷ 倍數 × (1 − lossPct%)。
+       現股買回 = 停損價 × 股數；槓桿買回（同倍數）= 停損價 × 股數 ÷ 倍數。
+       net = 買回金額 − 拿回金額，即要另外準備的錢；未計手續費、處理費與庫存費。
+       看空無法用現股回補，cash 為 null。 */
+    function rebuyCash(a) {
+        const N = num(a.shares), S = num(a.stop), L = num(a.lev) > 1 ? num(a.lev) : 1;
+        const back = Math.max(0, num(a.price) * N / L * (1 - Math.min(num(a.lossPct), 100) / 100));
+        const lev = S * N / L;
+        const cash = a.dir === 'short' ? null : S * N;
+        return { back, lev, levNet: lev - back, cash, cashNet: cash == null ? null : cash - back };
+    }
+
     // 同一筆部位的識別碼（當日去重用）
     function alertKey(a) {
         return [a.dir, a.ticker, a.market, a.source, a.shares, a.price].join('|');
@@ -127,9 +140,15 @@
             const d = describe(a);
             lines.push((a.level === 'hit' ? '🔴 ' : '🟠 ') + d.head);
             lines.push('   ' + d.body);
+            const r = rebuyCash(a);
+            const L = Math.round(a.lev * 100) / 100;
+            lines.push(`   停損價買回 ${fmt(a.shares)} 股：` +
+                (r.cash != null ? `現股需 ${fmt(Math.round(r.cash))}（淨補 ${fmt(Math.round(r.cashNet))}）、` : '') +
+                `槓桿 ${L}x 需 ${fmt(Math.round(r.lev))}（淨補 ${fmt(Math.round(r.levNet))}）`);
         }
         lines.push('');
         lines.push(`預警門檻：緩衝 < ${opts.alertPct || DEFAULT_ALERT_PCT}%`);
+        lines.push('淨補 = 買回金額 − 停損後拿回的剩餘保證金，未計手續費');
         return lines.join('\n');
     }
 
@@ -147,7 +166,7 @@
     }
 
     const api = {
-        DEFAULT_ALERT_PCT, posLots, stopPrice, bufferPct, scan, alertKey, describe, formatMessage, sendTelegram
+        DEFAULT_ALERT_PCT, posLots, stopPrice, bufferPct, scan, alertKey, describe, rebuyCash, formatMessage, sendTelegram
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.PPStopAlert = api;
