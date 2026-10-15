@@ -555,10 +555,49 @@
                     <h2 class="text-lg font-bold mb-3">📦 當前庫存部位</h2>
                     <div v-if="positions.length === 0" class="text-gray-500 text-sm py-4 text-center border border-dashed rounded">目前無庫存部位。</div>
                     
-                    <div v-for="(pos, index) in positions" :key="index" class="border-b pb-5 mb-5 last:border-0 last:mb-0 relative group">
-                        <div class="flex justify-between items-center mb-3">
-                            <span class="font-bold text-lg flex items-center">{{ pos.ticker }} 
-                                <span class="text-[10px] px-1.5 py-0.5 rounded ml-1.5 font-normal" :class="pos.market === 'US' ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-800'">{{ pos.market }}</span>
+                    <div v-for="g in positionGroups" :key="g.key" class="border rounded-lg mb-4 last:mb-0 overflow-hidden">
+                        <button @click="posGroupClosed[g.key] = !posGroupClosed[g.key]" class="w-full text-left bg-gray-50 hover:bg-gray-100 px-3 py-2.5 transition">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="font-bold text-lg flex items-center flex-wrap gap-1">
+                                    {{ g.ticker }}
+                                    <span v-if="g.name" class="text-sm font-normal text-gray-500">{{ g.name }}</span>
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded font-normal" :class="g.market === 'US' ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-800'">{{ g.market }}</span>
+                                    <span class="text-[10px] px-1.5 py-0.5 leading-none rounded font-normal bg-white border text-gray-500">{{ g.items.length }} 筆</span>
+                                </span>
+                                <span class="text-right shrink-0">
+                                    <span class="font-bold" :class="g.pnl >= 0 ? 'text-red-600' : 'text-green-600'">{{ g.pnl >= 0 ? '+' : '' }}{{ formatInt(g.pnl) }}</span>
+                                    <span class="text-xs ml-1" :class="g.pnl >= 0 ? 'text-red-500' : 'text-green-500'">({{ g.roi >= 0 ? '+' : '' }}{{ g.roi.toFixed(2) }}%)</span>
+                                    <span class="text-gray-400 text-xs ml-1">{{ posGroupClosed[g.key] ? '▼' : '▲' }}</span>
+                                </span>
+                            </div>
+                            <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-600 mt-1">
+                                <span v-if="g.cashShares">現股 <b>{{ formatNumber(g.cashShares) }}</b> 股</span>
+                                <span v-if="g.levShares" class="text-indigo-700">槓桿 <b>{{ formatNumber(g.levShares) }}</b> 股</span>
+                                <span v-if="g.shortShares" class="text-green-700">看空 <b>{{ formatNumber(g.shortShares) }}</b> 股</span>
+                                <span v-if="g.cur">市價 {{ formatNumber(g.cur) }}</span>
+                                <span>成本 {{ formatInt(g.cost) }}</span>
+                                <span v-if="g.levShares || g.shortShares">整體槓桿 {{ (Math.round(g.lev * 100) / 100) }}x</span>
+                                <span v-if="g.minBuffer != null">最近停損 <b :class="bufferClass(g.minBuffer)">{{ g.minBuffer.toFixed(1) }}%</b></span>
+                            </div>
+                        </button>
+                        <div v-show="!posGroupClosed[g.key]" class="px-3 py-1">
+                    <div v-for="{ pos, index } in g.items" :key="index" class="border-b last:border-0 relative group" :class="pos._open ? 'pb-5 mb-3' : ''">
+                        <!-- 一行摘要：點開看完整卡片 -->
+                        <button @click="pos._open = !pos._open" class="w-full flex items-center gap-2 py-2 text-sm text-left hover:bg-gray-50 rounded">
+                            <span class="text-xs px-2 py-0.5 rounded font-bold shrink-0" :class="hasLeverage(pos) ? 'bg-indigo-600 text-white' : 'bg-gray-600 text-white'">{{ hasLeverage(pos) ? '槓桿 ' + posLevLabel(pos) + 'x' : '現股' }}</span>
+                            <span v-if="isShort(pos)" class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-green-100 text-green-700 shrink-0">看空</span>
+                            <span v-if="pos.source" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 shrink-0">{{ pos.source }}</span>
+                            <span class="text-gray-700 truncate">{{ formatNumber(pos.shares) }} 股 @{{ formatNumber(pos.price) }}</span>
+                            <span class="ml-auto text-right shrink-0">
+                                <span class="font-semibold" :class="getUnrealizedPnL(pos) >= 0 ? 'text-red-600' : 'text-green-600'">{{ getUnrealizedPnL(pos) >= 0 ? '+' : '' }}{{ formatNumber(getUnrealizedPnL(pos)) }}</span>
+                                <span v-if="hasLeverage(pos)" class="text-xs ml-1.5" :class="bufferClass(posBufferPct(pos))">停損 {{ posBufferPct(pos).toFixed(1) }}%</span>
+                                <span class="text-gray-400 text-xs ml-1">{{ pos._open ? '▲' : '▼' }}</span>
+                            </span>
+                        </button>
+                        <template v-if="pos._open">
+                        <div class="flex justify-between items-center mb-3 mt-1">
+                            <span class="font-bold flex items-center">
+                                <span class="text-xs px-2 py-0.5 rounded" :class="hasLeverage(pos) ? 'bg-indigo-600 text-white' : 'bg-gray-600 text-white'">{{ hasLeverage(pos) ? '槓桿 ' + posLevLabel(pos) + 'x' : '現股' }}</span>
                                 <span v-if="pos.source" class="text-[10px] px-1.5 py-0.5 rounded ml-1 font-normal bg-indigo-50 text-indigo-700">{{ pos.source }}</span>
                                 <span class="text-[10px] px-1.5 py-0.5 rounded ml-1 font-bold" :class="isShort(pos) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">{{ isShort(pos) ? '看空' : '看多' }}</span>
                             </span>
@@ -695,6 +734,9 @@
                             <input v-model.number="pos.closeShares" type="number" placeholder="平倉股數" class="border p-2 flex-1 min-w-[80px] text-sm rounded">
                             <input v-model.number="pos.closePrice" type="number" step="0.01" placeholder="平倉價格" class="border p-2 flex-1 min-w-[80px] text-sm rounded">
                             <button @click="closePosition(index)" class="bg-red-500 text-white px-4 py-2 rounded text-sm hover:bg-red-600 font-bold transition w-full sm:w-auto flex-none shadow-sm">出場結算</button>
+                        </div>
+                        </template>
+                    </div>
                         </div>
                     </div>
                 </div>
@@ -1670,6 +1712,7 @@
                     // Telegram 停損通知（存在獨立的 localStorage key，不進雲端備份）
                     tgCfg: { token: '', chatId: '', enabled: false },
                     tgStatus: '',
+                    posGroupClosed: {},   // 庫存分組收合狀態（key = 市場:代碼）
                     // 每一檔（市場:代碼）最後一次抓到的報價，同標的的各筆部位都用這個價
                     tickerQuotes: {},
                     // 個股走勢圖（點部位卡片的「📈 走勢」開啟）
@@ -1707,6 +1750,45 @@
                 }
             },
             computed: {
+                /* 當前庫存依「市場＋代碼」分組：同一檔的現股、各筆槓桿、看多看空放在一起。
+                   組內順序：看多在前；現股在前、槓桿在後；槓桿再依倍數由低到高。保留原索引供刪除／出場使用。 */
+                positionGroups() {
+                    const map = new Map();
+                    this.positions.forEach((pos, index) => {
+                        const key = (pos.market === 'US' ? 'US' : 'TW') + ':' + String(pos.ticker || '').toUpperCase();
+                        if (!map.has(key)) map.set(key, { key, ticker: pos.ticker, market: pos.market, items: [] });
+                        map.get(key).items.push({ pos, index });
+                    });
+                    return [...map.values()].map(g => {
+                        g.items.sort((a, b) =>
+                            (this.isShort(a.pos) - this.isShort(b.pos)) ||
+                            (this.hasLeverage(a.pos) - this.hasLeverage(b.pos)) ||
+                            (this.posLev(a.pos) - this.posLev(b.pos)));
+                        const sum = (fn, pick) => g.items.filter(it => pick(it.pos)).reduce((s, it) => s + fn(it.pos), 0);
+                        const all = () => true;
+                        const longCash = p => !this.isShort(p) && !this.hasLeverage(p);
+                        const longLev = p => !this.isShort(p) && this.hasLeverage(p);
+                        const short = p => this.isShort(p);
+                        const shares = p => Number(p.shares) || 0;
+                        const cost = sum(p => this.posCostOrig(p) * this.fxRate(p), all);
+                        const pnl = sum(p => this.getUnrealizedPnL(p) * this.fxRate(p), all);
+                        const own = sum(p => this.posMarginTWD(p), all);
+                        const lev = g.items.filter(it => this.hasLeverage(it.pos));
+                        const q = this.tickerQuotes[g.key] || {};
+                        const curPos = g.items.find(it => it.pos.currentPrice > 0);
+                        return Object.assign(g, {
+                            name: q.name || '',
+                            cur: curPos ? curPos.pos.currentPrice : null,
+                            cashShares: sum(shares, longCash),
+                            levShares: sum(shares, longLev),
+                            shortShares: sum(shares, short),
+                            cost, pnl, own,
+                            roi: cost > 0 ? pnl / cost * 100 : 0,
+                            lev: own > 0 ? cost / own : 1,
+                            minBuffer: lev.length ? Math.min(...lev.map(it => this.posBufferPct(it.pos))) : null
+                        });
+                    });
+                },
                 totalCostTWD() {
                     return this.positions.reduce((sum, pos) => {
                         const cost = (pos.shares || 0) * (pos.price || 0);
@@ -3261,7 +3343,7 @@
                     this.recordTodayNetValue();
                     localStorage.setItem('quantPortfolioDataV2', JSON.stringify({
                         exchangeRate: this.exchangeRate,
-                        positions: this.positions.map(p => { const c = Object.assign({}, p); delete c._split; delete c._lots; delete c._levBefore; return c; }),
+                        positions: this.positions.map(p => { const c = Object.assign({}, p); delete c._split; delete c._lots; delete c._levBefore; delete c._open; return c; }),
                         history: this.history,
                         netHistory: this.netHistory,
                         lastQuoteAt: this.lastQuoteAt,
