@@ -175,7 +175,7 @@
                 </div>
             </div>
             
-            <div class="bg-white p-4 sm:p-5 rounded-lg shadow-md lg:col-span-2">
+            <div class="bg-white p-4 sm:p-5 rounded-lg shadow-md lg:col-span-2 flex flex-col">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
                     <h3 class="text-gray-800 text-base font-bold">{{ chartTab === 'net' ? '📈 每日淨值走勢 (約當 TWD)' : '📈 累積已實現績效曲線 (TWD)' }}</h3>
                     <div class="flex rounded-lg overflow-hidden border border-gray-300 text-xs font-semibold self-start sm:self-auto">
@@ -183,12 +183,12 @@
                         <button @click="switchTab('pnl')" class="px-3 py-1.5 transition border-l border-gray-300" :class="chartTab === 'pnl' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'">已實現績效</button>
                     </div>
                 </div>
-                <div v-show="chartTab === 'net'" class="relative h-48 sm:h-64 w-full">
-                    <canvas id="netChart"></canvas>
+                <div v-show="chartTab === 'net'" class="relative h-64 sm:h-80 lg:h-auto lg:flex-1 lg:min-h-[20rem] w-full">
+                    <div class="absolute inset-0"><canvas id="netChart"></canvas></div>
                 </div>
                 <p v-if="chartTab === 'net' && netHistory.length < 2" class="text-xs text-gray-400 text-center mt-1">淨值紀錄從今天開始累積，每天打開頁面或更新報價就會記錄一筆。</p>
-                <div v-show="chartTab === 'pnl'" class="relative h-48 sm:h-64 w-full">
-                    <canvas id="pnlChart"></canvas>
+                <div v-show="chartTab === 'pnl'" class="relative h-64 sm:h-80 lg:h-auto lg:flex-1 lg:min-h-[20rem] w-full">
+                    <div class="absolute inset-0"><canvas id="pnlChart"></canvas></div>
                 </div>
             </div>
             <div class="bg-white p-4 sm:p-5 rounded-lg shadow-md">
