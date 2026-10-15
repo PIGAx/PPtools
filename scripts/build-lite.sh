@@ -8,7 +8,7 @@ OUT="${1:?用法：scripts/build-lite.sh <輸出目錄>}"
 mkdir -p "$OUT/scripts" "$OUT/data" "$OUT/.github/workflows"
 
 # 頁面與共用資源
-cp "$ROOT/lite/index.html" "$ROOT/lite/README.md" "$OUT/"
+cp "$ROOT/lite/index.html" "$ROOT/lite/telegram.html" "$ROOT/lite/README.md" "$OUT/"
 for f in inventory.html pp-theme.js pp-ui.css pp-target-sim.js pp-stop-alert.js pp-quotes.js vue.global.prod.js chart.umd.min.js; do
   cp "$ROOT/$f" "$OUT/$f"
 done

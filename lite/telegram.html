@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Telegram 停損通知設定</title>
+<script src="pp-theme.js"></script>
+<style>
+  :root {
+    --bg: #f4f4f1; --surface: #ffffff; --line: #e3e2dc; --text: #1f1f1c; --muted: #6b6a63;
+    --accent: #2f5bd3; --warn-bg: #fff5e6; --warn-line: #f0c27a; --code-bg: #f0efea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #161615; --surface: #20201e; --line: #34332f; --text: #ecebe6; --muted: #a09f97; --accent: #7d9bf0; --warn-bg: #2d2416; --warn-line: #7a5a22; --code-bg: #2a2a27; }
+  }
+  :root[data-theme="dark"] { --bg: #161615; --surface: #20201e; --line: #34332f; --text: #ecebe6; --muted: #a09f97; --accent: #7d9bf0; --warn-bg: #2d2416; --warn-line: #7a5a22; --code-bg: #2a2a27; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; line-height: 1.7; }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; }
+  a { color: var(--accent); }
+  .back { font-size: 13px; text-decoration: none; }
+  h1 { font-size: 22px; margin: 10px 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 18px; font-size: 14px; }
+  .step { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .step h2 { font-size: 16px; margin: 0 0 6px; display: flex; gap: 8px; align-items: baseline; }
+  .num { display: inline-grid; place-items: center; min-width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; }
+  ol, ul { margin: 6px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code-bg); border-radius: 4px; padding: 1px 5px; font-size: 13px; word-break: break-all; }
+  pre { background: var(--code-bg); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font-size: 12.5px; margin: 8px 0; white-space: pre-wrap; word-break: break-all; }
+  .warn { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 10px; padding: 12px 16px; margin: 16px 0; font-size: 14px; }
+  .warn b { display: block; margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--code-bg); border-top: 0; font-weight: 600; }
+  .small { font-size: 13px; color: var(--muted); }
+  h3 { font-size: 16px; margin: 22px 0 8px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="index.html">← 回到槓桿部位工具</a>
+  <h1>📨 Telegram 停損通知設定</h1>
+  <p class="lead">設定好之後，每次打開「部位控管」更新報價時，只要有槓桿部位離停損價太近，手機就會收到 Telegram 通知。大約 5 分鐘可以完成，每個人用自己的 Bot，彼此看不到。</p>
+
+  <div class="step">
+    <h2><span class="num">1</span>建立自己的 Bot，拿到 Token</h2>
+    <ol>
+      <li>打開 Telegram，搜尋 <b>@BotFather</b>（有藍色勾勾的官方帳號），按「Start」。</li>
+      <li>傳送 <code>/newbot</code>。</li>
+      <li>輸入 Bot 的<b>顯示名稱</b>，隨意取，例如「我的停損通知」。</li>
+      <li>輸入 Bot 的<b>帳號名稱</b>：必須以 <code>bot</code> 結尾、不能和別人重複，例如 <code>amy_stop_bot</code>。</li>
+      <li>成功後 BotFather 會回一段訊息，裡面有一串像 <code>1234567890:AAH…</code> 的文字，這就是 <b>Bot Token</b>。<br>
+        <b>直接點一下那串灰底文字</b>就會自動複製，不要用手打，<code>l</code>（小寫 L）和 <code>I</code>（大寫 i）很容易看錯。</li>
+    </ol>
+  </div>
+
+  <div class="step">
+    <h2><span class="num">2</span>先跟你的 Bot 說一句話</h2>
+    <ol>
+      <li>點 BotFather 回覆裡的連結 <code>t.me/你取的帳號名稱</code>，進到你自己的 Bot。</li>
+      <li>按「Start」，再隨便傳一句，例如 <code>hi</code>。</li>
+    </ol>
+    <p class="small">這步一定要做，Bot 不能主動傳訊息給沒跟它說過話的人。Bot 不會回你，這是正常的。</p>
+  </div>
+
+  <div class="step">
+    <h2><span class="num">3</span>查自己的 Chat ID</h2>
+    <ol>
+      <li>用瀏覽器打開下面這個網址，把 <code>&lt;Token&gt;</code> 換成第 1 步複製的 Token（<code>&lt;&gt;</code> 也要拿掉）：
+        <pre>https://api.telegram.org/bot&lt;Token&gt;/getUpdates</pre>
+        <span class="small">注意 <code>bot</code> 要緊貼在 Token 前面，中間沒有空格或斜線。</span>
+      </li>
+      <li>畫面上找 <code>"chat":{"id":</code> 後面的那串數字，例如：
+        <pre>"chat":{"id":<b>123456789</b>,"first_name":"Amy","type":"private"}</pre>
+        這串數字就是你的 <b>Chat ID</b>。
+      </li>
+    </ol>
+  </div>
+
+  <div class="step">
+    <h2><span class="num">4</span>填進「部位控管」並測試</h2>
+    <ol>
+      <li>打開 <a href="index.html">槓桿部位工具</a> 的「部位控管」，往下找到「帳務計算與風險控管」裡的 <b>📨 Telegram 停損通知</b>，點開。</li>
+      <li><b>Bot Token</b>：貼上第 1 步的 Token。<b>Chat ID</b>：填第 3 步的數字。</li>
+      <li>填完<b>點一下欄位外面</b>，設定才會存起來。</li>
+      <li>勾選「報價更新後，緩衝低於門檻就發通知」，標題會變成「（已啟用）」。</li>
+      <li>按 <b>「傳送測試訊息」</b>，手機收到「✅ PPtools 停損通知測試成功…」就完成了。</li>
+    </ol>
+    <p class="small">想調整多近才通知，改上方的「停損預警門檻（緩衝 &lt; %）」，預設 10%：離停損價不到 10% 就通知。</p>
+  </div>
+
+  <div class="warn">
+    <b>🔒 Token 不要給任何人</b>
+    拿到 Token 的人就能用你的 Bot 傳訊息。不要貼在聊天群組、不要傳給其他 Bot。萬一外流，對 @BotFather 傳 <code>/revoke</code> 換一組新的，再回到部位控管把 Token 改成新的即可（Chat ID 不用改）。<br>
+    Token 只存在你這台裝置的瀏覽器，不會上傳、也不會出現在「匯出備份」的檔案裡；手機和電腦都要通知的話，兩邊各填一次。
+  </div>
+
+  <h3>什麼時候會收到通知？</h3>
+  <ul>
+    <li>打開「部位控管」、報價更新完（每天第一次打開會自動更新，也可以按「🔄 更新報價」），有槓桿部位離停損價小於門檻就發。</li>
+    <li>同一筆每天最多通知一次；如果之後真的跌破停損價，會再發一次。</li>
+    <li>網頁沒打開時不會檢查，建議每天收盤後打開看一下。</li>
+  </ul>
+
+  <h3>遇到問題</h3>
+  <table>
+    <thead><tr><th>看到的訊息</th><th>原因與解法</th></tr></thead>
+    <tbody>
+      <tr><td><code>Unauthorized</code> 或 <code>401</code></td><td>Token 不對：可能打錯一個字，或已經 <code>/revoke</code> 過。到 @BotFather 傳 <code>/mybots</code> → 選你的 Bot → <b>API Token</b>，點選複製最新的那組。</td></tr>
+      <tr><td><code>{"ok":true,"result":[]}</code></td><td>Token 是對的，但 Bot 還沒收到訊息。回 Telegram 對你的 Bot 再傳一句 <code>hi</code>，重新整理網頁。</td></tr>
+      <tr><td><code>chat not found</code></td><td>Chat ID 填錯，或還沒對你的 Bot 按過 Start（第 2 步）。</td></tr>
+      <tr><td>Token 後面多了 <code>15:43</code> 之類的時間</td><td>從 Telegram 複製時把訊息時間也帶進來了，刪掉。Token 冒號後面固定是 35 個字元。</td></tr>
+      <tr><td>按了測試沒反應、標題還是「（未啟用）」</td><td>填完欄位要點一下外面才會存；也要勾選「報價更新後…就發通知」。</td></tr>
+    </tbody>
+  </table>
+</main>
+</body>
+</html>
