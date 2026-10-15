@@ -6,7 +6,10 @@
 (function (root) {
     'use strict';
 
+    // 部署 worker/quote-proxy.js 後，把網址填這裡（或在頁面先設 window.PP_QUOTE_WORKER），會優先使用；留空則只用公開代理
+    const WORKER_URL = (root.PP_QUOTE_WORKER || '').replace(/\/$/, '');
     const PROXIES = [
+        ...(WORKER_URL ? [{ id: 'worker', wrap: u => WORKER_URL + '/?url=' + encodeURIComponent(u) }] : []),
         { id: 'corsproxy',  wrap: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u) },
         { id: 'allorigins', wrap: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) },
         { id: 'codetabs',   wrap: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u) }
