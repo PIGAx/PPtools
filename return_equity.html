@@ -8,6 +8,7 @@
     <script src="pp-theme.js"></script>
     <script src="pp-target-sim.js"></script>
     <script src="pp-stop-alert.js"></script>
+    <script src="pp-quotes.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script>window.Vue || document.write('<script src="vue.global.prod.js"><\/script>')</script>
@@ -1560,11 +1561,6 @@
             return '#' + [16, 8, 0].map(sh => ch(sh).toString(16).padStart(2, '0')).join('');
         }
 
-        // Yahoo Finance 沒開放 CORS，透過公開代理依序嘗試
-        const CORS_PROXIES = [
-            u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
-            u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
-        ];
 
         createApp({
             data() {
@@ -1577,6 +1573,8 @@
                     // Telegram 停損通知（存在獨立的 localStorage key，不進雲端備份）
                     tgCfg: { token: '', chatId: '', enabled: false },
                     tgStatus: '',
+                    // 每一檔（市場:代碼）最後一次抓到的報價，同標的的各筆部位都用這個價
+                    tickerQuotes: {},
                     // 新金鑽（自訂槓桿股權選擇權）與現股費率；庫存費率以官網公告為準
                     optCfg: { carryPct: 4, handlePct: 0.12, stockFeePct: 0.1425, stockTaxPct: 0.3 },
                     // 價格 × 股數損益矩陣的設定（標的、成本、範圍）
@@ -2308,7 +2306,7 @@
                             source: (this.newPosition.source || '').trim(),
                             handlingFee: 0,
                             lossPct: null,
-                            currentPrice: this.newPosition.price,
+                            currentPrice: this.latestPrice(this.newPosition.ticker, this.newPosition.market, this.newPosition.price),
                             closeShares: null,
                             closePrice: null,
                             openedAt: this.todayStr()
@@ -2670,7 +2668,7 @@
                         source: (source || '').trim(),
                         handlingFee: 0,
                         lossPct: src.lossPct || null,
-                        currentPrice: src.currentPrice || price,
+                        currentPrice: this.latestPrice(src.ticker, src.market, src.currentPrice || price),
                         prevClose: src.prevClose,
                         closeShares: null, closePrice: null,
                         openedAt: this.todayStr()
@@ -2944,33 +2942,6 @@
                 quoteDateStr(ts) {
                     return ts ? new Date(ts).toLocaleDateString('en-CA') : null;
                 },
-                async fetchJsonViaProxy(url) {
-                    let lastErr = new Error('no proxy available');
-                    for (const wrap of CORS_PROXIES) {
-                        try {
-                            const ctrl = new AbortController();
-                            const timer = setTimeout(() => ctrl.abort(), 10000);
-                            const res = await fetch(wrap(url), { signal: ctrl.signal });
-                            clearTimeout(timer);
-                            if (!res.ok) throw new Error('HTTP ' + res.status);
-                            return await res.json();
-                        } catch (e) { lastErr = e; }
-                    }
-                    throw lastErr;
-                },
-                async fetchYahooPrice(symbol) {
-                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`;
-                    const data = await this.fetchJsonViaProxy(url);
-                    const result = data && data.chart && data.chart.result && data.chart.result[0];
-                    const meta = result && result.meta;
-                    let price = meta && (meta.regularMarketPrice ?? meta.previousClose);
-                    if (price == null && result && result.indicators) {
-                        const closes = (((result.indicators.quote || [])[0] || {}).close || []).filter(v => v != null);
-                        if (closes.length) price = closes[closes.length - 1];
-                    }
-                    if (price == null || isNaN(price)) throw new Error('no price for ' + symbol);
-                    return price;
-                },
                 async refreshQuotes(auto = false) {
                     if (this.quoteLoading) return;
                     if (this.positions.length === 0) {
@@ -2979,31 +2950,28 @@
                     }
                     this.quoteLoading = true;
                     this.quoteStatus = '報價更新中…';
-                    try { // 順便更新 USD/TWD 匯率
-                        const fx = await this.fetchYahooPrice('TWD=X');
-                        if (fx > 0) this.exchangeRate = Math.round(fx * 100) / 100;
-                    } catch (e) { /* 抓不到就沿用手動匯率 */ }
-                    const failed = [];
+                    // 同一檔只抓一次、套用到所有同標的部位；即時價抓不到就用每日收盤快照（見 pp-quotes.js）
+                    const res = await PPQuotes.fetchQuotes(this.positions, { fx: true });
+                    if (res.fx > 0) this.exchangeRate = Math.round(res.fx * 100) / 100;
                     for (const pos of this.positions) {
-                        try {
-                            let price;
-                            if (pos.market === 'US') {
-                                price = await this.fetchYahooPrice(pos.ticker);
-                            } else {
-                                try { price = await this.fetchYahooPrice(pos.ticker + '.TW'); }
-                                catch (e) { price = await this.fetchYahooPrice(pos.ticker + '.TWO'); } // 上櫃
-                            }
-                            pos.currentPrice = Math.round(price * 100) / 100;
-                        } catch (e) { failed.push(pos.ticker); }
+                        const q = PPQuotes.quoteFor(res, pos);
+                        if (q && q.price > 0) pos.currentPrice = Math.round(q.price * 100) / 100;
                     }
+                    res.quotes.forEach((q, k) => {
+                        if (q.price > 0) this.tickerQuotes[k] = { price: Math.round(q.price * 100) / 100, at: Date.now(), source: q.source };
+                    });
                     this.lastQuoteAt = Date.now();
-                    const time = new Date().toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
-                    this.quoteStatus = failed.length
-                        ? `已更新 (${time})，這幾檔失敗: ${failed.join(', ')}`
-                        : `報價已更新 (${time})`;
+                    this.quoteStatus = PPQuotes.statusText(res);
                     this.saveData();
                     this.quoteLoading = false;
                     this.checkStopAlerts();
+                },
+                latestPrice(ticker, market, fallback) {
+                    // 新增一筆時沿用這檔最新報價，而不是成交價
+                    const q = this.tickerQuotes[PPQuotes.keyOf(ticker, market)];
+                    if (q && q.price > 0) return q.price;
+                    const sib = this.positions.find(p => p.ticker === String(ticker).toUpperCase() && p.market === market && p.currentPrice > 0);
+                    return sib ? sib.currentPrice : fallback;
                 },
                 /* ── 停損預警通知 ── */
                 alertKey(a) { return PPStopAlert.alertKey(a); },
@@ -3080,6 +3048,7 @@
                         lastQuoteAt: this.lastQuoteAt,
                         cash: this.cash,
                         riskCfg: this.riskCfg,
+                        tickerQuotes: this.tickerQuotes,
                         optCfg: this.optCfg,
                         mx: this.mx,
                         rb: this.rb
@@ -3118,6 +3087,12 @@
                             } else splitted.push(p);
                         });
                         this.positions = splitted;
+                        // 同標的各筆一律套用該檔最後一次抓到的報價，避免有的更新、有的沒更新
+                        this.tickerQuotes = parsed.tickerQuotes || {};
+                        this.positions.forEach(p => {
+                            const q = this.tickerQuotes[PPQuotes.keyOf(p.ticker, p.market)];
+                            if (q && q.price > 0) p.currentPrice = q.price;
+                        });
                         this.cash = Number(parsed.cash) || 0;
                         if (migrated) this.$nextTick(() => this.saveData());
                         if (parsed.optCfg) this.optCfg = Object.assign({}, this.optCfg, parsed.optCfg);

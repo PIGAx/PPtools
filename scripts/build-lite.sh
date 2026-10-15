@@ -9,7 +9,7 @@ mkdir -p "$OUT/scripts" "$OUT/data" "$OUT/.github/workflows"
 
 # 頁面與共用資源
 cp "$ROOT/lite/index.html" "$ROOT/lite/README.md" "$OUT/"
-for f in inventory.html pp-theme.js pp-ui.css pp-target-sim.js pp-stop-alert.js vue.global.prod.js chart.umd.min.js; do
+for f in inventory.html pp-theme.js pp-ui.css pp-target-sim.js pp-stop-alert.js pp-quotes.js vue.global.prod.js chart.umd.min.js; do
   cp "$ROOT/$f" "$OUT/$f"
 done
 # 部位控管：拿掉只有完整版才有的說明（雲端備份＋Actions secrets 的 Telegram 通知）

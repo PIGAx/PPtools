@@ -6,6 +6,7 @@
 <title>庫存戰情室 — 視覺化損益與槓桿</title>
 <link rel="stylesheet" href="pp-ui.css">
 <script src="pp-theme.js"></script>
+<script src="pp-quotes.js"></script>
 <style>
 /* ══════════════════════════════════════════════════════════════
    庫存戰情室：把「部位控管」的同一份庫存資料（quantPortfolioDataV2）
@@ -277,6 +278,8 @@ function loadData(){
       S.netHistory=p.netHistory||[];
       S.riskCfg=Object.assign({lossPct:50,stressPct:15},{lossPct:(p.riskCfg||{}).lossPct,stressPct:(p.riskCfg||{}).stressPct});
       S.cash=Number(p.cash)||0;
+      S.tickerQuotes=p.tickerQuotes||{};
+      S.positions.forEach(x=>{ const q=S.tickerQuotes[PPQuotes.keyOf(x.ticker,x.market)]; if(q&&q.price>0) x.currentPrice=q.price; });
     }
   }catch(e){}
 }
@@ -286,7 +289,8 @@ function persist(){
   try{ base=JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){}
   base.exchangeRate=S.exchangeRate;
   base.cash=S.cash;
-  base.riskCfg=S.riskCfg;
+  base.riskCfg=Object.assign({},base.riskCfg,S.riskCfg); // 保留部位控管的其他設定（例如停損預警門檻）
+  base.tickerQuotes=S.tickerQuotes||{};
   base.lastQuoteAt=S.lastQuoteAt;
   base.positions=S.positions.map(p=>{const o=Object.assign({},p);delete o._i;delete o._name;return o;});
   base.netHistory=S.netHistory;
@@ -576,69 +580,31 @@ function renderCurve(){
 }
 
 /* ── 報價：先讀 data/quotes.json（GitHub Actions 每日快照，含昨收），缺的再走 Yahoo 代理 ── */
-const CORS_PROXIES=[
-  u=>'https://corsproxy.io/?url='+encodeURIComponent(u),
-  u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u)
-];
-async function fetchViaProxy(url){
-  let err=new Error('no proxy');
-  for(const wrap of CORS_PROXIES){
-    try{
-      const c=new AbortController(), t=setTimeout(()=>c.abort(),10000);
-      const res=await fetch(wrap(url),{signal:c.signal}); clearTimeout(t);
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      return await res.json();
-    }catch(e){ err=e; }
-  }
-  throw err;
-}
-async function yahooQuote(symbol){
-  const d=await fetchViaProxy('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(symbol)+'?interval=1d&range=5d');
-  const r=d&&d.chart&&d.chart.result&&d.chart.result[0], meta=r&&r.meta;
-  if(!meta) throw new Error('no meta');
-  const price=meta.regularMarketPrice!=null?meta.regularMarketPrice:meta.previousClose;
-  if(price==null||isNaN(price)) throw new Error('no price');
-  return {price:Number(price), prevClose:Number(meta.chartPreviousClose!=null?meta.chartPreviousClose:meta.previousClose)||null};
-}
+// Yahoo 經公開代理抓取（多個代理輪替、記住上次成功的那個），見 pp-quotes.js
+const fetchViaProxy=url=>PPQuotes.fetchJsonViaProxy(url);
 async function refreshQuotes(){
   if(quoteBusy) return;
   if(!S.positions.length){ setQStat('目前沒有庫存部位，先到「部位控管」加入。'); return; }
   quoteBusy=true;
   const btn=document.getElementById('quoteBtn'); btn.disabled=true;
   setQStat('報價更新中…');
-  let snap=null;
-  try{ const r=await fetch('data/quotes.json',{cache:'no-store'}); if(r.ok) snap=await r.json(); }catch(e){}
-  if(snap&&snap.fx&&snap.fx.USDTWD&&snap.fx.USDTWD.price) S.exchangeRate=Math.round(snap.fx.USDTWD.price*100)/100;
-  const failed=[];
+  // 同一檔只抓一次、套用到所有同標的部位；即時價抓不到就用每日收盤快照（見 pp-quotes.js）
+  const res=await PPQuotes.fetchQuotes(S.positions,{fx:true});
+  if(res.fx>0) S.exchangeRate=Math.round(res.fx*100)/100;
+  S.tickerQuotes=S.tickerQuotes||{};
+  res.quotes.forEach((q,k)=>{ if(q.price>0) S.tickerQuotes[k]={price:Math.round(q.price*100)/100,at:Date.now(),source:q.source}; });
   for(const p of S.positions){
-    let q=null;
-    if(snap){
-      if(p.market==='TW'&&snap.tw&&snap.tw.stocks&&snap.tw.stocks[p.ticker]){
-        const s=snap.tw.stocks[p.ticker];
-        q={price:s.close, prevClose:(s.close!=null&&s.change!=null)?Math.round((s.close-s.change)*10000)/10000:null};
-        if(s.name) p._name=s.name;
-      }else if(p.market==='US'&&snap.us&&snap.us[p.ticker]){
-        const s=snap.us[p.ticker];
-        q={price:s.price, prevClose:s.prevClose!=null?s.prevClose:null};
-      }
-    }
-    if(!q){
-      try{
-        if(p.market==='US') q=await yahooQuote(p.ticker);
-        else{ try{ q=await yahooQuote(p.ticker+'.TW'); }catch(e){ q=await yahooQuote(p.ticker+'.TWO'); } }
-      }catch(e){ failed.push(p.ticker); }
-    }
-    if(q&&q.price!=null){
-      p.currentPrice=Math.round(q.price*100)/100;
-      if(q.prevClose!=null&&!isNaN(q.prevClose)) p.prevClose=Math.round(q.prevClose*100)/100;
-    }
+    const q=PPQuotes.quoteFor(res,p);
+    if(!q||!(q.price>0)) continue;
+    p.currentPrice=Math.round(q.price*100)/100;
+    if(q.prevClose!=null&&!isNaN(q.prevClose)) p.prevClose=Math.round(q.prevClose*100)/100;
+    if(q.name) p._name=q.name;
   }
   S.lastQuoteAt=Date.now();
   recordTodayNetValue();
   persist();
   renderAll();
-  const t=new Date().toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'});
-  setQStat(failed.length?('已更新 ('+t+')，這幾檔抓不到：'+failed.join('、')):('報價已更新 ('+t+')'));
+  setQStat(PPQuotes.statusText(res));
   btn.disabled=false; quoteBusy=false;
 }
 function recordTodayNetValue(){
