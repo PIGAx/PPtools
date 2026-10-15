@@ -15,6 +15,8 @@ on:
       - '.github/workflows/fetch-quotes.yml'
       - 'scripts/fetch-quotes.mjs'
       - 'data/us-symbols.json'
+      - 'scripts/check-stops.mjs'
+      - 'pp-stop-alert.js'
 
 permissions:
   contents: write
@@ -49,3 +51,29 @@ jobs:
             git commit -m "chore(data): 自動更新報價快照 [skip ci]"
             git push
           fi
+
+      # 停損預警：讀雲端備份的部位 + 剛抓好的收盤價，緩衝低於門檻就發 Telegram。
+      # secrets 沒設定時腳本會直接略過；去重紀錄放 Actions cache，不 commit 進 repo。
+      - name: Restore stop-alert state
+        uses: actions/cache/restore@v4
+        with:
+          path: .stop-alert-state.json
+          key: stop-alert-${{ github.run_id }}
+          restore-keys: stop-alert-
+
+      - name: Check leveraged stop-loss distance
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PP_BACKUP_REPO: ${{ secrets.PP_BACKUP_REPO }}
+          PP_BACKUP_TOKEN: ${{ secrets.PP_BACKUP_TOKEN }}
+          PP_BACKUP_BRANCH: ${{ secrets.PP_BACKUP_BRANCH }}
+        run: node scripts/check-stops.mjs
+
+      - name: Save stop-alert state
+        if: always() && hashFiles('.stop-alert-state.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .stop-alert-state.json
+          key: stop-alert-${{ github.run_id }}
