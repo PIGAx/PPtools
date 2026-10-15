@@ -359,8 +359,8 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="pos in leveragedPositions" :key="positions.indexOf(pos)" class="border-t border-gray-200">
-                                        <td class="px-2 py-1.5 font-bold">{{ pos.ticker }}<span class="text-[10px] text-gray-400 ml-1">{{ pos.market }}</span><span class="text-[10px] ml-1" :class="isShort(pos) ? 'text-green-600' : 'text-red-600'">{{ isShort(pos) ? '空' : '多' }}</span>
+                                    <tr v-for="pos in leveragedPositions" :key="positions.indexOf(pos)" class="border-t border-gray-200 cursor-pointer hover:bg-gray-50" @click="openPosChart(pos)" title="看走勢與停損線">
+                                        <td class="px-2 py-1.5 font-bold">📈 {{ pos.ticker }}<span class="text-[10px] text-gray-400 ml-1">{{ pos.market }}</span><span class="text-[10px] ml-1" :class="isShort(pos) ? 'text-green-600' : 'text-red-600'">{{ isShort(pos) ? '空' : '多' }}</span>
                                             <span class="block text-[10px] font-normal text-gray-400">{{ pos.source || '—' }} · {{ pos.shares }} 股 @{{ formatNumber(pos.price) }}<span v-if="posMixed(pos)" class="text-yellow-700 font-bold"> ⚠混合</span></span></td>
                                         <td class="px-2 py-1.5 text-right">{{ posLevLabel(pos) }}x</td>
                                         <td class="px-2 py-1.5 text-right">{{ formatNumber(pos.currentPrice || pos.price) }}</td>
@@ -564,6 +564,7 @@
                                 <span class="text-[10px] px-1.5 py-0.5 rounded ml-1 font-bold" :class="isShort(pos) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">{{ isShort(pos) ? '看空' : '看多' }}</span>
                             </span>
                             <div class="flex space-x-2">
+                                <button @click="openPosChart(pos)" class="text-xs bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded hover:bg-blue-100 font-semibold transition">📈 走勢</button>
                                 <button @click="selectForCalc(pos)" class="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded hover:bg-indigo-200 font-semibold transition">選取試算</button>
                                 <button v-if="!isShort(pos)" @click="openConvert(pos)" class="text-xs bg-amber-100 text-amber-800 px-2.5 py-1.5 rounded hover:bg-amber-200 font-semibold transition">轉槓桿</button>
                                 <button @click="deletePosition(index)" class="text-xs bg-gray-100 text-red-500 px-2 py-1 rounded hover:bg-red-100 transition" title="刪除此部位">🗑️</button>
@@ -1530,12 +1531,105 @@
                 需補款 ＝ 新權利金（R ÷ L1 × N1）＋ 買進處理費 − 拿回金額。實際結算價為隔日最低第一委買，重新承作有買賣價差，結果僅供試算。
             </p>
         </div>
+
+        <!-- ══════ 個股走勢 × 每筆下單 × 停損線 ══════ -->
+        <div v-if="pc.open" class="fixed inset-0 z-50 bg-black/40 flex items-start sm:items-center justify-center p-2 sm:p-6 overflow-y-auto" @click.self="closePosChart">
+            <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl p-4 my-auto">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <h2 class="text-lg font-bold">📈 {{ pc.ticker }}<span v-if="pc.name" class="ml-1">{{ pc.name }}</span>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded ml-1 font-normal bg-gray-200 text-gray-800">{{ pc.market }}</span>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded ml-1 font-bold" :class="pc.dir === 'short' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">{{ pc.dir === 'short' ? '看空' : '看多' }}</span>
+                    </h2>
+                    <div class="flex items-center gap-1">
+                        <button v-for="r in [['3mo','3 個月'],['6mo','6 個月'],['1y','1 年']]" :key="r[0]" @click="setPcRange(r[0])"
+                                class="text-xs px-2.5 py-1 rounded border" :class="pc.range === r[0] ? 'bg-indigo-600 text-white border-indigo-600 font-bold' : 'border-gray-300 text-gray-600'">{{ r[1] }}</button>
+                        <button @click="closePosChart" class="ml-2 text-gray-500 hover:text-gray-800 text-xl leading-none px-1" title="關閉">×</button>
+                    </div>
+                </div>
+                <p v-if="pcSummary" class="text-sm mb-2" :class="pcSummary.cls">{{ pcSummary.text }}</p>
+                <div class="relative h-72 sm:h-96">
+                    <canvas id="posChart"></canvas>
+                    <div v-if="pc.loading || pc.error" class="absolute inset-0 flex items-center justify-center text-sm text-gray-500 text-center px-6">
+                        {{ pc.loading ? '走勢載入中…' : pc.error }}
+                    </div>
+                </div>
+                <div class="overflow-x-auto border border-gray-200 rounded mt-3">
+                    <table class="w-full text-xs">
+                        <thead class="bg-gray-50 text-gray-500">
+                            <tr>
+                                <th class="text-left px-2 py-1.5 font-semibold">成交日</th>
+                                <th class="text-left px-2 py-1.5 font-semibold">來源</th>
+                                <th class="text-right px-2 py-1.5 font-semibold">股數</th>
+                                <th class="text-right px-2 py-1.5 font-semibold">成交價</th>
+                                <th class="text-right px-2 py-1.5 font-semibold">倍數</th>
+                                <th class="text-right px-2 py-1.5 font-semibold">停損價</th>
+                                <th class="text-right px-2 py-1.5 font-semibold">距離停損</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="l in pcLots" :key="positions.indexOf(l.pos)" class="border-t border-gray-200">
+                                <td class="px-2 py-1">
+                                    <span class="inline-block w-2.5 h-2.5 rounded-full mr-1 align-middle" :style="{ background: l.color }"></span>
+                                    <input v-model="l.pos.openedAt" type="date" class="border border-gray-300 rounded px-1 py-0.5 bg-white text-xs" @change="saveData(); drawPosChart()">
+                                    <span v-if="l.offChart" class="block text-[10px] text-gray-400">{{ l.offChart }}</span>
+                                </td>
+                                <td class="px-2 py-1 text-gray-500">{{ l.pos.source || '—' }}</td>
+                                <td class="px-2 py-1 text-right">{{ formatNumber(l.pos.shares) }}</td>
+                                <td class="px-2 py-1 text-right">{{ formatNumber(l.pos.price) }}</td>
+                                <td class="px-2 py-1 text-right">{{ l.lev > 1 ? posLevLabel(l.pos) + 'x' : '現股' }}</td>
+                                <td class="px-2 py-1 text-right">{{ l.stop ? formatNumber(Math.round(l.stop * 100) / 100) : '—' }}</td>
+                                <td class="px-2 py-1 text-right font-bold" :class="l.stop ? bufferClass(l.buffer) : 'text-gray-400'">
+                                    <template v-if="l.stop">{{ l.buffer <= 0 ? '已觸及' : (pc.dir === 'short' ? '漲 ' : '跌 ') + formatNumber(Math.round(Math.abs(l.cur - l.stop) * 100) / 100) + '（' + l.buffer.toFixed(1) + '%）' }}</template>
+                                    <template v-else>—</template>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                    ▲ 為每一筆下單（成交日 × 成交價），虛線為該筆的停損價，顏色對應下表。成交日預設是新增那天，請改成實際成交日，圖上的標記會跟著移動。
+                    走勢為 Yahoo Finance 日收盤價，最右端的價格與上方「市價」可能因報價時間不同而略有差異。
+                </p>
+            </div>
+        </div>
     </div>
 
     <script>
         const { createApp } = Vue;
         let chartInstance = null;
         let netChartInstance = null;
+        let posChartInstance = null;
+        const posSeriesCache = {};
+        const PC_COLORS = ['#2f5bd3', '#d9480f', '#2b8a3e', '#ae3ec9', '#1098ad', '#c2255c', '#e67700', '#5c940d'];
+
+        // 在虛線右端畫「停損 1,472（−8.3%）」等標籤；標籤太近時自動上下錯開
+        const pcLabelPlugin = {
+            id: 'pcLabels',
+            afterDatasetsDraw(chart) {
+                const { ctx, chartArea } = chart;
+                const tags = [];
+                chart.data.datasets.forEach((ds, i) => {
+                    if (!ds._tag || !chart.isDatasetVisible(i)) return;
+                    const meta = chart.getDatasetMeta(i);
+                    const pt = meta.data[meta.data.length - 1];
+                    if (pt) tags.push({ y: pt.y, text: ds._tag, color: ds._tagColor || ds.borderColor });
+                });
+                tags.sort((a, b) => a.y - b.y);
+                for (let i = 1; i < tags.length; i++) if (tags[i].y - tags[i - 1].y < 13) tags[i].y = tags[i - 1].y + 13;
+                ctx.save();
+                ctx.font = '11px -apple-system, "PingFang TC", "Noto Sans TC", sans-serif';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'bottom';
+                tags.forEach(t => {
+                    const w = ctx.measureText(t.text).width;
+                    ctx.fillStyle = PPTheme.isDark && PPTheme.isDark() ? 'rgba(20,20,18,.75)' : 'rgba(255,255,255,.8)';
+                    ctx.fillRect(chartArea.right - w - 6, t.y - 13, w + 4, 13);
+                    ctx.fillStyle = t.color;
+                    ctx.fillText(t.text, chartArea.right - 4, t.y - 1);
+                });
+                ctx.restore();
+            }
+        };
         let allocChartInstance = null;
 
         // 圖表配色隨日夜模式切換（Chart.js 於 update 時重新解析 defaults）
@@ -1575,6 +1669,8 @@
                     tgStatus: '',
                     // 每一檔（市場:代碼）最後一次抓到的報價，同標的的各筆部位都用這個價
                     tickerQuotes: {},
+                    // 個股走勢圖（點部位卡片的「📈 走勢」開啟）
+                    pc: { open: false, ticker: '', market: 'TW', dir: 'long', name: '', range: '6mo', loading: false, error: '', series: null },
                     // 新金鑽（自訂槓桿股權選擇權）與現股費率；庫存費率以官網公告為準
                     optCfg: { carryPct: 4, handlePct: 0.12, stockFeePct: 0.1425, stockTaxPct: 0.3 },
                     // 價格 × 股數損益矩陣的設定（標的、成本、範圍）
@@ -2108,6 +2204,31 @@
                 },
                 weakestPosition() {
                     return this.leveragedPositions[0] || {};
+                },
+                pcLots() {
+                    // 走勢圖這一檔（同代碼、同市場、同方向）的每一筆
+                    if (!this.pc.open) return [];
+                    const dates = (this.pc.series && this.pc.series.dates) || [];
+                    return this.positions
+                        .filter(p => p.ticker === this.pc.ticker && p.market === this.pc.market && (p.dir || 'long') === this.pc.dir)
+                        .map((p, i) => {
+                            const lev = this.hasLeverage(p) ? this.posLev(p) : 1;
+                            const stop = lev > 1 ? this.posCallPrice(p) : 0;
+                            let offChart = '';
+                            if (!p.openedAt) offChart = '未填成交日，圖上不標示';
+                            else if (dates.length && p.openedAt < dates[0]) offChart = '早於圖表範圍，可切換到 1 年';
+                            return { pos: p, color: PC_COLORS[i % PC_COLORS.length], lev, stop, cur: p.currentPrice || p.price,
+                                     buffer: stop ? this.posBufferPct(p) : 100, offChart };
+                        });
+                },
+                pcSummary() {
+                    const lev = this.pcLots.filter(l => l.stop > 0);
+                    if (!lev.length) return null;
+                    const w = lev.slice().sort((a, b) => a.buffer - b.buffer)[0];
+                    const move = this.pc.dir === 'short' ? '漲' : '跌';
+                    if (w.buffer <= 0) return { cls: 'text-red-700 font-bold', text: `🔴 ${this.formatNumber(w.pos.shares)} 股 @${this.formatNumber(w.pos.price)} 那筆已觸及停損價 ${this.formatNumber(Math.round(w.stop * 100) / 100)}。` };
+                    return { cls: w.buffer < this.alertPct ? 'text-amber-800 font-bold' : 'text-gray-600',
+                             text: `現價 ${this.formatNumber(w.cur)}：最先被砍的是 ${this.formatNumber(w.pos.shares)} 股 @${this.formatNumber(w.pos.price)} 那筆，停損價 ${this.formatNumber(Math.round(w.stop * 100) / 100)}，再${move} ${this.formatNumber(Math.round(Math.abs(w.cur - w.stop) * 100) / 100)} 元（${w.buffer.toFixed(1)}%）。` };
                 },
                 alertPct() {
                     return Number(this.riskCfg.alertPct) || PPStopAlert.DEFAULT_ALERT_PCT;
@@ -2958,13 +3079,92 @@
                         if (q && q.price > 0) pos.currentPrice = Math.round(q.price * 100) / 100;
                     }
                     res.quotes.forEach((q, k) => {
-                        if (q.price > 0) this.tickerQuotes[k] = { price: Math.round(q.price * 100) / 100, at: Date.now(), source: q.source };
+                        if (q.price > 0) this.tickerQuotes[k] = { price: Math.round(q.price * 100) / 100, at: Date.now(), source: q.source, name: q.name || (this.tickerQuotes[k] || {}).name || '' };
                     });
                     this.lastQuoteAt = Date.now();
                     this.quoteStatus = PPQuotes.statusText(res);
                     this.saveData();
                     this.quoteLoading = false;
                     this.checkStopAlerts();
+                },
+                /* ── 個股走勢 × 每筆下單 × 停損線 ── */
+                openPosChart(pos) {
+                    Object.assign(this.pc, { open: true, ticker: pos.ticker, market: pos.market, dir: pos.dir || 'long', name: (this.tickerQuotes[PPQuotes.keyOf(pos.ticker, pos.market)] || {}).name || '', error: '', series: null });
+                    this.loadPosSeries();
+                },
+                closePosChart() {
+                    this.pc.open = false;
+                    if (posChartInstance) { posChartInstance.destroy(); posChartInstance = null; }
+                },
+                setPcRange(r) {
+                    if (this.pc.range === r) return;
+                    this.pc.range = r;
+                    this.loadPosSeries();
+                },
+                async loadPosSeries() {
+                    const key = this.pc.market + ':' + this.pc.ticker + ':' + this.pc.range;
+                    this.pc.error = '';
+                    if (!posSeriesCache[key]) {
+                        this.pc.loading = true;
+                        try { posSeriesCache[key] = await PPQuotes.history(this.pc.ticker, this.pc.market, this.pc.range); }
+                        catch (e) { this.pc.error = '走勢抓不到（Yahoo 代理暫時無回應），稍後再開一次。下方各筆的停損距離仍可參考。'; }
+                        this.pc.loading = false;
+                    }
+                    if (!this.pc.open || key !== this.pc.market + ':' + this.pc.ticker + ':' + this.pc.range) return;
+                    this.pc.series = posSeriesCache[key] || null;
+                    this.$nextTick(() => this.drawPosChart());
+                },
+                drawPosChart() {
+                    const canvas = document.getElementById('posChart');
+                    if (posChartInstance) { posChartInstance.destroy(); posChartInstance = null; }
+                    const sr = this.pc.series;
+                    if (!canvas || !sr) return;
+                    const labels = sr.dates.slice();
+                    const fmt = v => this.formatNumber(Math.round(v * 100) / 100);
+                    const last = sr.closes[sr.closes.length - 1];
+                    const ds = [{
+                        label: '收盤價', data: sr.closes, borderColor: PPTheme.chartColors().text, borderWidth: 1.6,
+                        pointRadius: 0, tension: 0.1, order: 10, _kind: 'price', _tag: '收盤 ' + fmt(last)
+                    }];
+                    const short = this.pc.dir === 'short';
+                    this.pcLots.forEach(l => {
+                        const p = l.pos;
+                        if (l.stop > 0) {
+                            const buf = (short ? l.stop - l.cur : l.cur - l.stop) / l.cur * 100;   // 與下表一致，以目前市價計
+                            ds.push({ label: '停損', data: labels.map(() => l.stop), borderColor: l.color, borderWidth: 1.3,
+                                      borderDash: [6, 4], pointRadius: 0, order: 5, _kind: 'stop',
+                                      _tag: '停損 ' + fmt(l.stop) + (buf > 0 ? '（' + (short ? '+' : '−') + buf.toFixed(1) + '%）' : '（已觸及）') });
+                        }
+                        if (!p.openedAt || p.openedAt < labels[0]) return;
+                        // 非交易日（或晚於最後一根）就標在最接近的下一個交易日
+                        let x = labels.find(d => d >= p.openedAt) || labels[labels.length - 1];
+                        ds.push({ label: '下單', data: [{ x, y: p.price }], showLine: false, borderColor: l.color, backgroundColor: l.color,
+                                  pointStyle: 'triangle', rotation: short ? 180 : 0, pointRadius: 7, pointHoverRadius: 9, order: 1,
+                                  _kind: 'order', _info: `${p.openedAt} 下單 ${this.formatNumber(p.shares)} 股 @${fmt(p.price)}` + (l.lev > 1 ? `（${this.posLevLabel(p)}x，停損 ${fmt(l.stop)}）` : '（現股）') });
+                    });
+                    posChartInstance = new Chart(canvas.getContext('2d'), {
+                        type: 'line',
+                        data: { labels, datasets: ds },
+                        plugins: [pcLabelPlugin],
+                        options: {
+                            responsive: true, maintainAspectRatio: false, animation: false,
+                            layout: { padding: { top: 14 } },
+                            interaction: { mode: 'nearest', intersect: false },
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    filter: it => it.dataset._kind !== 'stop',
+                                    callbacks: {
+                                        label: c => c.dataset._kind === 'order' ? c.dataset._info : '收盤 ' + fmt(c.parsed.y)
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: { ticks: { maxTicksLimit: 8, autoSkip: true, maxRotation: 0, callback(v) { const d = this.getLabelForValue(v); return d ? d.slice(5).replace('-', '/') : ''; } } },
+                                y: { position: 'left', ticks: { callback: v => Number(v).toLocaleString('zh-TW') } }
+                            }
+                        }
+                    });
                 },
                 latestPrice(ticker, market, fallback) {
                     // 新增一筆時沿用這檔最新報價，而不是成交價

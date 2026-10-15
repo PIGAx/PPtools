@@ -138,6 +138,32 @@
         return { quotes, failed, snapDate: snap && snap.tw && snap.tw.date, fx };
     }
 
+    /* 日線歷史收盤：回傳 { dates: ['YYYY-MM-DD'], closes: [Number], symbol }，range 例 '3mo'、'6mo'、'1y' */
+    async function history(ticker, market, range) {
+        const snap = await loadSnapshot();
+        const t = String(ticker).toUpperCase(), m = market === 'US' ? 'US' : 'TW';
+        let err = null;
+        for (const sym of yahooSymbols(t, m, snapQuote(snap, t, m))) {
+            try {
+                const url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(sym) + '?interval=1d&range=' + (range || '6mo');
+                const d = await fetchJsonViaProxy(url);
+                const r = d && d.chart && d.chart.result && d.chart.result[0];
+                const ts = r && r.timestamp, cl = r && r.indicators && r.indicators.quote && r.indicators.quote[0] && r.indicators.quote[0].close;
+                if (!ts || !cl) throw new Error('no series');
+                const tz = (r.meta && r.meta.gmtoffset) || 0;   // 用交易所當地日期，避免台股跨日
+                const dates = [], closes = [];
+                ts.forEach((x, i) => {
+                    if (cl[i] == null) return;
+                    dates.push(new Date((x + tz) * 1000).toISOString().slice(0, 10));
+                    closes.push(Math.round(cl[i] * 100) / 100);
+                });
+                if (!dates.length) throw new Error('no series');
+                return { dates, closes, symbol: sym };
+            } catch (e) { err = e; }
+        }
+        throw err || new Error('no series');
+    }
+
     function quoteFor(result, pos) { return result.quotes.get(keyOf(pos.ticker, pos.market)) || null; }
 
     // 狀態列文字：例「報價已更新 (13:05)，7828 用 10/14 收盤價；抓不到：XYZ」
@@ -151,5 +177,5 @@
         return msg;
     }
 
-    root.PPQuotes = { fetchQuotes, quoteFor, statusText, yahooQuote, fetchJsonViaProxy, keyOf };
+    root.PPQuotes = { fetchQuotes, history, quoteFor, statusText, yahooQuote, fetchJsonViaProxy, keyOf };
 })(typeof window !== 'undefined' ? window : globalThis);
