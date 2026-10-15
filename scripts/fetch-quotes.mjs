@@ -229,6 +229,16 @@ function rocOrIsoDate(v) {
   return s;
 }
 
+/* 個股清單本身的資料日期（取各列 Date／日期 欄位中最新的一天）；沒有日期欄位回 null */
+function rowsDate(rows) {
+  let best = null;
+  for (const r of rows.slice(0, 50)) {
+    const d = rocOrIsoDate(pick(r, ['Date', /^日期$|資料日期/]));
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d) && (!best || d > best)) best = d;
+  }
+  return best;
+}
+
 /* ── 全上市個股當日收盤（TWSE STOCK_DAY_ALL） ── */
 async function fetchTwseStocks() {
   const rows = await fetchJson('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL', {
@@ -236,6 +246,7 @@ async function fetchTwseStocks() {
   });
   if (!Array.isArray(rows) || !rows.length) throw new Error('STOCK_DAY_ALL empty');
   const out = {};
+  const date = rowsDate(rows);
   for (const r of rows) {
     const code = String(pick(r, ['Code', /證券代號|代號/]) ?? '').trim();
     if (!code) continue;
@@ -251,7 +262,7 @@ async function fetchTwseStocks() {
       market: 'TWSE',
     };
   }
-  return out;
+  return { stocks: out, date };
 }
 
 /* ── 全上櫃個股當日收盤（TPEX openapi） ── */
@@ -272,6 +283,7 @@ async function fetchTpexStocks() {
   }
   if (!Array.isArray(rows) || !rows.length) throw lastErr || new Error('TPEX quotes empty');
   const out = {};
+  const date = rowsDate(rows);
   for (const r of rows) {
     const code = String(pick(r, ['SecuritiesCompanyCode', 'Code', /代號|股票代號/]) ?? '').trim();
     if (!code) continue;
@@ -287,7 +299,7 @@ async function fetchTpexStocks() {
       market: 'TPEX',
     };
   }
-  return out;
+  return { stocks: out, date };
 }
 
 /* ── 三大法人買賣超（外資／投信／自營商／合計），依日期回退找最近有資料的交易日 ──
@@ -561,24 +573,30 @@ async function main() {
 
   /* 台股全個股收盤 */
   console.error('· 台股個股收盤');
+  // 日期以個股資料本身為準；官方指數（FMTQIK）常比個股晚更新，不能拿來代表個股的日期
   const twStocks = {};
+  const marketDates = {};
   let twOk = false;
-  let twDate = null;
   try {
-    Object.assign(twStocks, await fetchTwseStocks());
+    const r = await fetchTwseStocks();
+    Object.assign(twStocks, r.stocks);
+    marketDates.TWSE = r.date || out.indices.TWII?.date || null;
     twOk = true;
   } catch (e) {
     fail('TWSE stocks', e);
   }
   try {
-    Object.assign(twStocks, await fetchTpexStocks());
+    const r = await fetchTpexStocks();
+    Object.assign(twStocks, r.stocks);
+    marketDates.TPEX = r.date || out.indices.TWOII?.date || null;
     twOk = true;
   } catch (e) {
     fail('TPEX stocks', e);
   }
   if (twOk) {
-    twDate = out.indices.TWII?.date || out.indices.TWOII?.date || null;
-    out.tw = { date: twDate, count: Object.keys(twStocks).length, stocks: twStocks };
+    const twDate = [marketDates.TWSE, marketDates.TPEX].filter(Boolean).sort().pop() || null;
+    console.error('  個股資料日期：上市 ' + marketDates.TWSE + '｜上櫃 ' + marketDates.TPEX);
+    out.tw = { date: twDate, marketDates, count: Object.keys(twStocks).length, stocks: twStocks };
   } else {
     markStale(out.tw);
   }
