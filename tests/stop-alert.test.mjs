@@ -46,3 +46,17 @@ test('做空：上漲接近停損', () => {
     assert.equal(Math.round(r[0].stop), 125);
     assert.match(A.formatMessage(r), /再漲 4\.2%/);
 });
+
+test('rebuyCash：以停損價買回原股數要準備的現金', () => {
+    // 24 股 @1840、2.5x、虧損上限 50% → 停損價 1472
+    const a = { ticker: '7828', market: 'TW', dir: 'long', shares: 24, price: 1840, lev: 2.5, lossPct: 50, stop: 1472, cur: 1605, bufferPct: 8.3, level: 'warn' };
+    const r = A.rebuyCash(a);
+    assert.equal(Math.round(r.back), 8832);      // 自備 17,664 剩一半
+    assert.equal(Math.round(r.cash), 35328);     // 1472 × 24
+    assert.equal(Math.round(r.cashNet), 26496);
+    assert.equal(Math.round(r.lev), 14131);      // 1472 × 24 ÷ 2.5
+    assert.equal(Math.round(r.levNet), 5299);
+    assert.match(A.formatMessage([a]), /現股需 35,328（淨補 26,496）、槓桿 2\.5x 需 14,131（淨補 5,299）/);
+    // 看空不能用現股回補
+    assert.equal(A.rebuyCash(Object.assign({}, a, { dir: 'short', stop: 2208 })).cash, null);
+});
