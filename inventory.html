@@ -35,6 +35,8 @@ section{margin-top:20px}
 
 /* ── 損益總覽 ── */
 .overview{display:grid;grid-template-columns:1.25fr 1fr;gap:14px;align-items:stretch}
+.trend{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+@media(max-width:860px){.trend{grid-template-columns:1fr}}
 @media(max-width:860px){.overview{grid-template-columns:1fr}}
 .hero{overflow:hidden;display:flex;flex-direction:column}
 .hero-main{padding:18px 16px 14px;border-bottom:1px solid var(--stroke)}
@@ -143,7 +145,29 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
   <div class="qstat" id="qstat">—</div>
   <div class="qstat" id="bfstat"></div>
 
-  <section id="sec-overview" style="margin-top:14px">
+  <!-- 每日損益與權益曲線：縮小並排放在最上面 -->
+  <section id="sec-trend" style="margin-top:14px">
+    <div class="trend">
+      <div class="panel pad">
+        <div class="hero-label" style="margin-bottom:6px;display:flex;align-items:center;gap:8px">
+          <span>每日損益</span><span style="flex:1"></span>
+          <span class="num" id="barReadout" style="font-size:12px">—</span>
+        </div>
+        <svg id="barChart" class="chart" viewBox="0 0 640 170" preserveAspectRatio="xMidYMid meet" role="img" aria-label="每日損益長條圖"></svg>
+        <div class="cap" id="barCap">—</div>
+      </div>
+      <div class="panel pad">
+        <div class="hero-label" style="margin-bottom:6px;display:flex;align-items:center;gap:8px">
+          <span>權益曲線</span><span style="flex:1"></span>
+          <label class="switch" style="font-size:11px"><input type="checkbox" id="clipOutlier" checked> 隱藏異常淨值點</label>
+        </div>
+        <svg id="lineChart" class="chart" viewBox="0 0 640 170" preserveAspectRatio="xMidYMid meet" role="img" aria-label="淨值與成本曲線"></svg>
+        <div class="cap" id="lineCap">—</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-overview">
     <div class="overview">
       <div class="panel hero">
         <div class="hero-main">
@@ -200,24 +224,6 @@ footer{margin-top:28px;font-size:11px;color:var(--text-muted);opacity:.75;text-a
         <button class="btn btn-sm" id="nextM" aria-label="下個月">›</button>
       </div>
       <div class="tblwrap"><table class="cal" id="cal"></table></div>
-    </div>
-    <div class="panel pad" style="margin-top:12px">
-      <div class="hero-label" style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
-        <span>每日損益</span><span style="flex:1"></span>
-        <span class="num" id="barReadout" style="font-size:12px">—</span>
-      </div>
-      <svg id="barChart" class="chart" viewBox="0 0 640 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="每日損益長條圖"></svg>
-      <div class="cap" id="barCap">—</div>
-    </div>
-  </section>
-
-  <section id="sec-curve">
-    <div class="sec-head"><div class="sec-title">權益曲線</div>
-      <label class="switch sec-note"><input type="checkbox" id="clipOutlier" checked> 隱藏異常淨值點（同步套用日曆）</label>
-    </div>
-    <div class="panel pad">
-      <svg id="lineChart" class="chart" viewBox="0 0 640 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="淨值與成本曲線"></svg>
-      <div class="cap" id="lineCap">—</div>
     </div>
   </section>
 
@@ -519,7 +525,7 @@ function renderCalendar(){
   renderBars(ds);
 }
 function renderBars(ds){
-  const W=640,H=220,pad=26,base=26,n=ds.length,el=document.getElementById('barChart');
+  const W=640,H=170,pad=26,base=26,n=ds.length,el=document.getElementById('barChart');
   barData=ds;
   if(!n){ el.innerHTML=''; document.getElementById('barCap').textContent='還沒有每日淨值紀錄，更新報價後會開始累積。'; setBarReadout(null); return; }
   const maxAbs=Math.max(1,...ds.map(d=>Math.abs(d.pnl)));
@@ -557,7 +563,7 @@ function setBarReadout(i){
 function renderCurve(){
   const ch=cleanHistory(), h=ch.h, el=document.getElementById('lineChart');
   if(h.length<2){ el.innerHTML=''; document.getElementById('lineCap').textContent='淨值紀錄還不夠畫曲線（至少兩天）。'; return; }
-  const W=640,H=240,L=62,R=12,Tp=16,B=26;
+  const W=640,H=170,L=62,R=12,Tp=16,B=26;
   const vals=h.flatMap(x=>[x.value,x.cost]);
   let lo=Math.min(...vals), hi=Math.max(...vals); const span=(hi-lo)||1; lo-=span*0.1; hi+=span*0.1;
   const X=i=>L+i*((W-L-R)/(h.length-1)), Y=v=>Tp+(1-(v-lo)/(hi-lo))*(H-Tp-B);
