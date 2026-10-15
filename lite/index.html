@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>槓桿部位工具</title>
+<script src="pp-theme.js"></script>
+<style>
+  :root {
+    --bg: #f4f4f1; --surface: #ffffff; --line: #e3e2dc; --text: #1f1f1c; --muted: #6b6a63; --accent: #2f5bd3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #161615; --surface: #20201e; --line: #34332f; --text: #ecebe6; --muted: #a09f97; --accent: #7d9bf0; }
+  }
+  :root[data-theme="dark"] { --bg: #161615; --surface: #20201e; --line: #34332f; --text: #ecebe6; --muted: #a09f97; --accent: #7d9bf0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0 8px 0 0; white-space: nowrap; }
+  nav { display: flex; gap: 4px; }
+  nav button, .tool { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  nav button.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .tools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .tool { padding: 5px 10px; font-size: 12px; color: var(--muted); }
+  .tool:hover { color: var(--text); }
+  .note { font-size: 11px; color: var(--muted); padding: 6px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  iframe { flex: 1; width: 100%; border: 0; display: block; background: var(--bg); }
+  @media (max-width: 560px) { .tools { margin-left: 0; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 槓桿部位工具</h1>
+  <nav>
+    <button data-page="return_equity.html">部位控管</button>
+    <button data-page="inventory.html">庫存戰情室</button>
+  </nav>
+  <div class="tools">
+    <button class="tool" id="exportBtn" title="把這台裝置上的資料存成檔案">⬇ 匯出備份</button>
+    <button class="tool" id="importBtn" title="從備份檔還原（會覆蓋目前資料）">⬆ 匯入</button>
+    <input type="file" id="importFile" accept="application/json,.json" hidden>
+  </div>
+</header>
+<div class="note">所有部位資料只存在你這台裝置的瀏覽器裡，不會上傳到任何伺服器。換手機／電腦或清除瀏覽器資料前，請先「匯出備份」。</div>
+<iframe id="frame" title="工具內容"></iframe>
+<script>
+(function () {
+  'use strict';
+  // 要備份的資料：部位控管與戰情室共用的庫存、戰情室設定（Telegram Token 等機敏設定不匯出）
+  var KEYS = ['quantPortfolioDataV2', 'quantPortfolioData', 'pp-inventory-autocatchup'];
+  var PAGE_KEY = 'pptools-lite-page';
+  var frame = document.getElementById('frame');
+  var buttons = document.querySelectorAll('nav button');
+
+  function show(page) {
+    buttons.forEach(function (b) { b.classList.toggle('active', b.dataset.page === page); });
+    if (frame.getAttribute('src') !== page) frame.setAttribute('src', page);
+    try { localStorage.setItem(PAGE_KEY, page); } catch (e) {}
+  }
+  buttons.forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.page); }); });
+  var start = 'return_equity.html';
+  try { start = localStorage.getItem(PAGE_KEY) || start; } catch (e) {}
+  show(start);
+
+  document.getElementById('exportBtn').addEventListener('click', function () {
+    var data = {};
+    KEYS.forEach(function (k) { var v = localStorage.getItem(k); if (v !== null) data[k] = v; });
+    if (!Object.keys(data).length) { alert('這台裝置上還沒有資料可以匯出。'); return; }
+    var blob = new Blob([JSON.stringify({ app: 'pptools-lite', version: 1, exportedAt: new Date().toISOString(), data: data }, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'pptools-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  });
+
+  var fileInput = document.getElementById('importFile');
+  document.getElementById('importBtn').addEventListener('click', function () { fileInput.click(); });
+  fileInput.addEventListener('change', function () {
+    var f = fileInput.files && fileInput.files[0];
+    fileInput.value = '';
+    if (!f) return;
+    f.text().then(function (txt) {
+      var snap = JSON.parse(txt);
+      var data = snap && snap.data;
+      if (!data || typeof data !== 'object') throw new Error('檔案格式不對');
+      var keys = Object.keys(data).filter(function (k) { return KEYS.indexOf(k) !== -1 && typeof data[k] === 'string'; });
+      if (!keys.length) throw new Error('檔案裡沒有可還原的資料');
+      if (!confirm('匯入會覆蓋這台裝置目前的部位資料，確定嗎？')) return;
+      keys.forEach(function (k) { localStorage.setItem(k, data[k]); });
+      frame.contentWindow.location.reload();
+      alert('已還原 ' + (snap.exportedAt ? snap.exportedAt.slice(0, 10) + ' 的' : '') + '備份。');
+    }).catch(function (e) { alert('匯入失敗：' + e.message); });
+  });
+})();
+</script>
+</body>
+</html>
