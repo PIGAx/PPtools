@@ -1540,6 +1540,8 @@
                         <span class="text-[10px] px-1.5 py-0.5 rounded ml-1 font-bold" :class="pc.dir === 'short' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">{{ pc.dir === 'short' ? '看空' : '看多' }}</span>
                     </h2>
                     <div class="flex items-center gap-1">
+                        <a v-if="pc.tvSymbol" :href="'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(pc.tvSymbol)" target="_blank" rel="noopener"
+                           class="text-xs px-2.5 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 mr-1 no-underline">TradingView ↗</a>
                         <button v-for="r in [['3mo','3 個月'],['6mo','6 個月'],['1y','1 年']]" :key="r[0]" @click="setPcRange(r[0])"
                                 class="text-xs px-2.5 py-1 rounded border" :class="pc.range === r[0] ? 'bg-indigo-600 text-white border-indigo-600 font-bold' : 'border-gray-300 text-gray-600'">{{ r[1] }}</button>
                         <button @click="closePosChart" class="ml-2 text-gray-500 hover:text-gray-800 text-xl leading-none px-1" title="關閉">×</button>
@@ -1548,10 +1550,12 @@
                 <p v-if="pcSummary" class="text-sm mb-2" :class="pcSummary.cls">{{ pcSummary.text }}</p>
                 <div class="relative h-72 sm:h-96">
                     <canvas id="posChart"></canvas>
-                    <div v-if="pc.loading || pc.error" class="absolute inset-0 flex items-center justify-center text-sm text-gray-500 text-center px-6">
-                        {{ pc.loading ? '走勢載入中…' : pc.error }}
-                    </div>
+                    <div v-if="pc.loading" class="absolute inset-0 flex items-center justify-center text-sm text-gray-500 text-center px-6">走勢載入中…</div>
+                    <!-- 所有資料來源都抓不到時，改嵌入 TradingView 官方走勢圖（第三方圖表無法疊加停損線，停損價見下表） -->
+                    <iframe v-else-if="pc.error && pc.tvSymbol" class="absolute inset-0 w-full h-full border-0 rounded" :src="tvEmbedUrl" title="TradingView 走勢圖"></iframe>
+                    <div v-else-if="pc.error" class="absolute inset-0 flex items-center justify-center text-sm text-gray-500 text-center px-6">{{ pc.error }}</div>
                 </div>
+                <p v-if="pc.error && pc.tvSymbol && !pc.loading" class="text-[11px] text-amber-700 mt-1">走勢資料暫時抓不到，改顯示 TradingView 走勢圖；TradingView 圖上無法畫停損線，各筆停損價請看下表。</p>
                 <div class="overflow-x-auto border border-gray-200 rounded mt-3">
                     <table class="w-full text-xs">
                         <thead class="bg-gray-50 text-gray-500">
@@ -1587,7 +1591,7 @@
                 </div>
                 <p class="text-[10px] text-gray-400 mt-2 leading-relaxed">
                     ▲ 為每一筆下單（成交日 × 成交價），虛線為該筆的停損價，顏色對應下表。成交日預設是新增那天，請改成實際成交日，圖上的標記會跟著移動。
-                    走勢為 Yahoo Finance 日收盤價，最右端的價格與上方「市價」可能因報價時間不同而略有差異。
+                    走勢為日收盤價（資料來源：{{ (pc.series && pc.series.source) || 'FinMind／Yahoo Finance' }}），最右端的價格與上方「市價」可能因報價時間不同而略有差異。
                 </p>
             </div>
         </div>
@@ -1669,7 +1673,7 @@
                     // 每一檔（市場:代碼）最後一次抓到的報價，同標的的各筆部位都用這個價
                     tickerQuotes: {},
                     // 個股走勢圖（點部位卡片的「📈 走勢」開啟）
-                    pc: { open: false, ticker: '', market: 'TW', dir: 'long', name: '', range: '6mo', loading: false, error: '', series: null },
+                    pc: { open: false, ticker: '', market: 'TW', dir: 'long', name: '', range: '6mo', loading: false, error: '', series: null, tvSymbol: '' },
                     // 新金鑽（自訂槓桿股權選擇權）與現股費率；庫存費率以官網公告為準
                     optCfg: { carryPct: 4, handlePct: 0.12, stockFeePct: 0.1425, stockTaxPct: 0.3 },
                     // 價格 × 股數損益矩陣的設定（標的、成本、範圍）
@@ -2203,6 +2207,12 @@
                 },
                 weakestPosition() {
                     return this.leveragedPositions[0] || {};
+                },
+                tvEmbedUrl() {
+                    const range = { '3mo': '3M', '6mo': '6M', '1y': '12M' }[this.pc.range] || '6M';
+                    return 'https://s.tradingview.com/widgetembed/?symbol=' + encodeURIComponent(this.pc.tvSymbol) +
+                        '&interval=D&range=' + range + '&hidesidetoolbar=1&symboledit=0&saveimage=0&withdateranges=1&timezone=Asia%2FTaipei&locale=zh_TW&theme=' +
+                        (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
                 },
                 pcLots() {
                     // 走勢圖這一檔（同代碼、同市場、同方向）的每一筆
@@ -3088,7 +3098,8 @@
                 },
                 /* ── 個股走勢 × 每筆下單 × 停損線 ── */
                 openPosChart(pos) {
-                    Object.assign(this.pc, { open: true, ticker: pos.ticker, market: pos.market, dir: pos.dir || 'long', name: (this.tickerQuotes[PPQuotes.keyOf(pos.ticker, pos.market)] || {}).name || '', error: '', series: null });
+                    Object.assign(this.pc, { open: true, tvSymbol: '', ticker: pos.ticker, market: pos.market, dir: pos.dir || 'long', name: (this.tickerQuotes[PPQuotes.keyOf(pos.ticker, pos.market)] || {}).name || '', error: '', series: null });
+                    PPQuotes.tradingViewSymbol(pos.ticker, pos.market).then(sym => { if (this.pc.ticker === pos.ticker) this.pc.tvSymbol = sym; });
                     this.loadPosSeries();
                 },
                 closePosChart() {
@@ -3106,7 +3117,7 @@
                     if (!posSeriesCache[key]) {
                         this.pc.loading = true;
                         try { posSeriesCache[key] = await PPQuotes.history(this.pc.ticker, this.pc.market, this.pc.range); }
-                        catch (e) { this.pc.error = '走勢抓不到（Yahoo 代理暫時無回應），稍後再開一次。下方各筆的停損距離仍可參考。'; }
+                        catch (e) { this.pc.error = '走勢抓不到（FinMind 與 Yahoo 都暫時無回應），稍後再開一次。下方各筆的停損距離仍可參考。'; }
                         this.pc.loading = false;
                     }
                     if (!this.pc.open || key !== this.pc.market + ':' + this.pc.ticker + ':' + this.pc.range) return;
