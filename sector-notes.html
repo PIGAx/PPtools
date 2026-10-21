@@ -658,11 +658,11 @@ const STORAGE_KEY = 'pptools-sector-notes';
    失敗再直連，最後才走公開代理。可在頁面先設 window.PP_QUOTE_WORKER 覆寫，設成空字串則不用 Worker。 */
 const WORKER_URL = (window.PP_QUOTE_WORKER ?? 'https://wispy-river-32edpp-quote-proxy.kelvin891001.workers.dev').replace(/\/$/, '');
 const FETCHERS = [
-  ...(WORKER_URL ? [{ wrap: u => WORKER_URL + '/?url=' + encodeURIComponent(u), timeout: 15000 }] : []),
-  { wrap: u => u, timeout: 10000 },
-  { wrap: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 20000 },
-  { wrap: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), timeout: 25000 },
-  { wrap: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u), timeout: 20000 }
+  ...(WORKER_URL ? [{ name: 'Worker', wrap: u => WORKER_URL + '/?url=' + encodeURIComponent(u), timeout: 15000 }] : []),
+  { name: '直連', wrap: u => u, timeout: 10000 },
+  { name: 'corsproxy', wrap: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 20000 },
+  { name: 'allorigins', wrap: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), timeout: 25000 },
+  { name: 'codetabs', wrap: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u), timeout: 20000 }
 ];
 
 async function fetchVia(url) {
@@ -675,7 +675,7 @@ async function fetchVia(url) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return await res.json();
     } catch (e) {
-      errs.push(e.message || String(e));
+      errs.push(f.name + ' ' + (e.message || String(e))); // 標明是哪條路徑失敗
     } finally { clearTimeout(timer); }
   }
   throw new Error(errs.join(', '));
@@ -691,7 +691,7 @@ async function fetchViaText(url) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return await res.text();
     } catch (e) {
-      errs.push(e.message || String(e));
+      errs.push(f.name + ' ' + (e.message || String(e))); // 標明是哪條路徑失敗
     } finally { clearTimeout(timer); }
   }
   throw new Error(errs.join(', '));

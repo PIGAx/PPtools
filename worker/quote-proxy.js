@@ -23,6 +23,38 @@ const POST_HOSTS = ['mis.taifex.com.tw'];
 const ALLOW_ORIGINS = ['https://pigax.github.io'];
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36';
 
+/* Yahoo 對雲端機房 IP 常回 401／429，要求先取得 cookie 與 crumb。
+   失敗時依序：換 query2 主機 → 帶 cookie＋crumb 重抓；crumb 存在 isolate 記憶體內重複使用。 */
+let yahooAuth = null; // { cookie, crumb }
+async function getYahooAuth(force) {
+  if (yahooAuth && !force) return yahooAuth;
+  const r = await fetch('https://fc.yahoo.com/', { headers: { 'User-Agent': UA }, redirect: 'manual' });
+  const cookie = (r.headers.get('set-cookie') || '').split(/,(?=\s*\w+=)/).map(c => c.split(';')[0].trim()).filter(Boolean).join('; ');
+  if (!cookie) throw new Error('yahoo cookie unavailable');
+  const c = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', { headers: { 'User-Agent': UA, Cookie: cookie } });
+  const crumb = (await c.text()).trim();
+  if (!c.ok || !crumb || crumb.length > 64) throw new Error('yahoo crumb unavailable');
+  yahooAuth = { cookie, crumb };
+  return yahooAuth;
+}
+async function fetchYahoo(target, cf) {
+  const isBlocked = r => r.status === 401 || r.status === 403 || r.status === 429;
+  let res = await fetch(target.toString(), { headers: { 'User-Agent': UA }, cf });
+  if (!isBlocked(res)) return res;
+  const alt = new URL(target);
+  alt.hostname = target.hostname === 'query1.finance.yahoo.com' ? 'query2.finance.yahoo.com' : 'query1.finance.yahoo.com';
+  res = await fetch(alt.toString(), { headers: { 'User-Agent': UA }, cf });
+  if (!isBlocked(res)) return res;
+  for (const force of [false, true]) {
+    const auth = await getYahooAuth(force);
+    const u = new URL(alt);
+    u.searchParams.set('crumb', auth.crumb);
+    res = await fetch(u.toString(), { headers: { 'User-Agent': UA, Cookie: auth.cookie } });
+    if (!isBlocked(res)) return res;
+  }
+  return res;
+}
+
 export default {
   async fetch(request) {
     const origin = request.headers.get('Origin') || '';
@@ -46,22 +78,27 @@ export default {
     }
 
     let res;
-    if (isPost) {
-      res = await fetch(target.toString(), {
-        method: 'POST',
-        headers: {
-          'User-Agent': UA,
-          'Content-Type': request.headers.get('Content-Type') || 'application/json',
-          Referer: target.origin + '/',
-        },
-        body: await request.text(),
-      });
-    } else {
-      const ttl = ALLOW_HOSTS[target.hostname];
-      res = await fetch(target.toString(), {
-        headers: { 'User-Agent': UA },
-        cf: { cacheTtlByStatus: { '200-299': ttl, '300-599': 0 }, cacheEverything: true }, // 只快取成功回應，錯誤不卡在邊緣
-      });
+    try {
+      if (isPost) {
+        res = await fetch(target.toString(), {
+          method: 'POST',
+          headers: {
+            'User-Agent': UA,
+            'Content-Type': request.headers.get('Content-Type') || 'application/json',
+            Referer: target.origin + '/',
+          },
+          body: await request.text(),
+        });
+      } else {
+        const ttl = ALLOW_HOSTS[target.hostname];
+        const cf = { cacheTtlByStatus: { '200-299': ttl, '300-599': 0 }, cacheEverything: true }; // 只快取成功回應，錯誤不卡在邊緣
+        res = target.hostname.endsWith('.finance.yahoo.com')
+          ? await fetchYahoo(target, cf)
+          : await fetch(target.toString(), { headers: { 'User-Agent': UA }, cf });
+      }
+    } catch (e) {
+      // 來源連線失敗也要帶 CORS 標頭回應，瀏覽器端才看得到原因，而不是只顯示「網路不通」
+      return new Response('upstream error: ' + (e && e.message || e), { status: 502, headers: { ...cors, 'Cache-Control': 'no-store' } });
     }
     const h = new Headers(cors);
     h.set('Content-Type', res.headers.get('Content-Type') || 'application/json');

@@ -694,7 +694,7 @@ const TAIFEX_MIS_URL = 'https://mis.taifex.com.tw/futures/api/getQuoteList';
 /* 自架 Cloudflare Worker 代理（worker/quote-proxy.js），與 pp-quotes.js 共用同一個；
    可在頁面先設 window.PP_QUOTE_WORKER 覆寫，設成空字串則不用 Worker。 */
 const WORKER_URL = (window.PP_QUOTE_WORKER ?? 'https://wispy-river-32edpp-quote-proxy.kelvin891001.workers.dev').replace(/\/$/, '');
-const WORKER_FETCHER = WORKER_URL ? [{ wrap: u => WORKER_URL + '/?url=' + encodeURIComponent(u), timeout: 15000 }] : [];
+const WORKER_FETCHER = WORKER_URL ? [{ name: 'Worker', wrap: u => WORKER_URL + '/?url=' + encodeURIComponent(u), timeout: 15000 }] : [];
 
 /* 優先走自架 Worker（伺服器端抓取＋邊緣快取，最快最穩）；
    Worker 失敗（例如來源擋雲端 IP）再直連，最後才依序走公開代理。
@@ -702,10 +702,10 @@ const WORKER_FETCHER = WORKER_URL ? [{ wrap: u => WORKER_URL + '/?url=' + encode
    因此每個來源各自給足逾時時間，並多備援一組代理。 */
 const FETCHERS = [
   ...WORKER_FETCHER,
-  { wrap: u => u, timeout: 10000 },
-  { wrap: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 20000 },
-  { wrap: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), timeout: 25000 },
-  { wrap: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u), timeout: 20000 }
+  { name: '直連', wrap: u => u, timeout: 10000 },
+  { name: 'corsproxy', wrap: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 20000 },
+  { name: 'allorigins', wrap: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), timeout: 25000 },
+  { name: 'codetabs', wrap: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u), timeout: 20000 }
 ];
 
 function errText(e) {
@@ -728,7 +728,7 @@ async function fetchJson(url) {
       const text = await res.text(); // 逾時計時涵蓋整段下載，避免大檔下載中途卡死
       return JSON.parse(text);
     } catch (e) {
-      errs.push(errText(e));
+      errs.push(f.name + ' ' + errText(e)); // 標明是哪條路徑失敗，方便判斷是來源還是代理的問題
     } finally {
       clearTimeout(timer);
     }
@@ -742,8 +742,8 @@ async function fetchJsonPost(url, body) {
   const errs = [];
   const postFetchers = [
     ...WORKER_FETCHER,
-    { wrap: u => u, timeout: 10000 },
-    { wrap: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 20000 }
+    { name: '直連', wrap: u => u, timeout: 10000 },
+    { name: 'corsproxy', wrap: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 20000 }
   ];
   for (const f of postFetchers) {
     const ctrl = new AbortController();
@@ -759,7 +759,7 @@ async function fetchJsonPost(url, body) {
       const text = await res.text();
       return JSON.parse(text);
     } catch (e) {
-      errs.push(errText(e));
+      errs.push(f.name + ' ' + errText(e)); // 標明是哪條路徑失敗，方便判斷是來源還是代理的問題
     } finally {
       clearTimeout(timer);
     }
@@ -778,7 +778,7 @@ async function fetchText(url) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return await res.text();
     } catch (e) {
-      errs.push(errText(e));
+      errs.push(f.name + ' ' + errText(e)); // 標明是哪條路徑失敗，方便判斷是來源還是代理的問題
     } finally {
       clearTimeout(timer);
     }
