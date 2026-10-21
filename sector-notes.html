@@ -654,7 +654,11 @@ const { createApp, ref, computed, onMounted, nextTick, watch } = Vue;
 
 const STORAGE_KEY = 'pptools-sector-notes';
 
+/* 優先走自架 Cloudflare Worker（worker/quote-proxy.js，與市場指標、部位控管共用）：伺服器端抓取＋邊緣快取，最快最穩；
+   失敗再直連，最後才走公開代理。可在頁面先設 window.PP_QUOTE_WORKER 覆寫，設成空字串則不用 Worker。 */
+const WORKER_URL = (window.PP_QUOTE_WORKER ?? 'https://wispy-river-32edpp-quote-proxy.kelvin891001.workers.dev').replace(/\/$/, '');
 const FETCHERS = [
+  ...(WORKER_URL ? [{ wrap: u => WORKER_URL + '/?url=' + encodeURIComponent(u), timeout: 15000 }] : []),
   { wrap: u => u, timeout: 10000 },
   { wrap: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 20000 },
   { wrap: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), timeout: 25000 },

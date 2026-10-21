@@ -1,5 +1,5 @@
 /* Cloudflare Worker：PPtools 報價代理
-   用途：取代瀏覽器端不穩的公開 CORS 代理，由 Cloudflare 伺服器端去抓 Yahoo / FinMind / 證交所 / 櫃買 / 期交所並加上 CORS 標頭。
+   用途：取代瀏覽器端不穩的公開 CORS 代理，由 Cloudflare 伺服器端去抓 Yahoo / FinMind / 證交所 / 櫃買 / 期交所 / 券商分點並加上 CORS 標頭。
    用法：GET  https://<你的worker>.workers.dev/?url=<編碼後的目標網址>
          POST 同上，body 原封轉送（僅限 POST_HOSTS，例如期交所 MIS 即時報價）
    只允許白名單網域，避免被當成開放代理濫用。 */
@@ -9,6 +9,8 @@ const ALLOW_HOSTS = {
   'query2.finance.yahoo.com': 30,
   'api.finmindtrade.com': 30,
   'histock.tw': 30,
+  'bsr.twse.com.tw': 120,              // 券商分點（產業族群筆記）
+  'fubon-ebrokerdj.fbs.com.tw': 120,   // 券商分點備援（產業族群筆記）
   'openapi.twse.com.tw': 120,
   'www.twse.com.tw': 120,
   'openapi.tpex.org.tw': 120,
