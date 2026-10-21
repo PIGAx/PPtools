@@ -575,6 +575,8 @@
                                 <span v-if="g.levShares" class="text-indigo-700">槓桿 <b>{{ formatNumber(g.levShares) }}</b> 股</span>
                                 <span v-if="g.shortShares" class="text-green-700">看空 <b>{{ formatNumber(g.shortShares) }}</b> 股</span>
                                 <span v-if="g.cur">市價 {{ formatNumber(g.cur) }}</span>
+                                <span v-if="g.avgLong != null">均價 <b>{{ formatNumber(g.avgLong) }}</b><span v-if="g.cashShares && g.levShares" class="text-gray-400">（現股 {{ formatNumber(g.avgCash) }}・槓桿 {{ formatNumber(g.avgLev) }}）</span></span>
+                                <span v-if="g.avgShort != null" class="text-green-700">看空均價 <b>{{ formatNumber(g.avgShort) }}</b></span>
                                 <span>成本 {{ formatInt(g.cost) }}</span>
                                 <span v-if="g.levShares || g.shortShares">整體槓桿 {{ (Math.round(g.lev * 100) / 100) }}x</span>
                                 <span v-if="g.minBuffer != null">最近停損 <b :class="bufferClass(g.minBuffer)">{{ g.minBuffer.toFixed(1) }}%</b></span>
@@ -1776,12 +1778,16 @@
                         const lev = g.items.filter(it => this.hasLeverage(it.pos));
                         const q = this.tickerQuotes[g.key] || {};
                         const curPos = g.items.find(it => it.pos.currentPrice > 0);
+                        // 庫存均價：看多部位（現股＋槓桿）以股數加權的平均成本，原幣計；看空另計
+                        const avg = pick => { const n = sum(shares, pick); return n > 0 ? sum(p => this.posCostOrig(p), pick) / n : null; };
+                        const longAll = p => !this.isShort(p);
                         return Object.assign(g, {
                             name: q.name || '',
                             cur: curPos ? curPos.pos.currentPrice : null,
                             cashShares: sum(shares, longCash),
                             levShares: sum(shares, longLev),
                             shortShares: sum(shares, short),
+                            avgLong: avg(longAll), avgCash: avg(longCash), avgLev: avg(longLev), avgShort: avg(short),
                             cost, pnl, own,
                             roi: cost > 0 ? pnl / cost * 100 : 0,
                             lev: own > 0 ? cost / own : 1,
