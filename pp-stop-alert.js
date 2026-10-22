@@ -74,6 +74,13 @@
         return { own, pnl, back: Math.max(0, own + pnl) };
     }
 
+    // 觸及停損：現價要「超過」停損價才算（做多跌破、做空突破；停損價取到小數兩位），剛好等於停損價還沒觸發
+    function isHit(cur, stop, short) {
+        const s = Math.round(num(stop) * 100) / 100;
+        if (!cur || s <= 0) return false;
+        return short ? cur > s : cur < s;
+    }
+
     function posLev(pos) {
         const cost = num(pos.shares) * num(pos.price), own = cost - posBorrow(pos);
         return own > 0 ? cost / own : 1;
@@ -101,7 +108,7 @@
             out.push({
                 ticker: pos.ticker, market: pos.market, dir: short ? 'short' : 'long', source: pos.source || '',
                 shares: num(pos.shares), price: num(pos.price), lev: posLev(pos), lossPct: lossPct(pos, riskCfg),
-                cur, stop, bufferPct: buf, level: buf <= 0 ? 'hit' : 'warn',
+                cur, stop, bufferPct: buf, level: isHit(cur, stop, short) ? 'hit' : 'warn',
                 own: st.own, pnl: st.pnl, back: st.back
             });
         }
@@ -161,7 +168,7 @@
     }
 
     const api = {
-        DEFAULT_ALERT_PCT, posLots, stopPrice, bufferPct, settle, scan, alertKey, describe, formatMessage, sendTelegram
+        DEFAULT_ALERT_PCT, posLots, stopPrice, bufferPct, isHit, settle, scan, alertKey, describe, formatMessage, sendTelegram
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.PPStopAlert = api;
