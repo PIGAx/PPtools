@@ -122,17 +122,84 @@
             const cur = num(priceOf(pos)) || num(pos.currentPrice) || num(pos.price);
             const short = isShort(pos);
             const buf = bufferPct(cur, stop, short);
-            if (buf >= alertPct) continue;
-            const exit = exitPrice(cur, stop, short);
+            const recall = pos.recall && pos.recall.date ? pos.recall : null;
+            if (buf >= alertPct && !recall) continue;
+            // 已確定回收：以現價估（下一交易日的結算價）；其餘同 exitPrice
+            const exit = recall ? cur : exitPrice(cur, stop, short);
             const st = settle(pos, exit, opts.fees || (portfolio && portfolio.optCfg));
             out.push({
                 ticker: pos.ticker, market: pos.market, dir: short ? 'short' : 'long', source: pos.source || '',
                 shares: num(pos.shares), price: num(pos.price), lev: posLev(pos), lossPct: lossPct(pos, riskCfg),
-                cur, stop, bufferPct: buf, level: isHit(cur, stop, short) ? 'hit' : 'warn',
+                cur, stop, bufferPct: buf, level: recall ? 'recall' : (isHit(cur, stop, short) ? 'hit' : 'warn'),
+                recallDate: recall ? recall.date : null, recallPrice: recall ? num(recall.price) : null,
                 exit, own: st.own, pnl: st.pnl, fee: st.fee, back: st.back
             });
         }
-        return out.sort((a, b) => a.bufferPct - b.bufferPct);
+        return out.sort((a, b) => (b.level === 'recall') - (a.level === 'recall') || a.bufferPct - b.bufferPct);
+    }
+
+    /* ══ 強制回收兩段式：收盤跌破 → 待回收；下一交易日收盤後 → 以當天價格結算 ══
+       新金鑽回收價承作後不能調整、觸發後不能取消，觸發看收盤價，下一交易日以結算價回收（以收盤價估）。 */
+    const MARKET_TZ = { TW: ['Asia/Taipei', 13 * 60 + 35], US: ['America/New_York', 16 * 60 + 5] };
+
+    function marketNow(market, now) {
+        const [tz] = MARKET_TZ[market === 'US' ? 'US' : 'TW'];
+        const parts = {};
+        new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+            .formatToParts(new Date(now || Date.now())).forEach(x => { parts[x.type] = x.value; });
+        return { date: `${parts.year}-${parts.month}-${parts.day}`, minutes: Number(parts.hour) * 60 + Number(parts.minute) };
+    }
+
+    // 報價是否為該報價日的收盤價：報價日早於市場當地今天，或今天已過收盤結算時間
+    function quoteFinal(market, date, now) {
+        if (!date) return false;
+        const m = marketNow(market, now);
+        if (date < m.date) return true;
+        return date === m.date && m.minutes >= MARKET_TZ[market === 'US' ? 'US' : 'TW'][1];
+    }
+
+    /* 回傳下一步：{ action: 'mark' | 'cancel' | 'settle' | 'none', date, price }
+       q = { price, date（市場當地報價日 YYYY-MM-DD）, final（是否為收盤價） } */
+    function recallStep(pos, q, riskCfg) {
+        const stop = stopPrice(pos, riskCfg || {});
+        if (stop <= 0 || !q || !(num(q.price) > 0) || !q.date) return { action: 'none' };
+        const r = pos.recall;
+        const hit = isHit(num(q.price), stop, isShort(pos));
+        if (r && r.date) {
+            if (q.final && q.date > r.date) return { action: 'settle', date: q.date, price: num(q.price) };
+            if (q.final && q.date === r.date && !hit) return { action: 'cancel' };   // 收盤價更正後沒有跌破
+            return { action: 'none' };
+        }
+        if (q.final && hit) return { action: 'mark', date: q.date, price: num(q.price) };
+        return { action: 'none' };
+    }
+
+    /* ══ 回收價分散建議 ══
+       stops：同一檔既有槓桿單的回收價；cur：現價；lossPct：虧損上限 %。
+       回傳 clusters（彼此差距 < gapPct 的回收價群）與 options（各進場價 × 倍數的新回收價、距現價、與既有回收價最近差距、是否建議）。 */
+    function spreadPlan(o) {
+        const cur = num(o.cur), loss = (num(o.lossPct) || DEFAULT_LOSS_PCT) / 100;
+        const gap = (num(o.gapPct) || 3) / 100, minDist = (num(o.minDistPct) || 25) / 100;
+        const stops = (o.stops || []).map(num).filter(x => x > 0).sort((a, b) => b - a);
+        const clusters = [];
+        for (const st of stops) {
+            const c = clusters[clusters.length - 1];
+            if (c && (c.high - st) / cur < gap) { c.low = st; c.count++; } else clusters.push({ high: st, low: st, count: 1 });
+        }
+        const levs = o.levs || [1.5, 2, 2.5];
+        const prices = o.prices || [cur, Math.round(cur * 0.95), Math.round(cur * 0.9)];
+        const options = [];
+        for (const p of prices) {
+            for (const lev of levs) {
+                const stop = p * (1 - loss / lev);
+                const dist = 1 - stop / cur;
+                const near = stops.length ? Math.min(...stops.map(x => Math.abs(x - stop))) / cur : null;
+                const ok = dist >= minDist && (near === null || near >= gap);
+                options.push({ price: Math.round(p * 100) / 100, lev, stop: Math.round(stop * 100) / 100, distPct: dist * 100,
+                               nearPct: near === null ? null : near * 100, ok });
+            }
+        }
+        return { clusters, options };
     }
 
     // 同一筆部位的識別碼（當日去重用）
@@ -148,25 +215,28 @@
         const side = a.dir === 'short' ? '空' : '多';
         const move = a.dir === 'short' ? '漲' : '跌';
         const head = `${a.ticker} ${a.market || ''} ${side}${a.source ? '・' + a.source : ''}・${fmt(a.shares)} 股 @${fmt(a.price)}（${(Math.round(a.lev * 100) / 100)}x）`;
-        const body = a.level === 'hit'
-            ? `現價 ${fmt(a.cur)} 已${a.dir === 'short' ? '突破' : '跌破'}停損價 ${fmt(Math.round(a.stop * 100) / 100)}，應已觸發停損！`
-            : `現價 ${fmt(a.cur)}，停損價 ${fmt(Math.round(a.stop * 100) / 100)}，再${move} ${a.bufferPct.toFixed(1)}% 就會敲停損`;
+        const stopTxt = fmt(Math.round(a.stop * 100) / 100);
+        const body = a.level === 'recall'
+            ? `${a.recallDate.slice(5).replace('-', '/')} 收盤 ${fmt(a.recallPrice)} 已${a.dir === 'short' ? '突破' : '跌破'}回收價 ${stopTxt}，確定強制回收（不能取消），下一交易日收盤後以結算價結算；現價 ${fmt(a.cur)}`
+            : a.level === 'hit'
+            ? `現價 ${fmt(a.cur)} 已${a.dir === 'short' ? '突破' : '跌破'}停損價 ${stopTxt}，收盤仍${a.dir === 'short' ? '高' : '低'}於此價就會被強制回收（不能取消）`
+            : `現價 ${fmt(a.cur)}，停損價 ${stopTxt}，再${move} ${a.bufferPct.toFixed(1)}% 就會敲停損`;
         // 以停損價結算的損益與可拿回本金（美股為 USD）
         const ccy = a.market === 'US' ? 'USD ' : '';
         const feeText = a.fee >= 1 ? `、費用 ${ccy}${fmt(Math.round(a.fee))}` : '';
-        const settleText = a.pnl == null ? '' : `${a.level === 'hit' ? '以 ' + fmt(a.exit) + ' 結算' : '敲停損'}損益 ${a.pnl >= 0 ? '+' : '−'}${ccy}${fmt(Math.round(Math.abs(a.pnl)))}${feeText}，可拿回本金約 ${ccy}${fmt(Math.round(a.back))}（投入 ${fmt(Math.round(a.own))}）`;
+        const settleText = a.pnl == null ? '' : `${a.level === 'warn' ? '敲停損' : '以 ' + fmt(a.exit) + ' 結算'}損益 ${a.pnl >= 0 ? '+' : '−'}${ccy}${fmt(Math.round(Math.abs(a.pnl)))}${feeText}，可拿回本金約 ${ccy}${fmt(Math.round(a.back))}（投入 ${fmt(Math.round(a.own))}）`;
         return { head, body, settle: settleText };
     }
 
     function formatMessage(alerts, opts) {
         opts = opts || {};
-        const hit = alerts.some(a => a.level === 'hit');
+        const hit = alerts.some(a => a.level !== 'warn');
         const lines = [hit ? '🚨 槓桿部位已觸及停損' : '⚠️ 槓桿部位即將敲停損'];
         if (opts.note) lines.push(opts.note);
         lines.push('');
         for (const a of alerts) {
             const d = describe(a);
-            lines.push((a.level === 'hit' ? '🔴 ' : '🟠 ') + d.head);
+            lines.push(({ recall: '⏳ ', hit: '🔴 ' }[a.level] || '🟠 ') + d.head);
             lines.push('   ' + d.body);
             if (d.settle) lines.push('   ' + d.settle);
         }
@@ -189,7 +259,7 @@
     }
 
     const api = {
-        DEFAULT_ALERT_PCT, posLots, stopPrice, bufferPct, isHit, exitPrice, settle, scan, alertKey, describe, formatMessage, sendTelegram
+        DEFAULT_ALERT_PCT, posLots, stopPrice, bufferPct, isHit, exitPrice, settle, scan, marketNow, quoteFinal, recallStep, spreadPlan, alertKey, describe, formatMessage, sendTelegram
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.PPStopAlert = api;
