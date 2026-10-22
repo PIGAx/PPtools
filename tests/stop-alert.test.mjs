@@ -64,3 +64,13 @@ test('做空結算：可拿回 = 自有本金 ＋ 損益', () => {
     const r = A.settle(s, 125);
     assert.deepEqual([r.own, r.pnl, r.back], [500, -250, 250]);
 });
+
+test('收盤剛好等於停損價不算觸及，要低於才算', () => {
+    const r = A.scan(pf, { priceOf: () => 1380 });   // @1,725 停損價正好 1,380
+    const a = r.find(x => x.price === 1725);
+    assert.equal(a.level, 'warn');
+    assert.equal(r.find(x => x.price === 1740).level, 'hit');
+    assert.equal(A.scan(pf, { priceOf: () => 1379.5 }).find(x => x.price === 1725).level, 'hit');
+    assert.equal(A.isHit(125, 125, true), false);
+    assert.equal(A.isHit(125.01, 125, true), true);
+});

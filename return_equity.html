@@ -1658,7 +1658,7 @@
                                 <td class="px-2 py-1 text-right">{{ l.lev > 1 ? posLevLabel(l.pos) + 'x' : '現股' }}</td>
                                 <td class="px-2 py-1 text-right">{{ l.stop ? formatNumber(Math.round(l.stop * 100) / 100) : '—' }}</td>
                                 <td class="px-2 py-1 text-right font-bold" :class="l.stop ? bufferClass(l.buffer) : 'text-gray-400'">
-                                    <template v-if="l.stop">{{ l.buffer <= 0 ? '已觸及' : (pc.dir === 'short' ? '漲 ' : '跌 ') + formatNumber(Math.round(Math.abs(l.cur - l.stop) * 100) / 100) + '（' + l.buffer.toFixed(1) + '%）' }}</template>
+                                    <template v-if="l.stop">{{ isStopHit(l.cur, l.stop, pc.dir === 'short') ? '已觸及' : (pc.dir === 'short' ? '漲 ' : '跌 ') + formatNumber(Math.round(Math.abs(l.cur - l.stop) * 100) / 100) + '（' + l.buffer.toFixed(1) + '%）' }}</template>
                                     <template v-else>—</template>
                                 </td>
                             </tr>
@@ -2357,7 +2357,7 @@
                     if (!lev.length) return null;
                     const w = lev.slice().sort((a, b) => a.buffer - b.buffer)[0];
                     const move = this.pc.dir === 'short' ? '漲' : '跌';
-                    if (w.buffer <= 0) return { cls: 'text-red-700 font-bold', text: `🔴 ${this.formatNumber(w.pos.shares)} 股 @${this.formatNumber(w.pos.price)} 那筆已觸及停損價 ${this.formatNumber(Math.round(w.stop * 100) / 100)}。` };
+                    if (this.isStopHit(w.cur, w.stop, this.pc.dir === 'short')) return { cls: 'text-red-700 font-bold', text: `🔴 ${this.formatNumber(w.pos.shares)} 股 @${this.formatNumber(w.pos.price)} 那筆已觸及停損價 ${this.formatNumber(Math.round(w.stop * 100) / 100)}。` };
                     return { cls: w.buffer < this.alertPct ? 'text-amber-800 font-bold' : 'text-gray-600',
                              text: `現價 ${this.formatNumber(w.cur)}：最先被砍的是 ${this.formatNumber(w.pos.shares)} 股 @${this.formatNumber(w.pos.price)} 那筆，停損價 ${this.formatNumber(Math.round(w.stop * 100) / 100)}，再${move} ${this.formatNumber(Math.round(Math.abs(w.cur - w.stop) * 100) / 100)} 元（${w.buffer.toFixed(1)}%）。` };
                 },
@@ -3311,6 +3311,7 @@
                 },
                 /* ── 停損預警通知 ── */
                 alertKey(a) { return PPStopAlert.alertKey(a); },
+                isStopHit(cur, stop, short) { return PPStopAlert.isHit(cur, stop, short); },
                 // 通知裡標示所用報價的資料日期，例「報價日 10/15（即時）」
                 alertQuoteNote(alerts) {
                     const tags = new Set();
