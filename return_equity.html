@@ -126,25 +126,54 @@
 
         <!-- 停損預警：任一槓桿部位緩衝低於門檻就顯示 -->
         <div v-if="stopAlerts.length" class="mb-6 rounded-lg border-2 p-4 shadow-md"
-             :class="stopAlerts.some(a => a.level === 'hit') ? 'border-red-500 bg-red-50' : 'border-amber-400 bg-amber-50'">
+             :class="stopAlerts.some(a => a.level !== 'warn') ? 'border-red-500 bg-red-50' : 'border-amber-400 bg-amber-50'">
             <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-                <h2 class="text-base font-bold" :class="stopAlerts.some(a => a.level === 'hit') ? 'text-red-700' : 'text-amber-800'">
-                    {{ stopAlerts.some(a => a.level === 'hit') ? '🚨 槓桿部位已觸及停損' : '⚠️ 槓桿部位即將敲停損' }}（{{ stopAlerts.length }} 筆）
+                <h2 class="text-base font-bold" :class="stopAlerts.some(a => a.level !== 'warn') ? 'text-red-700' : 'text-amber-800'">
+                    {{ stopAlerts.some(a => a.level !== 'warn') ? '🚨 槓桿部位已觸及停損' : '⚠️ 槓桿部位即將敲停損' }}（{{ stopAlerts.length }} 筆）
                 </h2>
                 <span class="text-[11px] text-gray-500">預警門檻：緩衝 &lt; {{ alertPct }}%<span v-if="tgStatus"> · {{ tgStatus }}</span></span>
             </div>
             <ul class="space-y-1.5 text-sm">
                 <li v-for="a in stopAlerts" :key="alertKey(a)" class="leading-snug">
-                    <span class="font-bold">{{ a.level === 'hit' ? '🔴' : '🟠' }} {{ describeAlert(a).head }}</span>
-                    <span class="block sm:inline sm:ml-2" :class="a.level === 'hit' ? 'text-red-700 font-bold' : 'text-amber-900'">{{ describeAlert(a).body }}</span>
+                    <span class="font-bold">{{ { recall: '⏳', hit: '🔴' }[a.level] || '🟠' }} {{ describeAlert(a).head }}</span>
+                    <span class="block sm:inline sm:ml-2" :class="a.level !== 'warn' ? 'text-red-700 font-bold' : 'text-amber-900'">{{ describeAlert(a).body }}</span>
                     <span class="block text-xs text-gray-600 sm:ml-6">↳ {{ describeAlert(a).settle }}</span>
                 </li>
             </ul>
             <p v-if="stopAlerts.length > 1" class="text-xs text-gray-600 mt-2">
-                以上全部敲停損：合計損益 <span class="font-bold" :class="alertSettleSum.pnl >= 0 ? 'text-red-600' : 'text-green-600'">{{ alertSettleSum.pnl >= 0 ? '+' : '' }}{{ formatNumber(alertSettleSum.pnl) }}</span> TWD，
-                可拿回本金約 <span class="font-bold">{{ formatNumber(alertSettleSum.back) }}</span> TWD（已扣處理費與庫存費，實際結算價可能更差）
+                以上全部敲停損：合計損益 <span class="font-bold" :class="alertSettleSum.pnl >= 0 ? 'text-red-600' : 'text-green-600'">{{ alertSettleSum.pnl >= 0 ? '+' : '' }}{{ formatNumber(Math.round(alertSettleSum.pnl)) }}</span> TWD，
+                可拿回本金約 <span class="font-bold">{{ formatNumber(Math.round(alertSettleSum.back)) }}</span> TWD（已扣處理費與庫存費，實際結算價可能更差）
             </p>
         </div>
+
+        <!-- 回收價分散建議：同一檔的槓桿單回收價別擠在一起，下一筆用不同進場價／倍數拉開 -->
+        <details v-for="g in spreadGroups" :key="g.key" class="mb-6 rounded-lg border border-indigo-200 bg-indigo-50 p-4 shadow-sm text-sm" :open="g.alert">
+            <summary class="cursor-pointer font-bold text-indigo-800">📐 {{ g.ticker }} 下一筆怎麼下：回收價分散建議
+                <span class="font-normal text-xs text-gray-600">（現價 {{ formatNumber(g.cur) }}，既有 {{ g.stops.length }} 筆槓桿單）</span></summary>
+            <div class="mt-2 space-y-2">
+                <p class="text-xs text-gray-700">既有回收價：
+                    <template v-for="(c, i) in g.plan.clusters" :key="i">
+                        <span :class="c.count > 1 ? 'text-red-700 font-bold' : ''">{{ c.count > 1 ? formatNumber(c.high) + '～' + formatNumber(c.low) + '（' + c.count + ' 筆擠在一起，一根K棒會一起被砍）' : formatNumber(c.high) }}</span><span v-if="i < g.plan.clusters.length - 1">、</span>
+                    </template>
+                </p>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs bg-white rounded">
+                        <thead><tr class="text-gray-500 border-b"><th class="px-2 py-1 text-right">進場價</th><th class="px-2 py-1 text-right">倍數</th><th class="px-2 py-1 text-right">新回收價</th><th class="px-2 py-1 text-right">距現價</th><th class="px-2 py-1 text-right">與既有最近</th><th class="px-2 py-1 text-left">建議</th></tr></thead>
+                        <tbody>
+                            <tr v-for="(o, i) in g.plan.options" :key="i" class="border-b last:border-0" :class="o.ok ? 'text-gray-900' : 'text-gray-400'">
+                                <td class="px-2 py-1 text-right">{{ formatNumber(o.price) }}<span v-if="o.price < g.cur" class="text-[10px]">（掛低 {{ Math.round((1 - o.price / g.cur) * 100) }}%）</span></td>
+                                <td class="px-2 py-1 text-right">{{ o.lev }}x</td>
+                                <td class="px-2 py-1 text-right font-semibold">{{ formatNumber(o.stop) }}</td>
+                                <td class="px-2 py-1 text-right">−{{ o.distPct.toFixed(1) }}%</td>
+                                <td class="px-2 py-1 text-right">{{ o.nearPct === null ? '—' : o.nearPct.toFixed(1) + '%' }}</td>
+                                <td class="px-2 py-1">{{ o.ok ? '✅ 回收距離夠、也和既有錯開' : (o.distPct < 25 ? '回收距離不到 25%' : '和既有回收價太近') }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-[11px] text-gray-500 leading-relaxed">回收價承作後不能調整、觸發後不能取消，只能在下單時分散：新回收價距現價至少 25%（7828 這類股票三週就能跌 25%），且與既有回收價相差 3% 以上。分批掛低接、降低倍數，回收價自然會拉開；虧損上限依目前設定 {{ riskCfg.lossPct }}%。</p>
+            </div>
+        </details>
 
         <!-- 自動停損結算：觸及停損的槓桿部位已依停損價出場，損益記入已實現、拿回的本金加回可動用現金 -->
         <div v-if="stopSettled.length" class="mb-6 rounded-lg border-2 border-blue-400 bg-blue-50 p-4 shadow-md">
@@ -159,7 +188,7 @@
                 <li v-for="(s, i) in stopSettled" :key="i" class="leading-snug">
                     <span class="font-bold">{{ s.head }}</span>
                     <span class="block sm:inline sm:ml-2 text-blue-900">
-                        @{{ formatNumber(s.exit) }} 出場，已實現損益（含費用 {{ formatNumber(s.feeTWD) }}） <span class="font-bold" :class="s.pnlTWD >= 0 ? 'text-red-600' : 'text-green-600'">{{ s.pnlTWD >= 0 ? '+' : '' }}{{ formatNumber(s.pnlTWD) }}</span> TWD，
+                        {{ s.trig ? s.trig.date.slice(5) + ' 收盤 ' + formatNumber(s.trig.price) + ' 觸發，' + s.date.slice(5) + ' ' : '' }}@{{ formatNumber(s.exit) }} 回收，已實現損益（含費用 {{ formatNumber(s.feeTWD) }}） <span class="font-bold" :class="s.pnlTWD >= 0 ? 'text-red-600' : 'text-green-600'">{{ s.pnlTWD >= 0 ? '+' : '' }}{{ formatNumber(s.pnlTWD) }}</span> TWD，
                         拿回本金 <span class="font-bold">{{ formatNumber(s.backTWD) }}</span> TWD（原投入 {{ formatNumber(s.ownTWD) }}）
                     </span>
                 </li>
@@ -167,7 +196,7 @@
             <p class="text-sm mt-2 text-blue-900">
                 合計拿回 <span class="font-bold">{{ formatNumber(stopSettled.reduce((t, s) => t + s.backTWD, 0)) }}</span> TWD，已加回可動用現金，目前可動用現金 <span class="font-bold">{{ formatNumber(cash) }}</span> TWD。
             </p>
-            <p class="text-[11px] text-gray-500 mt-1">預估值：以停損價估算（已跳空跌破就以現價估），已扣作業處理費與庫存費。券商通常在觸發後的下一個結算時點強制回收，實際結算價可能更差；收到對帳單後到「交易明細」按修改，填入淨收支，損益與可動用現金會一起更正。關閉自動結算：帳務計算與風險控管 → 觸及停損自動結算。</p>
+            <p class="text-[11px] text-gray-500 mt-1">預估值：收盤跌破回收價先標「待回收」，下一交易日收盤後以當天收盤價估算結算，已扣作業處理費與庫存費；券商實際結算價可能與收盤價不同，收到對帳單後到「交易明細」按修改，填入淨收支，損益與可動用現金會一起更正。關閉自動結算：帳務計算與風險控管 → 觸及停損自動結算。</p>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
@@ -277,7 +306,7 @@
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">停損預警門檻（緩衝 &lt; %）</label>
                     <input v-model.number="riskCfg.alertPct" type="number" step="1" min="1" max="100" class="border p-2 rounded w-full text-sm" @change="saveData(); checkStopAlerts()">
-                    <label class="flex items-center gap-1.5 text-xs text-gray-600 mt-1.5" title="現價跌破（做空為突破）停損價時，自動以停損價出場結算，損益記入已實現，拿回的本金加回可動用現金">
+                    <label class="flex items-center gap-1.5 text-xs text-gray-600 mt-1.5" title="收盤價跌破（做空為突破）回收價時先標記待回收，下一交易日收盤後以當天價格結算，損益記入已實現，拿回的本金加回可動用現金">
                         <input type="checkbox" :checked="riskCfg.autoSettle !== false" @change="riskCfg.autoSettle = $event.target.checked; saveData(); checkStopAlerts()"> 觸及停損自動結算
                     </label>
                 </div>
@@ -2384,6 +2413,23 @@
                     // 與表格同一份現價（含手動更新報價），算法見 pp-stop-alert.js
                     return PPStopAlert.scan({ positions: this.positions, riskCfg: this.riskCfg, optCfg: this.optCfg }, { alertPct: this.alertPct });
                 },
+                // 每一檔做多槓桿單的回收價，與下一筆的分散建議（算法見 pp-stop-alert.js spreadPlan）
+                spreadGroups() {
+                    const groups = new Map();
+                    this.positions.forEach(p => {
+                        if (this.isShort(p) || !(this.posBorrowOrig(p) > 0)) return;
+                        const key = p.market + ':' + p.ticker;
+                        const g = groups.get(key) || { key, ticker: p.ticker, market: p.market, cur: Number(p.currentPrice) || Number(p.price) || 0, stops: [], loss: this.posLossPct(p) };
+                        const loss = this.posLossPct(p) / 100;
+                        this.posLots(p).forEach(l => { if (l.lev > 1 && l.shares > 0) g.stops.push(l.price * (1 - loss / l.lev)); });
+                        groups.set(key, g);
+                    });
+                    const alerted = new Set(this.stopAlerts.map(a => a.market + ':' + a.ticker));
+                    return [...groups.values()].filter(g => g.stops.length && g.cur > 0).map(g => Object.assign(g, {
+                        alert: alerted.has(g.key),
+                        plan: PPStopAlert.spreadPlan({ cur: g.cur, stops: g.stops, lossPct: g.loss })
+                    }));
+                },
                 alertSettleSum() {
                     const fx = a => a.market === 'US' ? this.exchangeRate : 1;
                     return this.stopAlerts.reduce((t, a) => ({ pnl: t.pnl + (a.pnl - (a.fee || 0)) * fx(a), back: t.back + a.back * fx(a) }), { pnl: 0, back: 0 });
@@ -3370,26 +3416,39 @@
                     } catch (e) { this.tgStatus = e.message; }
                 },
                 async checkStopAlerts() {
-                    const alerts = this.stopAlerts;
-                    await this.notifyStopAlerts(alerts);
-                    this.autoSettleStops(alerts);
+                    this.autoSettleStops();
+                    // 先更新待回收狀態再通知，通知內容才會是最新的
+                    await this.notifyStopAlerts(this.stopAlerts);
                 },
-                // 觸及停損的槓桿部位：以停損價整筆出場（走出場結算寫入已實現損益），拿回的本金加回可動用現金
-                autoSettleStops(alerts) {
+                // 這一檔最後一次報價的市場當地日期與是否為收盤價（兩段式回收用）
+                quoteInfo(pos) {
+                    const tq = this.tickerQuotes[PPQuotes.keyOf(pos.ticker, pos.market)] || {};
+                    const at = tq.at || this.lastQuoteAt || Date.now();
+                    const date = tq.date || PPStopAlert.marketNow(pos.market, at).date;
+                    return { price: Number(pos.currentPrice) || 0, date, final: PPStopAlert.quoteFinal(pos.market, date) };
+                },
+                /* 強制回收兩段式（新金鑽：觸發後不能取消、回收價不能調整）：
+                   1) 收盤價跌破回收價 → 標記「待回收」，現金先不動；
+                   2) 下一交易日收盤後 → 以當天價格整筆結算，損益扣處理費與庫存費寫入明細，拿回的錢加回可動用現金。 */
+                autoSettleStops() {
                     if (this.riskCfg.autoSettle === false) return;
-                    const hits = alerts.filter(a => a.level === 'hit');
-                    if (!hits.length) return;
                     const snap = JSON.stringify({ positions: this.positions, history: this.history, cash: this.cash });
                     const done = [];
-                    for (const a of hits) {
-                        const index = this.positions.findIndex(p => p.ticker === a.ticker && p.market === a.market && (this.isShort(p) ? 'short' : 'long') === a.dir
-                            && (p.source || '') === a.source && Number(p.shares) === a.shares && Number(p.price) === a.price);
-                        if (index === -1) continue;
-                        const pos = this.positions[index];
-                        const exit = a.exit;
+                    let changed = false;
+                    for (const pos of this.positions.slice()) {
+                        if (!(this.posBorrowOrig(pos) > 0)) continue;
+                        const step = PPStopAlert.recallStep(pos, this.quoteInfo(pos), this.riskCfg);
+                        if (step.action === 'mark') { pos.recall = { date: step.date, price: step.price }; changed = true; continue; }
+                        if (step.action === 'cancel') { delete pos.recall; changed = true; continue; }
+                        if (step.action !== 'settle') continue;
+                        const index = this.positions.indexOf(pos);
+                        const head = PPStopAlert.describe(Object.assign({ ticker: pos.ticker, market: pos.market, dir: this.isShort(pos) ? 'short' : 'long',
+                            source: pos.source || '', shares: pos.shares, price: pos.price, lev: this.posLev(pos), level: 'warn', cur: 0, stop: 0, bufferPct: 0 })).head;
+                        const exit = step.price;
                         const st = PPStopAlert.settle(pos, exit, this.optCfg);
                         const fx = this.fxRate(pos);
                         const lev = Math.round(this.posLev(pos) * 100) / 100;
+                        const trig = pos.recall;
                         pos.closeShares = pos.shares;
                         pos.closePrice = exit;
                         this.closePosition(index);
@@ -3402,15 +3461,16 @@
                             rec.fee = parseFloat(st.fee.toFixed(2));
                             rec.lev = lev;
                             rec.cashBack = backTWD;
-                            rec.note = '觸及停損自動結算（預估，收到對帳單請修改）';
+                            rec.note = `強制回收自動結算：${trig.date} 收盤 ${trig.price} 觸發、${step.date} 收盤價估（收到對帳單請修改）`;
                         }
                         this.cash = Math.round((Number(this.cash) || 0) + backTWD);
-                        done.push({ head: this.describeAlert(a).head, exit, pnlTWD: Math.round((st.pnl - st.fee) * fx), feeTWD: Math.round(st.fee * fx), backTWD, ownTWD: Math.round(st.own * fx) });
+                        done.push({ head, exit, trig, date: step.date, pnlTWD: Math.round((st.pnl - st.fee) * fx), feeTWD: Math.round(st.fee * fx), backTWD, ownTWD: Math.round(st.own * fx) });
                     }
-                    if (!done.length) return;
-                    this.stopUndo = this.stopSettled.length && this.stopUndo ? this.stopUndo : snap;
-                    this.stopSettled = this.stopSettled.concat(done);
-                    this.saveData();
+                    if (done.length) {
+                        this.stopUndo = this.stopSettled.length && this.stopUndo ? this.stopUndo : snap;
+                        this.stopSettled = this.stopSettled.concat(done);
+                    }
+                    if (done.length || changed) this.saveData();
                 },
                 undoStopSettle() {
                     if (!this.stopUndo || !confirm('復原自動停損結算？部位、交易明細與可動用現金會回到結算前。')) return;
@@ -3430,7 +3490,7 @@
                     const today = this.todayStr();
                     const st = this.tgStore();
                     const sent = (st.sent && st.sent.date === today) ? st.sent.keys : {};
-                    const fresh = alerts.filter(a => { const k = this.alertKey(a); return !sent[k] || (sent[k] !== 'hit' && a.level === 'hit'); });
+                    const fresh = alerts.filter(a => { const k = this.alertKey(a); return !sent[k] || (sent[k] === 'warn' && a.level !== 'warn') || (sent[k] !== 'recall' && a.level === 'recall'); });
                     if (!fresh.length) return;
                     try {
                         await PPStopAlert.sendTelegram(this.tgCfg.token, this.tgCfg.chatId, PPStopAlert.formatMessage(fresh, { alertPct: this.alertPct, note: this.alertQuoteNote(fresh) }));

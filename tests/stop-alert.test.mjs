@@ -89,3 +89,34 @@ test('跳空跌破停損價：以現價估出場價', () => {
     assert.equal(r.find(x => x.price === 1840).exit, 1365);
     assert.equal(A.scan(pf, { priceOf: () => 1465 }).find(x => x.price === 1725).exit, 1380);  // 還沒觸及：以停損價估
 });
+
+test('收盤價判斷：報價日早於今天，或今天已過 13:35', () => {
+    const at = h => new Date(`2026-10-22T${h}:00+08:00`).getTime();
+    assert.equal(A.quoteFinal('TW', '2026-10-21', at('10:00')), true);
+    assert.equal(A.quoteFinal('TW', '2026-10-22', at('13:00')), false);
+    assert.equal(A.quoteFinal('TW', '2026-10-22', at('13:40')), true);
+    assert.equal(A.quoteFinal('TW', null, at('13:40')), false);
+});
+
+test('兩段式回收：收盤跌破 → 待回收；盤中跌破不算；下一交易日收盤 → 結算', () => {
+    const p = lot(24, 1840);                                   // 回收價 1,472
+    const rc = pf.riskCfg;
+    assert.equal(A.recallStep(p, { price: 1465, date: '2026-10-21', final: false }, rc).action, 'none');
+    assert.deepEqual(A.recallStep(p, { price: 1465, date: '2026-10-21', final: true }, rc), { action: 'mark', date: '2026-10-21', price: 1465 });
+    p.recall = { date: '2026-10-21', price: 1465 };
+    assert.equal(A.recallStep(p, { price: 1611, date: '2026-10-22', final: false }, rc).action, 'none');   // 隔天盤中漲停也不會取消
+    assert.deepEqual(A.recallStep(p, { price: 1611, date: '2026-10-22', final: true }, rc), { action: 'settle', date: '2026-10-22', price: 1611 });
+    // 待回收即使價格漲回去，預警仍列出
+    const r = A.scan({ riskCfg: rc, positions: [p] }, { priceOf: () => 1611 });
+    assert.equal(r[0].level, 'recall');
+    assert.match(A.formatMessage(r), /確定強制回收/);
+});
+
+test('回收價分散：三筆擠在 1% 內是一群，新單要距現價 ≥25% 且與既有差 ≥3%', () => {
+    const plan = A.spreadPlan({ cur: 1380, stops: [1392, 1388, 1380, 1298.57], lossPct: 50 });
+    assert.deepEqual(plan.clusters.map(c => c.count), [3, 1]);
+    const at = (p, l) => plan.options.find(o => Math.round(o.price) === p && o.lev === l);
+    assert.equal(at(1380, 2.5).ok, false);                   // 回收 1,104，只差 20%
+    assert.equal(at(1380, 2).ok, true);                      // 回收 1,035，−25%
+    assert.equal(at(1380, 1.5).stop, 920);
+});
