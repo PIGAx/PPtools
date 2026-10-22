@@ -137,8 +137,37 @@
                 <li v-for="a in stopAlerts" :key="alertKey(a)" class="leading-snug">
                     <span class="font-bold">{{ a.level === 'hit' ? '🔴' : '🟠' }} {{ describeAlert(a).head }}</span>
                     <span class="block sm:inline sm:ml-2" :class="a.level === 'hit' ? 'text-red-700 font-bold' : 'text-amber-900'">{{ describeAlert(a).body }}</span>
+                    <span class="block text-xs text-gray-600 sm:ml-6">↳ {{ describeAlert(a).settle }}</span>
                 </li>
             </ul>
+            <p v-if="stopAlerts.length > 1" class="text-xs text-gray-600 mt-2">
+                以上全部敲停損：合計損益 <span class="font-bold" :class="alertSettleSum.pnl >= 0 ? 'text-red-600' : 'text-green-600'">{{ alertSettleSum.pnl >= 0 ? '+' : '' }}{{ formatNumber(alertSettleSum.pnl) }}</span> TWD，
+                可拿回本金 <span class="font-bold">{{ formatNumber(alertSettleSum.back) }}</span> TWD（未扣利息與手續費）
+            </p>
+        </div>
+
+        <!-- 自動停損結算：觸及停損的槓桿部位已依停損價出場，損益記入已實現、拿回的本金加回可動用現金 -->
+        <div v-if="stopSettled.length" class="mb-6 rounded-lg border-2 border-blue-400 bg-blue-50 p-4 shadow-md">
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                <h2 class="text-base font-bold text-blue-800">✅ 已自動停損結算（{{ stopSettled.length }} 筆）</h2>
+                <div class="flex gap-2 text-xs">
+                    <button v-if="stopUndo" @click="undoStopSettle" class="bg-white border border-blue-300 text-blue-700 px-3 py-1 rounded font-bold hover:bg-blue-100">↩ 復原</button>
+                    <button @click="stopSettled = []; stopUndo = null" class="bg-white border border-gray-300 text-gray-600 px-3 py-1 rounded hover:bg-gray-100">知道了</button>
+                </div>
+            </div>
+            <ul class="space-y-1.5 text-sm">
+                <li v-for="(s, i) in stopSettled" :key="i" class="leading-snug">
+                    <span class="font-bold">{{ s.head }}</span>
+                    <span class="block sm:inline sm:ml-2 text-blue-900">
+                        @{{ formatNumber(s.exit) }} 出場，已實現損益 <span class="font-bold" :class="s.pnlTWD >= 0 ? 'text-red-600' : 'text-green-600'">{{ s.pnlTWD >= 0 ? '+' : '' }}{{ formatNumber(s.pnlTWD) }}</span> TWD，
+                        拿回本金 <span class="font-bold">{{ formatNumber(s.backTWD) }}</span> TWD（原投入 {{ formatNumber(s.ownTWD) }}）
+                    </span>
+                </li>
+            </ul>
+            <p class="text-sm mt-2 text-blue-900">
+                合計拿回 <span class="font-bold">{{ formatNumber(stopSettled.reduce((t, s) => t + s.backTWD, 0)) }}</span> TWD，已加回可動用現金，目前可動用現金 <span class="font-bold">{{ formatNumber(cash) }}</span> TWD。
+            </p>
+            <p class="text-[11px] text-gray-500 mt-1">以停損價估算，未扣利息與手續費；實際成交價不同時，可在下方「交易明細」修改該筆損益與現金。關閉自動結算：帳務計算與風險控管 → 觸及停損自動結算。</p>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
@@ -248,6 +277,9 @@
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">停損預警門檻（緩衝 &lt; %）</label>
                     <input v-model.number="riskCfg.alertPct" type="number" step="1" min="1" max="100" class="border p-2 rounded w-full text-sm" @change="saveData(); checkStopAlerts()">
+                    <label class="flex items-center gap-1.5 text-xs text-gray-600 mt-1.5" title="現價跌破（做空為突破）停損價時，自動以停損價出場結算，損益記入已實現，拿回的本金加回可動用現金">
+                        <input type="checkbox" :checked="riskCfg.autoSettle !== false" @change="riskCfg.autoSettle = $event.target.checked; saveData(); checkStopAlerts()"> 觸及停損自動結算
+                    </label>
                 </div>
             </div>
             <p class="text-[11px] text-gray-400 mb-5 leading-relaxed">
@@ -1714,6 +1746,8 @@
                     // Telegram 停損通知（存在獨立的 localStorage key，不進雲端備份）
                     tgCfg: { token: '', chatId: '', enabled: false },
                     tgStatus: '',
+                    stopSettled: [],   // 本次自動停損結算的明細（顯示用）
+                    stopUndo: null,    // 自動結算前的快照，供「復原」
                     posGroupClosed: {},   // 庫存分組收合狀態（key = 市場:代碼）
                     // 每一檔（市場:代碼）最後一次抓到的報價，同標的的各筆部位都用這個價
                     tickerQuotes: {},
@@ -2333,6 +2367,10 @@
                 stopAlerts() {
                     // 與表格同一份現價（含手動更新報價），算法見 pp-stop-alert.js
                     return PPStopAlert.scan({ positions: this.positions, riskCfg: this.riskCfg }, { alertPct: this.alertPct });
+                },
+                alertSettleSum() {
+                    const fx = a => a.market === 'US' ? this.exchangeRate : 1;
+                    return this.stopAlerts.reduce((t, a) => ({ pnl: t.pnl + a.pnl * fx(a), back: t.back + a.back * fx(a) }), { pnl: 0, back: 0 });
                 },
 
                 /* ══ 集中度 ══ */
@@ -3308,6 +3346,51 @@
                 },
                 async checkStopAlerts() {
                     const alerts = this.stopAlerts;
+                    await this.notifyStopAlerts(alerts);
+                    this.autoSettleStops(alerts);
+                },
+                // 觸及停損的槓桿部位：以停損價整筆出場（走出場結算寫入已實現損益），拿回的本金加回可動用現金
+                autoSettleStops(alerts) {
+                    if (this.riskCfg.autoSettle === false) return;
+                    const hits = alerts.filter(a => a.level === 'hit');
+                    if (!hits.length) return;
+                    const snap = JSON.stringify({ positions: this.positions, history: this.history, cash: this.cash });
+                    const done = [];
+                    for (const a of hits) {
+                        const index = this.positions.findIndex(p => p.ticker === a.ticker && p.market === a.market && (this.isShort(p) ? 'short' : 'long') === a.dir
+                            && (p.source || '') === a.source && Number(p.shares) === a.shares && Number(p.price) === a.price);
+                        if (index === -1) continue;
+                        const pos = this.positions[index];
+                        const exit = Math.round(a.stop * 100) / 100;
+                        const st = PPStopAlert.settle(pos, exit);
+                        const fx = this.fxRate(pos);
+                        pos.closeShares = pos.shares;
+                        pos.closePrice = exit;
+                        this.closePosition(index);
+                        const rec = this.history[this.history.length - 1];
+                        if (rec) rec.note = '觸及停損自動結算';
+                        const backTWD = Math.round(st.back * fx);
+                        this.cash = Math.round((Number(this.cash) || 0) + backTWD);
+                        done.push({ head: this.describeAlert(a).head, exit, pnlTWD: Math.round(st.pnl * fx), backTWD, ownTWD: Math.round(st.own * fx) });
+                    }
+                    if (!done.length) return;
+                    this.stopUndo = this.stopSettled.length && this.stopUndo ? this.stopUndo : snap;
+                    this.stopSettled = this.stopSettled.concat(done);
+                    this.saveData();
+                },
+                undoStopSettle() {
+                    if (!this.stopUndo || !confirm('復原自動停損結算？部位、交易明細與可動用現金會回到結算前。')) return;
+                    const s = JSON.parse(this.stopUndo);
+                    this.positions = s.positions;
+                    this.history = s.history;
+                    this.cash = s.cash;
+                    // 復原後不再自動結算，避免同一批部位又被砍掉
+                    this.riskCfg.autoSettle = false;
+                    this.stopSettled = [];
+                    this.stopUndo = null;
+                    this.saveData();
+                },
+                async notifyStopAlerts(alerts) {
                     if (!alerts.length || !this.tgCfg.enabled || !this.tgCfg.token || !this.tgCfg.chatId) return;
                     // 同一筆每天只發一次；當天已發過預警、之後觸及停損會再發一次
                     const today = this.todayStr();
@@ -3405,7 +3488,7 @@
                         if (parsed.optCfg) this.optCfg = Object.assign({}, this.optCfg, parsed.optCfg);
                         if (parsed.mx) this.mx = Object.assign({}, this.mx, parsed.mx);
                         if (parsed.rb) this.rb = Object.assign({}, this.rb, parsed.rb);
-                        if (parsed.riskCfg) this.riskCfg = Object.assign({ lossPct: 50, stressPct: 15, alertPct: 10 }, { stressPct: parsed.riskCfg.stressPct, lossPct: parsed.riskCfg.lossPct, alertPct: parsed.riskCfg.alertPct || 10 });
+                        if (parsed.riskCfg) this.riskCfg = Object.assign({ lossPct: 50, stressPct: 15, alertPct: 10 }, { stressPct: parsed.riskCfg.stressPct, lossPct: parsed.riskCfg.lossPct, alertPct: parsed.riskCfg.alertPct || 10, autoSettle: parsed.riskCfg.autoSettle !== false });
                     } else if (dataOld) {
                         const parsed = JSON.parse(dataOld);
                         if(parsed.exchangeRate) this.exchangeRate = parsed.exchangeRate;

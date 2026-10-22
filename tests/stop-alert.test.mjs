@@ -46,3 +46,21 @@ test('做空：上漲接近停損', () => {
     assert.equal(Math.round(r[0].stop), 125);
     assert.match(A.formatMessage(r), /再漲 4\.2%/);
 });
+
+test('結算：以停損價出場的損益與可拿回本金', () => {
+    const p = lot(20, 1740);                      // 投入 34,800 × 0.4 = 13,920，停損 1,392
+    const s = A.settle(p, 1392);
+    assert.equal(Math.round(s.own), 13920);
+    assert.equal(Math.round(s.pnl), -6960);       // 虧掉自備保證金的 50%
+    assert.equal(Math.round(s.back), 6960);
+    const r = A.scan(pf, { priceOf: () => 1465 });
+    const a = r.find(x => x.price === 1740);
+    assert.equal(Math.round(a.back), 6960);
+    assert.match(A.formatMessage(r), /可拿回本金 6,960/);
+});
+
+test('做空結算：可拿回 = 自有本金 ＋ 損益', () => {
+    const s = { ticker: 'TSLA', market: 'US', dir: 'short', shares: 10, price: 100, borrow: 500, lots: [{ shares: 10, price: 100, lev: 2 }] };
+    const r = A.settle(s, 125);
+    assert.deepEqual([r.own, r.pnl, r.back], [500, -250, 250]);
+});

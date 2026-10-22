@@ -66,6 +66,14 @@
         return Math.max(-100, dist / cur * 100);
     }
 
+    /* 以 exit 價整筆出場的結算：自有本金 own、損益 pnl、可拿回本金 back（＝ own ＋ pnl，已還清借款；未扣利息／手續費） */
+    function settle(pos, exit) {
+        const shares = num(pos.shares), price = num(pos.price);
+        const own = shares * price - posBorrow(pos);
+        const pnl = (isShort(pos) ? -1 : 1) * (num(exit) - price) * shares;
+        return { own, pnl, back: Math.max(0, own + pnl) };
+    }
+
     function posLev(pos) {
         const cost = num(pos.shares) * num(pos.price), own = cost - posBorrow(pos);
         return own > 0 ? cost / own : 1;
@@ -89,10 +97,12 @@
             const short = isShort(pos);
             const buf = bufferPct(cur, stop, short);
             if (buf >= alertPct) continue;
+            const st = settle(pos, stop);
             out.push({
                 ticker: pos.ticker, market: pos.market, dir: short ? 'short' : 'long', source: pos.source || '',
                 shares: num(pos.shares), price: num(pos.price), lev: posLev(pos), lossPct: lossPct(pos, riskCfg),
-                cur, stop, bufferPct: buf, level: buf <= 0 ? 'hit' : 'warn'
+                cur, stop, bufferPct: buf, level: buf <= 0 ? 'hit' : 'warn',
+                own: st.own, pnl: st.pnl, back: st.back
             });
         }
         return out.sort((a, b) => a.bufferPct - b.bufferPct);
@@ -114,7 +124,10 @@
         const body = a.level === 'hit'
             ? `現價 ${fmt(a.cur)} 已${a.dir === 'short' ? '突破' : '跌破'}停損價 ${fmt(Math.round(a.stop * 100) / 100)}，應已觸發停損！`
             : `現價 ${fmt(a.cur)}，停損價 ${fmt(Math.round(a.stop * 100) / 100)}，再${move} ${a.bufferPct.toFixed(1)}% 就會敲停損`;
-        return { head, body };
+        // 以停損價結算的損益與可拿回本金（美股為 USD）
+        const ccy = a.market === 'US' ? 'USD ' : '';
+        const settleText = a.pnl == null ? '' : `敲停損損益 ${a.pnl >= 0 ? '+' : '−'}${ccy}${fmt(Math.round(Math.abs(a.pnl)))}，可拿回本金 ${ccy}${fmt(Math.round(a.back))}（投入 ${fmt(Math.round(a.own))}）`;
+        return { head, body, settle: settleText };
     }
 
     function formatMessage(alerts, opts) {
@@ -127,6 +140,7 @@
             const d = describe(a);
             lines.push((a.level === 'hit' ? '🔴 ' : '🟠 ') + d.head);
             lines.push('   ' + d.body);
+            if (d.settle) lines.push('   ' + d.settle);
         }
         lines.push('');
         lines.push(`預警門檻：緩衝 < ${opts.alertPct || DEFAULT_ALERT_PCT}%`);
@@ -147,7 +161,7 @@
     }
 
     const api = {
-        DEFAULT_ALERT_PCT, posLots, stopPrice, bufferPct, scan, alertKey, describe, formatMessage, sendTelegram
+        DEFAULT_ALERT_PCT, posLots, stopPrice, bufferPct, settle, scan, alertKey, describe, formatMessage, sendTelegram
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.PPStopAlert = api;
