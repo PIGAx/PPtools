@@ -66,12 +66,31 @@
         return Math.max(-100, dist / cur * 100);
     }
 
-    /* 以 exit 價整筆出場的結算：自有本金 own、損益 pnl、可拿回本金 back（＝ own ＋ pnl，已還清借款；未扣利息／手續費） */
-    function settle(pos, exit) {
-        const shares = num(pos.shares), price = num(pos.price);
-        const own = shares * price - posBorrow(pos);
-        const pnl = (isShort(pos) ? -1 : 1) * (num(exit) - price) * shares;
-        return { own, pnl, back: Math.max(0, own + pnl) };
+    /* 以 exit 價整筆出場的結算，對齊券商對帳單：
+       own 自有本金（保證金）、pnl 履約損益、fee 出場費用（作業處理費＋累計庫存費）、back 可拿回（淨收支 ＝ own ＋ pnl − fee）。
+       fees：{ handlePct 作業處理費 %（新金鑽，按出場價金）、carryPct 庫存費 %／年（部位沒填 carryFee 時用）、now }
+       做多槓桿（新金鑽）庫存費以名目全額 × 年費率 × 持有天數 ÷ 365；做空以借款 × 年息；持有天數取 openedAt，沒填就不算。 */
+    function settle(pos, exit, fees) {
+        fees = fees || {};
+        const shares = num(pos.shares), price = num(pos.price), borrow = posBorrow(pos), short = isShort(pos);
+        const own = shares * price - borrow;
+        const pnl = (short ? -1 : 1) * (num(exit) - price) * shares;
+        let fee = 0;
+        if (borrow > 0) {
+            const opened = pos.openedAt ? new Date(pos.openedAt).getTime() : NaN;
+            const days = isNaN(opened) ? 0 : Math.max(0, Math.round(((fees.now || Date.now()) - opened) / 86400000));
+            const rate = (Number(pos.carryFee) || (short ? 0 : num(fees.carryPct))) / 100;
+            fee += (short ? borrow : shares * price) * rate * days / 365;
+            if (!short) fee += num(exit) * shares * num(fees.handlePct) / 100;
+        }
+        return { own, pnl, fee, back: Math.max(0, own + pnl - fee) };
+    }
+
+    // 預估出場價：觸及停損時券商以觸發後的結算價強制回收，已跳空穿過停損價就以現價估（取較差者），否則以停損價估
+    function exitPrice(cur, stop, short) {
+        const s = Math.round(num(stop) * 100) / 100;
+        if (!isHit(cur, stop, short)) return s;
+        return short ? Math.max(cur, s) : Math.min(cur, s);
     }
 
     // 觸及停損：現價要「超過」停損價才算（做多跌破、做空突破；停損價取到小數兩位），剛好等於停損價還沒觸發
@@ -104,12 +123,13 @@
             const short = isShort(pos);
             const buf = bufferPct(cur, stop, short);
             if (buf >= alertPct) continue;
-            const st = settle(pos, stop);
+            const exit = exitPrice(cur, stop, short);
+            const st = settle(pos, exit, opts.fees || (portfolio && portfolio.optCfg));
             out.push({
                 ticker: pos.ticker, market: pos.market, dir: short ? 'short' : 'long', source: pos.source || '',
                 shares: num(pos.shares), price: num(pos.price), lev: posLev(pos), lossPct: lossPct(pos, riskCfg),
                 cur, stop, bufferPct: buf, level: isHit(cur, stop, short) ? 'hit' : 'warn',
-                own: st.own, pnl: st.pnl, back: st.back
+                exit, own: st.own, pnl: st.pnl, fee: st.fee, back: st.back
             });
         }
         return out.sort((a, b) => a.bufferPct - b.bufferPct);
@@ -133,7 +153,8 @@
             : `現價 ${fmt(a.cur)}，停損價 ${fmt(Math.round(a.stop * 100) / 100)}，再${move} ${a.bufferPct.toFixed(1)}% 就會敲停損`;
         // 以停損價結算的損益與可拿回本金（美股為 USD）
         const ccy = a.market === 'US' ? 'USD ' : '';
-        const settleText = a.pnl == null ? '' : `敲停損損益 ${a.pnl >= 0 ? '+' : '−'}${ccy}${fmt(Math.round(Math.abs(a.pnl)))}，可拿回本金 ${ccy}${fmt(Math.round(a.back))}（投入 ${fmt(Math.round(a.own))}）`;
+        const feeText = a.fee >= 1 ? `、費用 ${ccy}${fmt(Math.round(a.fee))}` : '';
+        const settleText = a.pnl == null ? '' : `${a.level === 'hit' ? '以 ' + fmt(a.exit) + ' 結算' : '敲停損'}損益 ${a.pnl >= 0 ? '+' : '−'}${ccy}${fmt(Math.round(Math.abs(a.pnl)))}${feeText}，可拿回本金約 ${ccy}${fmt(Math.round(a.back))}（投入 ${fmt(Math.round(a.own))}）`;
         return { head, body, settle: settleText };
     }
 
@@ -168,7 +189,7 @@
     }
 
     const api = {
-        DEFAULT_ALERT_PCT, posLots, stopPrice, bufferPct, isHit, settle, scan, alertKey, describe, formatMessage, sendTelegram
+        DEFAULT_ALERT_PCT, posLots, stopPrice, bufferPct, isHit, exitPrice, settle, scan, alertKey, describe, formatMessage, sendTelegram
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.PPStopAlert = api;

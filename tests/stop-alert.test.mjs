@@ -56,7 +56,7 @@ test('結算：以停損價出場的損益與可拿回本金', () => {
     const r = A.scan(pf, { priceOf: () => 1465 });
     const a = r.find(x => x.price === 1740);
     assert.equal(Math.round(a.back), 6960);
-    assert.match(A.formatMessage(r), /可拿回本金 6,960/);
+    assert.match(A.formatMessage(r), /可拿回本金約 6,960/);
 });
 
 test('做空結算：可拿回 = 自有本金 ＋ 損益', () => {
@@ -73,4 +73,19 @@ test('收盤剛好等於停損價不算觸及，要低於才算', () => {
     assert.equal(A.scan(pf, { priceOf: () => 1379.5 }).find(x => x.price === 1725).level, 'hit');
     assert.equal(A.isHit(125, 125, true), false);
     assert.equal(A.isHit(125.01, 125, true), true);
+});
+
+test('對帳單：24 股 @1,840（2.5x）強制回收 @1,365，淨收支 6,147.3', () => {
+    const p = Object.assign(lot(24, 1840), { openedAt: '2026-10-06' });
+    const r = A.settle(p, 1365, { handlePct: 0.12, carryPct: 4, now: new Date('2026-10-22').getTime() });
+    assert.equal(Math.round(r.own), 17664);          // 保證金
+    assert.equal(Math.round(r.pnl), -11400);         // 履約損益
+    assert.equal(r.fee.toFixed(1), '116.7');         // 處理費 39.3 ＋ 庫存費 77.4
+    assert.equal(r.back.toFixed(1), '6147.3');       // 淨收支
+});
+
+test('跳空跌破停損價：以現價估出場價', () => {
+    const r = A.scan(pf, { priceOf: () => 1365 });
+    assert.equal(r.find(x => x.price === 1840).exit, 1365);
+    assert.equal(A.scan(pf, { priceOf: () => 1465 }).find(x => x.price === 1725).exit, 1380);  // 還沒觸及：以停損價估
 });
