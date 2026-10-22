@@ -142,7 +142,7 @@
             </ul>
             <p v-if="stopAlerts.length > 1" class="text-xs text-gray-600 mt-2">
                 以上全部敲停損：合計損益 <span class="font-bold" :class="alertSettleSum.pnl >= 0 ? 'text-red-600' : 'text-green-600'">{{ alertSettleSum.pnl >= 0 ? '+' : '' }}{{ formatNumber(alertSettleSum.pnl) }}</span> TWD，
-                可拿回本金 <span class="font-bold">{{ formatNumber(alertSettleSum.back) }}</span> TWD（未扣利息與手續費）
+                可拿回本金約 <span class="font-bold">{{ formatNumber(alertSettleSum.back) }}</span> TWD（已扣處理費與庫存費，實際結算價可能更差）
             </p>
         </div>
 
@@ -159,7 +159,7 @@
                 <li v-for="(s, i) in stopSettled" :key="i" class="leading-snug">
                     <span class="font-bold">{{ s.head }}</span>
                     <span class="block sm:inline sm:ml-2 text-blue-900">
-                        @{{ formatNumber(s.exit) }} 出場，已實現損益 <span class="font-bold" :class="s.pnlTWD >= 0 ? 'text-red-600' : 'text-green-600'">{{ s.pnlTWD >= 0 ? '+' : '' }}{{ formatNumber(s.pnlTWD) }}</span> TWD，
+                        @{{ formatNumber(s.exit) }} 出場，已實現損益（含費用 {{ formatNumber(s.feeTWD) }}） <span class="font-bold" :class="s.pnlTWD >= 0 ? 'text-red-600' : 'text-green-600'">{{ s.pnlTWD >= 0 ? '+' : '' }}{{ formatNumber(s.pnlTWD) }}</span> TWD，
                         拿回本金 <span class="font-bold">{{ formatNumber(s.backTWD) }}</span> TWD（原投入 {{ formatNumber(s.ownTWD) }}）
                     </span>
                 </li>
@@ -167,7 +167,7 @@
             <p class="text-sm mt-2 text-blue-900">
                 合計拿回 <span class="font-bold">{{ formatNumber(stopSettled.reduce((t, s) => t + s.backTWD, 0)) }}</span> TWD，已加回可動用現金，目前可動用現金 <span class="font-bold">{{ formatNumber(cash) }}</span> TWD。
             </p>
-            <p class="text-[11px] text-gray-500 mt-1">以停損價估算，未扣利息與手續費；實際成交價不同時，可在下方「交易明細」修改該筆損益與現金。關閉自動結算：帳務計算與風險控管 → 觸及停損自動結算。</p>
+            <p class="text-[11px] text-gray-500 mt-1">預估值：以停損價估算（已跳空跌破就以現價估），已扣作業處理費與庫存費。券商通常在觸發後的下一個結算時點強制回收，實際結算價可能更差；收到對帳單後到「交易明細」按修改，填入淨收支，損益與可動用現金會一起更正。關閉自動結算：帳務計算與風險控管 → 觸及停損自動結算。</p>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
@@ -1314,16 +1314,25 @@
                                 <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">損益金額（{{ adj.market === 'US' ? 'USD' : 'TWD' }}）</label>
                                 <input v-model.number="adj.pnl" type="number" step="any" placeholder="留空＝依價差計算" class="border p-1.5 rounded w-full bg-white">
                             </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">槓桿倍數（選填）</label>
+                                <input v-model.number="adj.lev" type="number" step="any" placeholder="例 2.5" class="border p-1.5 rounded w-full bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">對帳單淨收支（選填）</label>
+                                <input v-model.number="adj.net" type="number" step="any" placeholder="實際拿回的金額" class="border p-1.5 rounded w-full bg-white">
+                            </div>
                             <div v-if="adj.market === 'US'">
                                 <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">匯率</label>
                                 <input v-model.number="adj.fx" type="number" step="any" :placeholder="exchangeRate" class="border p-1.5 rounded w-full bg-white">
                             </div>
-                            <div :class="adj.market === 'US' ? 'col-span-2 sm:col-span-3' : 'col-span-2 sm:col-span-4'">
+                            <div :class="adj.market === 'US' ? 'col-span-2 sm:col-span-1' : 'col-span-2 sm:col-span-2'">
                                 <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">備註</label>
                                 <input v-model="adj.note" type="text" placeholder="例：轉槓桿時漏記的出場" class="border p-1.5 rounded w-full bg-white">
                             </div>
                         </div>
-                        <p class="text-gray-600">虧損請填負數。損益金額可直接輸入，也可留空、改填股數與成本價、平倉價自動計算。補登只會更新已實現損益與績效曲線，不會變動庫存。</p>
+                        <p class="text-gray-600">虧損請填負數。損益金額可直接輸入，也可留空、改填股數與成本價、平倉價自動計算。補登只會更新已實現損益與績效曲線，不會變動庫存。
+                            槓桿部位被強制回收時，填股數、成本價、槓桿倍數與對帳單「淨收支」，損益 ＝ 淨收支 − 原保證金（股數 × 成本 ÷ 倍數），已含處理費與庫存費。<template v-if="adjMargin !== null">原保證金 {{ formatNumber(Math.round(adjMargin * 100) / 100) }}。</template></p>
                         <div class="flex items-center justify-between gap-2">
                             <span class="font-bold" :class="adjPnlTWD === null ? 'text-gray-400' : (adjPnlTWD >= 0 ? 'text-red-600' : 'text-green-600')">
                                 {{ adjPnlTWD === null ? '尚未輸入損益' : (adjPnlTWD >= 0 ? '+' : '') + formatNumber(adjPnlTWD) + ' TWD' }}
@@ -1762,7 +1771,7 @@
                     levOpen: {},
                     history: [],
                     // 手動補登／修改已實現損益（editId 有值 = 修改既有那筆）
-                    adj: { open: false, editId: null, ticker: '', market: 'TW', dir: 'long', date: '', shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '' },
+                    adj: { open: false, editId: null, ticker: '', market: 'TW', dir: 'long', date: '', shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '', lev: null, net: null },
                     netHistory: [],
                     lastQuoteAt: null,
                     quoteLoading: false,
@@ -1891,8 +1900,15 @@
                     return groups.sort((a, b) => b.total - a.total);
                 },
                 // 補登的損益（原幣）：有填金額就用金額，否則以 股數 ×（平倉價 − 成本）計算
+                // 槓桿部位的原保證金（股數 × 成本 ÷ 倍數），填了對帳單淨收支時用來反推損益
+                adjMargin() {
+                    const a = this.adj;
+                    if (!(a.shares > 0 && Number(a.buyPrice) > 0 && Number(a.lev) >= 1)) return null;
+                    return a.shares * Number(a.buyPrice) / Number(a.lev);
+                },
                 adjPnlOrig() {
                     const a = this.adj;
+                    if (a.net !== null && a.net !== '' && !isNaN(Number(a.net)) && this.adjMargin !== null) return Number(a.net) - this.adjMargin;
                     if (a.pnl !== null && a.pnl !== '' && !isNaN(Number(a.pnl))) return Number(a.pnl);
                     if (a.shares && a.buyPrice != null && a.buyPrice !== '' && a.sellPrice != null && a.sellPrice !== '')
                         return (a.dir === 'short' ? -1 : 1) * (Number(a.sellPrice) - Number(a.buyPrice)) * Number(a.shares);
@@ -2366,11 +2382,11 @@
                 },
                 stopAlerts() {
                     // 與表格同一份現價（含手動更新報價），算法見 pp-stop-alert.js
-                    return PPStopAlert.scan({ positions: this.positions, riskCfg: this.riskCfg }, { alertPct: this.alertPct });
+                    return PPStopAlert.scan({ positions: this.positions, riskCfg: this.riskCfg, optCfg: this.optCfg }, { alertPct: this.alertPct });
                 },
                 alertSettleSum() {
                     const fx = a => a.market === 'US' ? this.exchangeRate : 1;
-                    return this.stopAlerts.reduce((t, a) => ({ pnl: t.pnl + a.pnl * fx(a), back: t.back + a.back * fx(a) }), { pnl: 0, back: 0 });
+                    return this.stopAlerts.reduce((t, a) => ({ pnl: t.pnl + (a.pnl - (a.fee || 0)) * fx(a), back: t.back + a.back * fx(a) }), { pnl: 0, back: 0 });
                 },
 
                 /* ══ 集中度 ══ */
@@ -2721,16 +2737,16 @@
                             date: isNaN(t) ? this.todayStr() : new Date(t).toLocaleDateString('en-CA'),
                             shares: record.shares || null, buyPrice: record.buyPrice ?? null, sellPrice: record.sellPrice ?? null,
                             pnl: record.market === 'US' ? (record.pnlOrig ?? null) : (record.pnlTWD ?? null),
-                            fx: fx ? parseFloat(fx.toFixed(4)) : null, note: record.note || ''
+                            fx: fx ? parseFloat(fx.toFixed(4)) : null, note: record.note || '', lev: record.lev ?? null, net: record.net ?? null
                         };
                     } else {
-                        this.adj = { open: true, editId: null, ticker: '', market: 'TW', dir: 'long', date: this.todayStr(), shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '' };
+                        this.adj = { open: true, editId: null, ticker: '', market: 'TW', dir: 'long', date: this.todayStr(), shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '', lev: null, net: null };
                     }
                     // 表單在明細卡最上方，從下面點「修改」時要捲回去
                     if (this.$refs.histCard) this.$refs.histCard.scrollTop = 0;
                 },
                 cancelAdj() {
-                    this.adj = { open: false, editId: null, ticker: '', market: 'TW', dir: 'long', date: '', shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '' };
+                    this.adj = { open: false, editId: null, ticker: '', market: 'TW', dir: 'long', date: '', shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '', lev: null, net: null };
                 },
                 saveAdj() {
                     const a = this.adj;
@@ -2757,6 +2773,14 @@
                         manual: true,
                         note: (a.note || '').trim()
                     };
+                    if (Number(a.lev) >= 1) rec.lev = Number(a.lev);
+                    if (a.net !== null && a.net !== '' && !isNaN(Number(a.net))) rec.net = Number(a.net);
+                    // 自動停損結算時已把預估拿回的本金加進可動用現金：改了損益就把差額同步到現金
+                    if (old && old.cashBack != null) {
+                        const delta = rec.pnlTWD - (old.pnlTWD || 0);
+                        rec.cashBack = Math.round((old.cashBack + delta) * 100) / 100;
+                        this.cash = Math.round(((Number(this.cash) || 0) + delta) * 100) / 100;
+                    }
                     if (old) this.history.splice(this.history.indexOf(old), 1);
                     // 依日期插入，讓累積績效曲線維持時間順序
                     const t = this.histTime(rec.date);
@@ -3362,17 +3386,26 @@
                             && (p.source || '') === a.source && Number(p.shares) === a.shares && Number(p.price) === a.price);
                         if (index === -1) continue;
                         const pos = this.positions[index];
-                        const exit = Math.round(a.stop * 100) / 100;
-                        const st = PPStopAlert.settle(pos, exit);
+                        const exit = a.exit;
+                        const st = PPStopAlert.settle(pos, exit, this.optCfg);
                         const fx = this.fxRate(pos);
+                        const lev = Math.round(this.posLev(pos) * 100) / 100;
                         pos.closeShares = pos.shares;
                         pos.closePrice = exit;
                         this.closePosition(index);
-                        const rec = this.history[this.history.length - 1];
-                        if (rec) rec.note = '觸及停損自動結算';
                         const backTWD = Math.round(st.back * fx);
+                        const rec = this.history[this.history.length - 1];
+                        if (rec) {
+                            // 損益扣掉出場費用，與對帳單「淨收支 − 保證金」同一口徑；cashBack 供之後修改時同步現金
+                            rec.pnlOrig = parseFloat((st.pnl - st.fee).toFixed(2));
+                            rec.pnlTWD = parseFloat(((st.pnl - st.fee) * fx).toFixed(0));
+                            rec.fee = parseFloat(st.fee.toFixed(2));
+                            rec.lev = lev;
+                            rec.cashBack = backTWD;
+                            rec.note = '觸及停損自動結算（預估，收到對帳單請修改）';
+                        }
                         this.cash = Math.round((Number(this.cash) || 0) + backTWD);
-                        done.push({ head: this.describeAlert(a).head, exit, pnlTWD: Math.round(st.pnl * fx), backTWD, ownTWD: Math.round(st.own * fx) });
+                        done.push({ head: this.describeAlert(a).head, exit, pnlTWD: Math.round((st.pnl - st.fee) * fx), feeTWD: Math.round(st.fee * fx), backTWD, ownTWD: Math.round(st.own * fx) });
                     }
                     if (!done.length) return;
                     this.stopUndo = this.stopSettled.length && this.stopUndo ? this.stopUndo : snap;
