@@ -12,7 +12,7 @@
 (function () {
   'use strict';
 
-  var KEY = 'pptools-theme'; // 'system' | 'light' | 'dark'
+  var KEY = 'pptools-theme'; // 'system' | 'light' | 'dark' | 'ehon'（繪本，固定淺色）
   var SCALE_KEY = 'pptools-fontscale'; // 'sm' | 'md' | 'lg' | 'xl'
   var SCALES = { sm: 0.9, md: 1, lg: 1.15, xl: 1.3 };
   var SCALE_ORDER = ['sm', 'md', 'lg', 'xl'];
@@ -22,14 +22,14 @@
   function stored() {
     try {
       var t = localStorage.getItem(KEY);
-      return (t === 'light' || t === 'dark') ? t : 'system';
+      return (t === 'light' || t === 'dark' || t === 'ehon') ? t : 'system';
     } catch (e) { return 'system'; }
   }
 
   function isDark() {
     var t = stored();
     if (t === 'dark') return true;
-    if (t === 'light') return false;
+    if (t === 'light' || t === 'ehon') return false;
     return !!(mql && mql.matches);
   }
 
@@ -40,7 +40,7 @@
       meta.name = 'theme-color';
       (document.head || document.documentElement).appendChild(meta);
     }
-    meta.content = isDark() ? '#000000' : '#ffffff';
+    meta.content = stored() === 'ehon' ? '#FFFCF6' : (isDark() ? '#000000' : '#ffffff');
   }
 
   /* ── 字級（全站字體大小）──
@@ -90,8 +90,8 @@
   }
 
   function cycle() {
-    var order = ['system', 'light', 'dark'];
-    var next = order[(order.indexOf(stored()) + 1) % 3];
+    var order = ['system', 'light', 'dark', 'ehon'];
+    var next = order[(order.indexOf(stored()) + 1) % order.length];
     set(next);
     return next;
   }
@@ -126,6 +126,9 @@
 
   /* 圖表配色輔助：依當前主題回傳 Chart.js 常用顏色 */
   function chartColors() {
+    if (stored() === 'ehon') {
+      return { grid: 'rgba(62,58,57,.10)', tick: '#7C7470', text: '#3E3A39', border: 'rgba(62,58,57,.25)' };
+    }
     var dark = isDark();
     return {
       grid: dark ? 'rgba(255,255,255,.07)' : 'rgba(20,20,15,.07)',

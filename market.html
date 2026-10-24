@@ -94,6 +94,9 @@
   .pyr-bar { height: 18px; border-radius: 0 4px 4px 0; flex-shrink: 0; transition: width .35s cubic-bezier(.32,.72,.28,1); min-width: 3px; }
   .pyr-bar.buy { background: linear-gradient(90deg, color-mix(in srgb, var(--red) 55%, transparent), var(--red)); }
   .pyr-bar.sell { background: linear-gradient(90deg, color-mix(in srgb, var(--green) 55%, transparent), var(--green)); }
+  /* 繪本主題：平塗，不用漸層 */
+  :root[data-theme="ehon"] .pyr-bar.buy, :root[data-theme="ehon"] .tor2-track.right .tor2-bar { background: var(--ehon-coral); }
+  :root[data-theme="ehon"] .pyr-bar.sell, :root[data-theme="ehon"] .tor2-track.left .tor2-bar { background: var(--ehon-green); }
   .pyr-val { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text); }
   .pyr-lots { font-size: 10.5px; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
   @media (max-width: 640px) {
