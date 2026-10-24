@@ -23,6 +23,33 @@
          Tailwind 樣式。
          ══════════════════════════════════════════════════════════ */
       html body { background: var(--bg-base); color: var(--text); }
+
+      /* ── 分類分頁 ── */
+      .pos-tabs {
+        position: sticky; top: 0; z-index: 30;
+        display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+        margin: -4px -4px 20px; padding: 8px 4px;
+        background: var(--bg-base);
+      }
+      .pos-tabs::-webkit-scrollbar { display: none; }
+      .pos-tabs button {
+        flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px;
+        padding: 8px 16px; border-radius: 999px; white-space: nowrap;
+        font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+        color: var(--text-muted); background: var(--surface-alt); border: 1px solid var(--stroke);
+        transition: background .15s, color .15s, border-color .15s;
+      }
+      .pos-tabs button:hover { color: var(--text); border-color: var(--accent); }
+      .pos-tabs button.active { color: var(--accent); background: var(--accent-light); border-color: var(--accent); }
+      .pos-tab-badge {
+        min-width: 18px; padding: 0 6px; border-radius: 999px; font-size: 11px; line-height: 18px; text-align: center;
+        background: var(--accent); color: #fff;
+      }
+      html[data-theme="ehon"] .pos-tabs button { border: 2.5px solid var(--ehon-ink); color: var(--ehon-ink); background: #fff; }
+      html[data-theme="ehon"] .pos-tabs button.active { background: var(--ehon-yellow); box-shadow: 2px 2px 0 var(--ehon-ink); }
+      html[data-theme="ehon"] .pos-tabs button.active { animation: ehon-pop .4s cubic-bezier(.3, .7, .4, 1.4); }
+      html[data-theme="ehon"] .pos-tab-badge { background: var(--ehon-coral); color: var(--ehon-ink); }
+      @media (max-width: 640px) { .pos-tabs button { padding: 7px 12px; font-size: 13px; } }
       html *, html ::before, html ::after { border-color: var(--stroke); }
 
       /* 卡片 → 玻璃面板 */
@@ -131,6 +158,13 @@
             </div>
         </div>
 
+        <!-- 分類分頁：一次只看一組功能（停損預警／自動結算為安全提醒，固定顯示在所有分頁上方） -->
+        <nav class="pos-tabs" role="tablist" aria-label="部位控管功能分類">
+            <button v-for="t in tabs" :key="t.id" role="tab" :aria-selected="tab === t.id" :class="{ active: tab === t.id }" @click="setTab(t.id)">
+                <span class="pos-tab-ic">{{ t.icon }}</span>{{ t.label }}<span v-if="tabBadge(t.id)" class="pos-tab-badge">{{ tabBadge(t.id) }}</span>
+            </button>
+        </nav>
+
         <!-- 停損預警：任一槓桿部位緩衝低於門檻就顯示 -->
         <div v-if="stopAlerts.length" class="mb-6 rounded-lg border-2 p-4 shadow-md"
              :class="stopAlerts.some(a => a.level !== 'warn') ? 'border-red-500 bg-red-50' : 'border-amber-400 bg-amber-50'">
@@ -154,7 +188,7 @@
         </div>
 
         <!-- 回收價分散建議：同一檔的槓桿單回收價別擠在一起，下一筆用不同進場價／倍數拉開 -->
-        <details v-for="g in spreadGroups" :key="g.key" class="mb-6 rounded-lg border border-indigo-200 bg-indigo-50 p-4 shadow-sm text-sm" :open="g.alert">
+        <details v-for="g in spreadGroups" v-show="tab === 'risk'" :key="g.key" class="mb-6 rounded-lg border border-indigo-200 bg-indigo-50 p-4 shadow-sm text-sm" :open="g.alert">
             <summary class="cursor-pointer font-bold text-indigo-800">📐 {{ g.ticker }} 下一筆怎麼下：回收價分散建議
                 <span class="font-normal text-xs text-gray-600">（現價 {{ formatNumber(g.cur) }}，既有 {{ g.stops.length }} 筆槓桿單）</span></summary>
             <div class="mt-2 space-y-2">
@@ -206,7 +240,7 @@
             <p class="text-[11px] text-gray-500 mt-1">預估值：收盤跌破回收價先標「待回收」，下一交易日收盤後以當天收盤價估算結算，已扣作業處理費與庫存費；券商實際結算價可能與收盤價不同，收到對帳單後到「交易明細」按修改，填入淨收支，損益與可動用現金會一起更正。關閉自動結算：帳務計算與風險控管 → 觸及停損自動結算。</p>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+        <div v-show="tab === 'overview'" class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
             <div class="grid grid-cols-1 sm:grid-cols-3 lg:flex lg:flex-col gap-4">
                 <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-blue-500">
                     <h3 class="text-gray-500 text-xs font-semibold mb-1">總投入成本 (約當 TWD)</h3>
@@ -291,7 +325,7 @@
         </div>
 
         <!-- ══════ 帳務計算與風險控管 ══════ -->
-        <div class="bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500 mb-8">
+        <div v-show="tab === 'risk'" class="bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500 mb-8">
             <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-4">
                 <h2 class="text-lg font-bold">🧾 帳務計算與風險控管</h2>
                 <p class="text-xs text-gray-500">把使用槓桿的個股一併納入，計算整體持股水位與風險</p>
@@ -593,9 +627,9 @@
             </template>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+        <div class="grid grid-cols-1 gap-6 md:gap-8">
             
-            <div class="space-y-6">
+            <div v-show="tab === 'inventory'" class="space-y-6">
                 <div class="bg-white p-5 rounded-lg shadow-md">
                     <h2 class="text-lg font-bold mb-3">➕ 新增建倉</h2>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
@@ -813,8 +847,8 @@
 
             </div>
 
-            <div class="space-y-6">
-                <div class="bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500">
+            <div v-show="tab === 'sim' || tab === 'history'" class="space-y-6">
+                <div v-show="tab === 'sim'" class="bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500">
                     <h2 class="text-lg font-bold mb-3">⚖️ 加碼 / 攤平試算器</h2>
                     <div v-if="calc.selectedTicker" class="bg-indigo-50 p-3 rounded mb-3 border border-indigo-100 text-sm">
                         <p class="font-bold text-indigo-800 text-base mb-0.5">正在試算: {{ calc.selectedTicker }}（{{ calc.dir === 'short' ? '看空' : '看多' }}）</p>
@@ -1143,7 +1177,7 @@
                     <button @click="executeAddOn" v-if="calc.selectedTicker" class="w-full mt-4 bg-indigo-600 text-white p-2.5 rounded hover:bg-indigo-700 font-bold text-base transition shadow-sm">確認執行加碼 (寫入庫存與明細)</button>
                 </div>
 
-                <div id="convertCard" class="bg-white p-5 rounded-lg shadow-md border-t-4 border-amber-500">
+                <div id="convertCard" v-show="tab === 'sim'" class="bg-white p-5 rounded-lg shadow-md border-t-4 border-amber-500">
                     <h2 class="text-lg font-bold mb-1">🔄 現股轉槓桿試算</h2>
                     <p class="text-[11px] text-gray-500 mb-3">賣出一部分現股，把拿回的錢轉成新金鑽等槓桿部位，先預覽倍數、股數、停損價與整體槓桿。</p>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -1304,7 +1338,7 @@
                     <div v-else-if="conv.index !== null" class="text-gray-400 text-xs p-3 border border-dashed rounded text-center">輸入賣出股數就會出現預覽</div>
                 </div>
 
-                <div ref="histCard" class="bg-white p-5 rounded-lg shadow-md max-h-[500px] overflow-y-auto">
+                <div ref="histCard" v-show="tab === 'history'" class="bg-white p-5 rounded-lg shadow-md max-h-[70vh] overflow-y-auto">
                     <div class="flex items-center justify-between mb-3">
                         <h2 class="text-lg font-bold">📜 歷次交易明細帳</h2>
                         <button v-if="!adj.open" @click="openAdj()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded font-semibold">＋ 補登已實現損益</button>
@@ -1427,7 +1461,7 @@
         </div>
 
         <!-- ══════ 價格 × 股數 損益矩陣 ══════ -->
-        <div v-if="mxGroups.length" class="bg-white p-4 sm:p-5 rounded-lg shadow-md border-t-4 border-red-400 mt-6 md:mt-8">
+        <div v-if="mxGroups.length" v-show="tab === 'sim'" class="bg-white p-4 sm:p-5 rounded-lg shadow-md border-t-4 border-red-400 mt-6 md:mt-8">
             <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-3">
                 <h2 class="text-lg font-bold">📊 價格 × 股數 損益矩陣</h2>
                 <span class="text-[11px] text-gray-400">同一檔的現股與槓桿單合併計算，金額為{{ mxSim && mxSim.group.market === 'US' ? ' USD' : ' TWD' }}</span>
@@ -1507,7 +1541,7 @@
         </div>
 
         <!-- ══════ 強制收回後重新承作試算 ══════ -->
-        <div class="bg-white p-4 sm:p-5 rounded-lg shadow-md border-t-4 border-amber-500 mt-6 md:mt-8">
+        <div v-show="tab === 'sim'" class="bg-white p-4 sm:p-5 rounded-lg shadow-md border-t-4 border-amber-500 mt-6 md:mt-8">
             <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-3">
                 <h2 class="text-lg font-bold">🧯 強制收回後重新承作試算</h2>
                 <span class="text-[11px] text-gray-400">新金鑽被強制收回後，要補多少錢才能把同樣股數買回來</span>
@@ -1783,6 +1817,15 @@
         createApp({
             data() {
                 return {
+                    // 分類分頁（記住上次停在哪一頁）
+                    tabs: [
+                        { id: 'overview', icon: '📊', label: '總覽' },
+                        { id: 'inventory', icon: '📦', label: '庫存' },
+                        { id: 'risk', icon: '🧾', label: '風險控管' },
+                        { id: 'sim', icon: '⚖️', label: '試算工具' },
+                        { id: 'history', icon: '📜', label: '交易明細' }
+                    ],
+                    tab: (() => { try { const t = localStorage.getItem('pptools-pos-tab'); return ['overview', 'inventory', 'risk', 'sim', 'history'].includes(t) ? t : 'overview'; } catch (e) { return 'overview'; } })(),
                     exchangeRate: 32.50,
                     newPosition: { ticker: '', market: 'TW', dir: 'long', shares: null, price: null, lev: null, carryFee: null, source: '' },
                     positions: [],
@@ -2671,7 +2714,19 @@
                     this.calc = { selectedIndex: null, dir: 'long', selectedTicker: '', market: '', currentShares: 0, currentPrice: 0, addShares: null, addPrice: null, addLev: null, useLev: false, targetPrice: null, holdDays: this.calc.holdDays };
                     this.saveData();
                 },
+                setTab(t) {
+                    if (this.tab === t) return;
+                    this.tab = t;
+                    try { localStorage.setItem('pptools-pos-tab', t); } catch (e) {}
+                    window.scrollTo(0, 0);
+                },
+                tabBadge(id) {
+                    if (id === 'inventory') return this.positions.length || '';
+                    if (id === 'risk') return this.spreadGroups.some(g => g.alert) ? '!' : '';
+                    return '';
+                },
                 openConvert(pos) {
+                    this.setTab('sim');
                     const i = this.positions.indexOf(pos);
                     this.conv.index = i >= 0 ? i : null;
                     this.conv.sellPrice = pos ? (pos.currentPrice || pos.price) : null;
@@ -3248,6 +3303,7 @@
                     if (this.calc.useLev && !this.calc.addLev) this.calc.addLev = 2.5;
                 },
                 selectForCalc(pos) {
+                    this.setTab('sim');
                     const index = this.positions.indexOf(pos);
                     this.calc.selectedIndex = index;
                     this.calc.dir = pos.dir === 'short' ? 'short' : 'long';
