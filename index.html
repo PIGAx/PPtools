@@ -288,6 +288,47 @@
   .header-title     { font-size: calc(14.5px * var(--pp-scale, 1)); }
   .dashboard-head h2 { font-size: calc(18px * var(--pp-scale, 1)); }
   .dash-panel-header .dp-title { font-size: calc(11.5px * var(--pp-scale, 1)); }
+  /* ── 繪本主題：外殼 ── */
+  .ehon-hero { margin: 4px -4px 0; }
+  .ehon-hero svg { width: 100%; height: auto; display: block; overflow: visible; }
+  :root[data-theme="ehon"] .sidebar-brand h1 {
+    font-family: 'Huninn', sans-serif;
+    text-transform: none;
+    letter-spacing: 1px;
+    font-size: calc(22px * var(--pp-scale, 1));
+    color: var(--ehon-ink);
+  }
+  :root[data-theme="ehon"] .sidebar-brand h1::after {
+    content: '';
+    display: block;
+    width: 44px;
+    height: 6px;
+    margin-top: 4px;
+    border-radius: 999px;
+    background: var(--ehon-coral);
+  }
+  :root[data-theme="ehon"] .nav-section { opacity: 1; letter-spacing: 1px; }
+  :root[data-theme="ehon"] .nav-item { border: 2.5px solid transparent; border-radius: 999px; padding-left: 12px; margin-bottom: 3px; }
+  :root[data-theme="ehon"] .nav-item:hover { background: #FFF3D6; }
+  :root[data-theme="ehon"] .nav-item.active {
+    background: var(--ehon-yellow);
+    border-color: var(--ehon-ink);
+    color: var(--ehon-ink);
+    box-shadow: 2px 2px 0 var(--ehon-ink);
+  }
+  :root[data-theme="ehon"] .sidebar-footer { border-top: 2.5px dashed var(--stroke); opacity: .8; }
+  :root[data-theme="ehon"] .content { border: 3px solid var(--ehon-ink); box-shadow: var(--shadow); background: var(--bg-base); }
+  :root[data-theme="ehon"] .sidebar-overlay { background: rgba(62, 58, 57, .35); }
+  :root[data-theme="ehon"] .header-title::before { content: '🌸 '; }
+  /* 切換模組時的彈跳效果（減少動態效果時由 pp-ui.css 全域規則關閉） */
+  :root[data-theme="ehon"] .content.pop { animation: ehon-pop .45s cubic-bezier(.3, .7, .4, 1.4); }
+  @media (max-width: 768px) {
+    :root[data-theme="ehon"] .header-right .btn { padding: 4px 9px; }
+    :root[data-theme="ehon"] .header-title::before { content: ''; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :root[data-theme="ehon"] .content.pop { animation: none; }
+  }
 </style>
 </head>
 <body>
@@ -301,6 +342,29 @@
     <div class="sidebar-brand">
       <h1>PPtools</h1>
       <p>個人投資工具平台</p>
+      <!-- 繪本插圖：太陽、飄雲、山丘上的 K 棒小樹與存錢豬（只在繪本主題顯示） -->
+      <div class="ehon-hero ehon-only" aria-hidden="true">
+        <svg viewBox="0 0 210 96" fill="none" stroke="#3E3A39" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <g class="ehon-bob"><circle cx="176" cy="22" r="13" fill="#F6D27A"/>
+            <path d="M176 2v3M190 8l2-2M162 8l-2-2" stroke-width="2.5"/></g>
+          <g class="ehon-drift"><path d="M26 30h40a9 9 0 0 0-8-13a12 12 0 0 0-22-1a8 8 0 0 0-10 14z" fill="#A8D3E6"/></g>
+          <path d="M2 92c18-30 50-36 78-22c22-24 70-30 126 6v16z" fill="#B9DAA5"/>
+          <!-- K 棒：紅漲（珊瑚粉）、綠跌（若竹綠）、一路往上 -->
+          <path d="M96 64v-4M96 50v-6M110 56v-6M110 40v-6M124 48v-6M124 30v-8" stroke-width="2.5"/>
+          <rect x="91" y="50" width="10" height="10" rx="2.5" fill="#F2A497"/>
+          <rect x="105" y="40" width="10" height="10" rx="2.5" fill="#F6D27A"/>
+          <rect x="119" y="30" width="10" height="12" rx="2.5" fill="#F2A497"/>
+          <!-- 存錢豬 -->
+          <g class="ehon-sway">
+            <ellipse cx="50" cy="70" rx="17" ry="12" fill="#F2A497"/>
+            <path d="M42 60l-3-7l9 4M44 81v4M56 81v4" fill="#F2A497"/>
+            <rect x="62" y="66" width="8" height="8" rx="3" fill="#F2A497"/>
+            <path d="M46 59h9" stroke-width="2.5"/>
+            <circle cx="58" cy="66" r="1.2" fill="#3E3A39" stroke="none"/>
+          </g>
+          <g class="ehon-bob"><circle cx="46" cy="47" r="5" fill="#F6D27A"/><path d="M46 45v4" stroke-width="2"/></g>
+        </svg>
+      </div>
     </div>
     <nav class="sidebar-nav" id="sidebarNav">
       <!-- Populated by JS -->
@@ -416,6 +480,11 @@ function loadModule(mod) {
 
   frame.style.display = 'block';
   frame.src = mod.src;
+  // 繪本主題：內容區彈跳一下（動畫本身只在 data-theme="ehon" 生效）
+  const box = frame.parentElement;
+  box.classList.remove('pop');
+  void box.offsetWidth;
+  box.classList.add('pop');
   title.textContent = mod.title;
   const navEl = document.querySelector(`[data-id="${mod.id}"]`);
   if (navEl) navEl.classList.add('active');
@@ -432,7 +501,7 @@ function toggleSidebar() {
 }
 
 // ── 主題：引擎在 pp-theme.js，storage 事件會同步到 iframe 內的模組 ──
-const THEME_LABEL = { system: '⚙ 系統', light: '☀ 淺色', dark: '☾ 深色' };
+const THEME_LABEL = { system: '⚙ 系統', light: '☀ 淺色', dark: '☾ 深色', ehon: '🌸 繪本' };
 function refreshThemeBtn() {
   document.getElementById('themeBtn').textContent = THEME_LABEL[PPTheme.get()];
 }

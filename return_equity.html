@@ -92,6 +92,13 @@
         background: linear-gradient(135deg, #ff8a80, #e6483d);
         box-shadow: 0 6px 20px rgba(230, 72, 61, .28), inset 0 1px 0 rgba(255,255,255,.35);
       }
+      /* 繪本主題：平塗按鈕（不用漸層），粗墨線框＋錯位陰影 */
+      html[data-theme="ehon"] button.bg-blue-600, html[data-theme="ehon"] button.bg-indigo-600, html[data-theme="ehon"] button.bg-red-500 {
+        color: var(--ehon-ink); border: 2.5px solid var(--ehon-ink); box-shadow: 2px 2px 0 var(--ehon-ink);
+      }
+      html[data-theme="ehon"] button.bg-blue-600 { background: var(--ehon-mizu); }
+      html[data-theme="ehon"] button.bg-indigo-600 { background: var(--ehon-yellow); }
+      html[data-theme="ehon"] button.bg-red-500 { background: var(--ehon-coral); }
       html button.hover\:bg-blue-700:hover, html button.hover\:bg-indigo-700:hover, html button.hover\:bg-red-600:hover {
         filter: brightness(1.06);
         transform: translateY(-1px);
