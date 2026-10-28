@@ -1338,7 +1338,7 @@
                     <div v-else-if="conv.index !== null" class="text-gray-400 text-xs p-3 border border-dashed rounded text-center">輸入賣出股數就會出現預覽</div>
                 </div>
 
-                <div ref="histCard" v-show="tab === 'history'" class="bg-white p-5 rounded-lg shadow-md max-h-[70vh] overflow-y-auto">
+                <div ref="histCard" v-show="tab === 'history'" class="bg-white p-5 rounded-lg shadow-md">
                     <div class="flex items-center justify-between mb-3">
                         <h2 class="text-lg font-bold">📜 歷次交易明細帳</h2>
                         <button v-if="!adj.open" @click="openAdj()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded font-semibold">＋ 補登已實現損益</button>
@@ -1413,10 +1413,72 @@
                             </div>
                         </div>
                     </div>
+                    <div v-if="history.length" class="border border-gray-200 bg-gray-50 rounded p-3 mb-3 text-xs space-y-2">
+                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                            <select v-model="hf.ticker" class="border p-1.5 rounded bg-white">
+                                <option value="">全部標的</option>
+                                <option v-for="t in histTickers" :key="t" :value="t">{{ t }}</option>
+                            </select>
+                            <select v-model="hf.type" class="border p-1.5 rounded bg-white">
+                                <option value="all">買進＋賣出</option>
+                                <option value="BUY">只看買進/建倉</option>
+                                <option value="SELL">只看賣出/平倉</option>
+                            </select>
+                            <select v-model="hf.kind" class="border p-1.5 rounded bg-white">
+                                <option value="all">現股＋槓桿</option>
+                                <option value="lev">只看槓桿單</option>
+                                <option value="spot">只看現股</option>
+                            </select>
+                            <input v-model="hf.from" type="date" class="border p-1.5 rounded bg-white" aria-label="起日">
+                            <input v-model="hf.to" type="date" class="border p-1.5 rounded bg-white" aria-label="迄日">
+                        </div>
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <button v-for="p in [['month','本月'],['30','近30日'],['90','近90日'],['year','今年'],['all','不限日期']]" :key="p[0]" @click="setHistPeriod(p[0])" class="px-2 py-1 rounded border bg-white hover:bg-gray-100">{{ p[1] }}</button>
+                            <button v-if="histFiltering" @click="resetHistFilter" class="px-2 py-1 rounded border border-red-300 text-red-600 bg-white hover:bg-red-50">清除篩選</button>
+                        </div>
+                        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                            <span class="text-gray-500">{{ histFiltering ? '符合 ' + histSummary.count + ' 筆' : '共 ' + histSummary.count + ' 筆' }}，賣出 {{ histSummary.sells }} 筆<template v-if="histSummary.winRate !== null">（賺 {{ histSummary.wins }}／賠 {{ histSummary.losses }}，勝率 {{ histSummary.winRate.toFixed(0) }}%）</template></span>
+                            <span class="font-bold text-sm" :class="histSummary.pnl >= 0 ? 'text-red-600' : 'text-green-600'">期間累積損益 {{ histSummary.pnl >= 0 ? '+' : '' }}{{ formatNumber(histSummary.pnl) }} TWD</span>
+                        </div>
+                    </div>
+
+                    <details v-if="levLedger.rows.length" class="border border-yellow-300 bg-yellow-50 rounded mb-3 text-xs" open>
+                        <summary class="cursor-pointer select-none px-3 py-2 font-bold text-yellow-900">
+                            🏦 槓桿損益紀錄：本金 {{ formatNumber(Math.round(levLedger.principal)) }} → 拿回 {{ formatNumber(Math.round(levLedger.back)) }}，
+                            <span :class="levLedger.pnl >= 0 ? 'text-red-600' : 'text-green-600'">{{ levLedger.pnl >= 0 ? '+' : '' }}{{ formatNumber(Math.round(levLedger.pnl)) }}（{{ levLedger.roi.toFixed(1) }}%）</span>
+                        </summary>
+                        <div class="px-3 pb-3 space-y-2">
+                            <div class="overflow-x-auto">
+                                <table class="w-full">
+                                    <thead><tr class="text-gray-500 text-left">
+                                        <th class="py-1 pr-2">日期</th><th class="pr-2">標的</th><th class="pr-2 text-right">倍數</th>
+                                        <th class="pr-2 text-right">本金</th><th class="pr-2 text-right">拿回</th><th class="pr-2 text-right">損益</th><th class="text-right">報酬</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        <tr v-for="r in levLedger.rows" :key="r.id" class="border-t border-yellow-200">
+                                            <td class="py-1 pr-2 whitespace-nowrap">{{ r.date }}</td>
+                                            <td class="pr-2 whitespace-nowrap font-semibold">{{ r.ticker }} <span class="text-gray-400 font-normal">{{ r.shares }}股@{{ r.buy }}</span></td>
+                                            <td class="pr-2 text-right">{{ r.lev }}x</td>
+                                            <td class="pr-2 text-right whitespace-nowrap">{{ formatNumber(Math.round(r.principal)) }}</td>
+                                            <td class="pr-2 text-right whitespace-nowrap">{{ formatNumber(Math.round(r.back)) }}</td>
+                                            <td class="pr-2 text-right whitespace-nowrap font-semibold" :class="r.pnl >= 0 ? 'text-red-600' : 'text-green-600'">{{ r.pnl >= 0 ? '+' : '' }}{{ formatNumber(r.pnl) }}</td>
+                                            <td class="text-right whitespace-nowrap" :class="r.pnl >= 0 ? 'text-red-600' : 'text-green-600'">{{ r.roi.toFixed(1) }}%</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p v-if="levLedger.groups.length > 1" class="text-gray-600">
+                                <span v-for="g in levLedger.groups" :key="g.ticker" class="mr-3 whitespace-nowrap">{{ g.ticker }}：{{ g.n }} 筆，本金 {{ formatNumber(Math.round(g.principal)) }} → {{ formatNumber(Math.round(g.back)) }}（{{ g.roi.toFixed(1) }}%）</span>
+                            </p>
+                            <p class="text-gray-500">只統計有填槓桿倍數的賣出紀錄（強制回收自動結算會帶入；其他請按「修改」補上倍數與成本價）。本金 ＝ 股數 × 成本價 ÷ 倍數，拿回 ＝ 本金 ＋ 損益，損益已含處理費與庫存費。依上方篩選條件計算。</p>
+                        </div>
+                    </details>
+
                     <div v-if="history.length === 0" class="text-gray-500 text-sm py-4 text-center">尚無交易紀錄。</div>
-                    
+                    <div v-else-if="filteredHistory.length === 0" class="text-gray-500 text-sm py-4 text-center">沒有符合篩選條件的紀錄。</div>
+
                     <ul class="space-y-3">
-                        <li v-for="(record, index) in reversedHistory" :key="record.id || index" class="text-sm border-b pb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center last:border-0 hover:bg-gray-50 p-2 rounded transition gap-2">
+                        <li v-for="({ rec: record, cum }, index) in filteredHistory" :key="record.id || index" class="text-sm border-b pb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center last:border-0 hover:bg-gray-50 p-2 rounded transition gap-2">
                             <div class="flex-1 w-full">
                                 <div class="flex items-center mb-1">
                                     <span class="px-1.5 py-0.5 rounded text-[10px] font-bold mr-2" 
@@ -1445,6 +1507,7 @@
                                     <span v-if="record.market === 'US'" class="text-[10px] text-gray-400 block">
                                         (原幣: {{ record.pnlOrig > 0 ? '+' : '' }}{{ record.pnlOrig }} USD)
                                     </span>
+                                    <span v-if="histFiltering" class="text-[10px] text-gray-400 block">區間累積 {{ cum >= 0 ? '+' : '' }}{{ formatNumber(cum) }}</span>
                                 </div>
                                 <div v-else class="text-gray-400 text-xs">- 建倉/加碼 -</div>
                                 
@@ -1849,6 +1912,7 @@
                     mx: { key: '', cost: null, pStart: null, pEnd: null, pStep: null, sStart: null, sEnd: null, sStep: null, fees: false },
                     levOpen: {},
                     history: [],
+                    hf: { ticker: '', type: 'all', kind: 'all', from: '', to: '' },   // 交易明細篩選（不落地）
                     // 手動補登／修改已實現損益（editId 有值 = 修改既有那筆）
                     adj: { open: false, editId: null, ticker: '', market: 'TW', dir: 'long', date: '', shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '', lev: null, net: null },
                     netHistory: [],
@@ -2001,6 +2065,64 @@
                 },
                 reversedHistory() {
                     return [...this.history].reverse();
+                },
+                histTickers() {
+                    return [...new Set(this.history.map(h => h.ticker).filter(Boolean))].sort();
+                },
+                histFiltering() {
+                    const f = this.hf;
+                    return !!(f.ticker || f.type !== 'all' || f.kind !== 'all' || f.from || f.to);
+                },
+                /* 依標的、買賣、槓桿／現股、日期區間篩選；每筆賣出附上區間內的累積損益 */
+                filteredHistory() {
+                    const f = this.hf;
+                    const from = f.from ? new Date(f.from + 'T00:00:00').getTime() : -Infinity;
+                    const to = f.to ? new Date(f.to + 'T23:59:59').getTime() : Infinity;
+                    let cum = 0;
+                    const rows = [];
+                    for (const h of this.history) {
+                        if (f.ticker && h.ticker !== f.ticker) continue;
+                        if (f.type !== 'all' && h.type !== f.type) continue;
+                        if (f.kind === 'lev' && !(Number(h.lev) > 1)) continue;
+                        if (f.kind === 'spot' && Number(h.lev) > 1) continue;
+                        const t = this.histTime(h.date);
+                        if (!isNaN(t) && (t < from || t > to)) continue;
+                        if (isNaN(t) && (f.from || f.to)) continue;
+                        if (h.type === 'SELL') cum += Number(h.pnlTWD) || 0;
+                        rows.push({ rec: h, cum: h.type === 'SELL' ? cum : null });
+                    }
+                    return rows.reverse();
+                },
+                histSummary() {
+                    const sells = this.filteredHistory.filter(r => r.rec.type === 'SELL').map(r => Number(r.rec.pnlTWD) || 0);
+                    const pnl = sells.reduce((a, b) => a + b, 0);
+                    const wins = sells.filter(v => v > 0).length;
+                    return { count: this.filteredHistory.length, sells: sells.length, pnl, wins, losses: sells.filter(v => v < 0).length,
+                        winRate: sells.length ? wins / sells.length * 100 : null };
+                },
+                /* 槓桿損益紀錄：每筆已實現的槓桿單，本金（保證金）→ 拿回多少；損益已含處理費與庫存費 */
+                levLedger() {
+                    const rows = [];
+                    for (const { rec: h } of this.filteredHistory.slice().reverse()) {
+                        const lev = Number(h.lev);
+                        if (h.type !== 'SELL' || !(lev > 1) || !(h.shares > 0) || !(Number(h.buyPrice) > 0)) continue;
+                        const fx = h.market === 'US' ? (Math.abs(h.pnlTWD / h.pnlOrig) || Number(this.exchangeRate) || 1) : 1;
+                        const principal = h.shares * Number(h.buyPrice) / lev * fx;
+                        const pnl = Number(h.pnlTWD) || 0;
+                        rows.push({ id: h.id, date: (h.date || '').split(' ')[0], ticker: h.ticker, market: h.market, shares: h.shares, lev,
+                            buy: h.buyPrice, sell: h.sellPrice, principal, back: principal + pnl, pnl, roi: principal > 0 ? pnl / principal * 100 : 0,
+                            note: h.note || '' });
+                    }
+                    const principal = rows.reduce((a, r) => a + r.principal, 0);
+                    const pnl = rows.reduce((a, r) => a + r.pnl, 0);
+                    // 依標的小計
+                    const byTicker = {};
+                    for (const r of rows) {
+                        const g = byTicker[r.ticker] || (byTicker[r.ticker] = { ticker: r.ticker, n: 0, principal: 0, pnl: 0 });
+                        g.n++; g.principal += r.principal; g.pnl += r.pnl;
+                    }
+                    return { rows, principal, back: principal + pnl, pnl, roi: principal > 0 ? pnl / principal * 100 : 0,
+                        groups: Object.values(byTicker).map(g => Object.assign(g, { back: g.principal + g.pnl, roi: g.principal > 0 ? g.pnl / g.principal * 100 : 0 })) };
                 },
 
                 /* ══ 加碼試算：現股 vs 槓桿 ══ */
@@ -2605,6 +2727,8 @@
                 }
             },
             mounted() {
+                document.addEventListener('touchstart', this.swipeStart, { passive: true });
+                document.addEventListener('touchend', this.swipeEnd, { passive: true });
                 this.loadData();
                 this.loadTgCfg();
                 this.mxEnsure();
@@ -2719,6 +2843,25 @@
                     this.tab = t;
                     try { localStorage.setItem('pptools-pos-tab', t); } catch (e) {}
                     window.scrollTo(0, 0);
+                    this.$nextTick(() => {
+                        const b = document.querySelector('.pos-tabs button.active');
+                        if (b && b.scrollIntoView) b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+                    });
+                },
+                /* 左右滑動切換分頁；橫向可捲動的表格、輸入框、圖表上的手勢不攔截 */
+                swipeStart(e) {
+                    const t = e.touches && e.touches[0];
+                    const skip = e.target.closest && e.target.closest('input, select, textarea, canvas, table, .overflow-x-auto, .pos-tabs');
+                    this._swipe = t && !skip && e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+                },
+                swipeEnd(e) {
+                    const s = this._swipe; this._swipe = null;
+                    const t = e.changedTouches && e.changedTouches[0];
+                    if (!s || !t) return;
+                    const dx = t.clientX - s.x, dy = t.clientY - s.y;
+                    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8) return;
+                    const i = this.tabs.findIndex(x => x.id === this.tab) + (dx < 0 ? 1 : -1);
+                    if (i >= 0 && i < this.tabs.length) this.setTab(this.tabs[i].id);
                 },
                 tabBadge(id) {
                     if (id === 'inventory') return this.positions.length || '';
@@ -2836,6 +2979,20 @@
                     if (!m) return NaN;
                     return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)).getTime();
                 },
+                setHistPeriod(kind) {
+                    const now = new Date();
+                    const fmt = d => d.toLocaleDateString('en-CA');
+                    if (kind === 'all') { this.hf.from = ''; this.hf.to = ''; return; }
+                    let start;
+                    if (kind === 'month') start = new Date(now.getFullYear(), now.getMonth(), 1);
+                    else if (kind === 'year') start = new Date(now.getFullYear(), 0, 1);
+                    else start = new Date(now.getTime() - (kind === '90' ? 90 : 30) * 86400000);
+                    this.hf.from = fmt(start);
+                    this.hf.to = fmt(now);
+                },
+                resetHistFilter() {
+                    this.hf = { ticker: '', type: 'all', kind: 'all', from: '', to: '' };
+                },
                 openAdj(record) {
                     if (record) {
                         const t = this.histTime(record.date);
@@ -2851,7 +3008,7 @@
                         this.adj = { open: true, editId: null, ticker: '', market: 'TW', dir: 'long', date: this.todayStr(), shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '', lev: null, net: null };
                     }
                     // 表單在明細卡最上方，從下面點「修改」時要捲回去
-                    if (this.$refs.histCard) this.$refs.histCard.scrollTop = 0;
+                    if (this.$refs.histCard) this.$refs.histCard.scrollIntoView({ block: 'start', behavior: 'smooth' });
                 },
                 cancelAdj() {
                     this.adj = { open: false, editId: null, ticker: '', market: 'TW', dir: 'long', date: '', shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '', lev: null, net: null };
