@@ -1338,7 +1338,7 @@
                     <div v-else-if="conv.index !== null" class="text-gray-400 text-xs p-3 border border-dashed rounded text-center">輸入賣出股數就會出現預覽</div>
                 </div>
 
-                <div ref="histCard" v-show="tab === 'history'" class="bg-white p-5 rounded-lg shadow-md max-h-[70vh] overflow-y-auto">
+                <div ref="histCard" v-show="tab === 'history'" class="bg-white p-5 rounded-lg shadow-md">
                     <div class="flex items-center justify-between mb-3">
                         <h2 class="text-lg font-bold">📜 歷次交易明細帳</h2>
                         <button v-if="!adj.open" @click="openAdj()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded font-semibold">＋ 補登已實現損益</button>
@@ -2727,6 +2727,8 @@
                 }
             },
             mounted() {
+                document.addEventListener('touchstart', this.swipeStart, { passive: true });
+                document.addEventListener('touchend', this.swipeEnd, { passive: true });
                 this.loadData();
                 this.loadTgCfg();
                 this.mxEnsure();
@@ -2841,6 +2843,25 @@
                     this.tab = t;
                     try { localStorage.setItem('pptools-pos-tab', t); } catch (e) {}
                     window.scrollTo(0, 0);
+                    this.$nextTick(() => {
+                        const b = document.querySelector('.pos-tabs button.active');
+                        if (b && b.scrollIntoView) b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+                    });
+                },
+                /* 左右滑動切換分頁；橫向可捲動的表格、輸入框、圖表上的手勢不攔截 */
+                swipeStart(e) {
+                    const t = e.touches && e.touches[0];
+                    const skip = e.target.closest && e.target.closest('input, select, textarea, canvas, table, .overflow-x-auto, .pos-tabs');
+                    this._swipe = t && !skip && e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+                },
+                swipeEnd(e) {
+                    const s = this._swipe; this._swipe = null;
+                    const t = e.changedTouches && e.changedTouches[0];
+                    if (!s || !t) return;
+                    const dx = t.clientX - s.x, dy = t.clientY - s.y;
+                    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8) return;
+                    const i = this.tabs.findIndex(x => x.id === this.tab) + (dx < 0 ? 1 : -1);
+                    if (i >= 0 && i < this.tabs.length) this.setTab(this.tabs[i].id);
                 },
                 tabBadge(id) {
                     if (id === 'inventory') return this.positions.length || '';
@@ -2987,7 +3008,7 @@
                         this.adj = { open: true, editId: null, ticker: '', market: 'TW', dir: 'long', date: this.todayStr(), shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '', lev: null, net: null };
                     }
                     // 表單在明細卡最上方，從下面點「修改」時要捲回去
-                    if (this.$refs.histCard) this.$refs.histCard.scrollTop = 0;
+                    if (this.$refs.histCard) this.$refs.histCard.scrollIntoView({ block: 'start', behavior: 'smooth' });
                 },
                 cancelAdj() {
                     this.adj = { open: false, editId: null, ticker: '', market: 'TW', dir: 'long', date: '', shares: null, buyPrice: null, sellPrice: null, pnl: null, fx: null, note: '', lev: null, net: null };
