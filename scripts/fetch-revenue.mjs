@@ -92,6 +92,7 @@ for (const [code, company] of Object.entries(data.companies || {})) {
 
   /* 季 EPS（只補空值） */
   const eps = await findRows(EPS_SOURCES, company.market, code, R.parseEpsRow);
+  if (!eps.hits.length) await diagnose(EPS_SOURCES, code, 'EPS');
   for (const p of eps.hits) {
     company.quarters = company.quarters || {};
     const Q = company.quarters[p.q] = company.quarters[p.q] || {};
@@ -112,6 +113,21 @@ for (const [code, company] of Object.entries(data.companies || {})) {
     console.error('  ✓ ' + msg);
     log(company, msg);
     notices.push(R.formatEpsNotice(code, company, p.q));
+  }
+}
+
+/* 對不到公司時印出資料集的實際欄位，方便修正欄位名稱（官方 API 偶爾改名） */
+async function diagnose(sources, code, label) {
+  console.error(`  ${label}：解析後沒有 ${code} 的資料，以下為各資料集實際內容供除錯`);
+  for (const urls of Object.values(sources)) {
+    for (const url of urls) {
+      const rows = await rowsOf(url);
+      console.error(`    ${url}：${rows.length} 筆`);
+      if (!rows.length) continue;
+      console.error('    欄位：' + JSON.stringify(Object.keys(rows[0])));
+      const hit = rows.find((r) => Object.values(r).some((v) => String(v).trim() === code));
+      console.error('    ' + (hit ? `含 ${code} 的列：` + JSON.stringify(hit) : `找不到任何欄位值為 ${code} 的列；第一列：` + JSON.stringify(rows[0])));
+    }
   }
 }
 
