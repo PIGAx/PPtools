@@ -58,7 +58,8 @@ test('觀測站新月營收：新增月列、MoM／YoY、未創新高', () => {
     const a = R.analyze(c, '2026-11-11');
     const oct = a.latest;
     assert.equal(oct.ym, '2026-10');
-    near(oct.mom, (170.5 / 156.2 - 1) * 100, 0.01);
+    const sep = c.monthly.find(m => m.ym === '2026-09').rev;
+    near(oct.mom, (170.5 / sep - 1) * 100, 0.01);
     near(oct.yoy, (170.5 / 61 - 1) * 100, 0.01);
     assert.equal(oct.isRecord, false);
     assert.equal(a.curQ.label, '4Q26');
@@ -95,8 +96,9 @@ test('季 EPS 彙總為累計值時，自動扣前兩季得單季', () => {
 });
 
 test('手動補登只填空，不蓋官方值', () => {
+    const sepOfficial = seed().monthly.find(m => m.ym === '2026-09').rev;
     const c = R.withManual(seed(), { monthly: { '2026-09': 999, '2026-10': 150 }, eps: { '2026Q2': 9, '2026Q3': 4.2 } });
-    assert.equal(c.monthly.find(m => m.ym === '2026-09').rev, 156.2);
+    assert.equal(c.monthly.find(m => m.ym === '2026-09').rev, sepOfficial);
     assert.equal(c.monthly.find(m => m.ym === '2026-10').src, 'manual');
     assert.equal(c.quarters['2026Q2'].eps, 3.41);
     assert.equal(c.quarters['2026Q3'].eps, 4.2);
