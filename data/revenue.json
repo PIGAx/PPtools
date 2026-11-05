@@ -1,0 +1,74 @@
+{
+  "updatedAt": "2026-11-06",
+  "companies": {
+    "7828": {
+      "name": "創新服務",
+      "market": "TPEX",
+      "unit": "百萬元",
+      "monthly": [
+        { "ym": "2026-01", "rev": 73.0, "yoyNote": "基期近零", "src": "seed" },
+        { "ym": "2026-02", "rev": 15.6, "yoy": -62.6, "src": "seed", "note": "年度低點" },
+        { "ym": "2026-03", "rev": 63.7, "yoy": 9.2, "src": "seed" },
+        { "ym": "2026-04", "rev": 130.0, "yoyNote": "基期近零", "src": "seed" },
+        { "ym": "2026-05", "rev": 112.4, "yoy": 258.6, "src": "seed" },
+        { "ym": "2026-06", "rev": 116.8, "yoy": 255.8, "src": "seed" },
+        { "ym": "2026-07", "rev": 129.6, "yoy": 397, "src": "seed" },
+        { "ym": "2026-08", "rev": 157.0, "yoy": 192, "src": "seed" },
+        { "ym": "2026-09", "rev": 156.2, "yoy": 102, "src": "seed" }
+      ],
+      "recordBefore": { "ym": "2025-12", "rev": 183.3 },
+      "priorYearTotal": { "2025": 716 },
+      "monthlyEps": { "2026-04": 1.35, "2026-05": 0.79 },
+      "quarters": {
+        "2026Q1": {
+          "eps": 1.02,
+          "revEst": { "CTBC": 180 },
+          "revEstNote": "CTBC 原估區間，非單點預測",
+          "epsEstNote": "無可比預估",
+          "verdict": "營收略低（淡季），毛利率 80.2% 優於預期"
+        },
+        "2026Q2": {
+          "eps": 3.41,
+          "epsAlt": "CTBC 10/05 報告引用 3.34、JPM 8/11 稱 3.5；本表採 Statementdog 3.41",
+          "netMargin": 37.6,
+          "revEst": { "CTBC": 340 },
+          "epsEst": { "JPM": 3.39 },
+          "verdict": "營收超預期，EPS 達標"
+        },
+        "2026Q3": {
+          "eps": null,
+          "epsRough": 4.1,
+          "epsRoughNote": "以 2Q26 淨利率 37.6% 推算，非公司公布值",
+          "revEst": { "CTBC": 557, "JPM": 447 },
+          "epsEst": { "CTBC": 5.23, "JPM": 4.12 },
+          "verdict": "營收低於 CTBC 約 20%，與 JPM 相符"
+        },
+        "2026Q4": {
+          "epsEst": { "CTBC": 7.05, "JPM": 6.48 }
+        }
+      },
+      "annual": {
+        "2026": { "epsEst": { "CTBC": 16.54, "JPM": 15.11 } },
+        "2027": { "epsEst": { "CTBC": 46.40, "JPM": 64.09 } },
+        "2028": { "epsEst": { "CTBC": 110.32, "JPM": 162.80 } }
+      },
+      "brokers": {
+        "CTBC": { "name": "中信 CTBC", "date": "2026-10-05" },
+        "JPM": { "name": "摩根大通 JPM", "date": "2026-08-11" }
+      },
+      "notes": [
+        "單月營收為落後且 lumpy 的指標，宜以季營收與雙臂機出貨台數為主。",
+        "2025 年部分月份營收由 2026 年增率回推，與 2025 全年 7.16 億吻合，單月可能有小誤差。",
+        "單月 EPS 僅 4 月（1.35）、5 月（0.79）有公開資料，其餘留空。",
+        "券商沒有公布單月預估，達標與否以單季判斷。"
+      ],
+      "links": [
+        { "label": "公開資訊觀測站 月營收", "url": "https://mops.twse.com.tw/mops/#/web/t05st10_ifrs" },
+        { "label": "Statementdog 單季 EPS", "url": "https://statementdog.com/analysis/7828/eps" },
+        { "label": "玩股網 月營收", "url": "https://www.wantgoo.com/stock/7828/financial-statements/monthly-revenue" },
+        { "label": "Yahoo 股市公告", "url": "https://tw.stock.yahoo.com/quote/7828/announcement" }
+      ],
+      "log": []
+    }
+  }
+}

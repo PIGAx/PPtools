@@ -20,6 +20,7 @@
     { key: 'quantPortfolioData',      name: '部位控管（舊版）', desc: 'V1 舊版資料，保留備援' },
     { key: 'pptools-calendar-custom', name: '投資行事曆',     desc: '自訂經濟事件與日程' },
     { key: 'pptools-sector-notes',    name: '產業族群筆記',   desc: '依產業分類的看盤清單與研究筆記' },
+    { key: 'pptools-revenue-manual',  name: '營收追蹤',       desc: '手動補登的月營收與季 EPS' },
     { key: 'pptools-dashboard',       name: '儀表板版面',     desc: '總覽儀表板的面板配置' }
   ];
 
