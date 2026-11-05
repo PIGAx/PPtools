@@ -103,3 +103,15 @@ test('手動補登只填空，不蓋官方值', () => {
     assert.equal(c.quarters['2026Q2'].eps, 3.41);
     assert.equal(c.quarters['2026Q3'].eps, 4.2);
 });
+
+test('櫃買 EPS 彙總表真實欄位（2026-11-05 Actions 實測）可解析，且為累計口徑', () => {
+    const row = { Date: '1151105', Year: '115', '季別': '3', SecuritiesCompanyCode: '7828', CompanyName: '創新服務股份有限公司', '產業別': '電機機械',
+        '基本每股盈餘': '8.60', '普通股每股面額': '新台幣                 10.0000元', '營業收入': '954167.00', '營業利益': '400000.00', '營業外收入及支出': '1000.00', '稅後淨利': '340000.00' };
+    const p = R.parseEpsRow(row);
+    assert.equal(p.code, '7828');
+    assert.equal(p.q, '2026Q3');
+    assert.equal(p.eps, 8.6);
+    const s = R.singleQuarterEps(seed(), p);
+    assert.equal(s.basis, 'ytd');
+    near(s.eps, 4.17, 0.001);
+});
