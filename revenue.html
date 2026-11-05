@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>營收追蹤</title>
+<link rel="stylesheet" href="pp-ui.css">
+<script src="pp-theme.js"></script>
+<style>
+  /* 營收追蹤：月營收＋單季預估達成＋EPS。資料來自 data/revenue.json（排程自動抓公開資訊觀測站），
+     顏色全走 pp-ui.css 代幣，台股慣例紅漲綠跌。 */
+  .container { max-width: 1180px; margin: 0 auto; padding: 22px 20px 48px; }
+  .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .head h1 { font-size: 21px; font-weight: 800; letter-spacing: .2px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .head h1 .code { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+  .head .meta { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .head select { min-width: 150px; }
+
+  .banner { display: none; align-items: center; gap: 10px; padding: 11px 14px; margin-bottom: 14px; border-left: 3px solid var(--accent); font-size: 13px; }
+  .banner.show { display: flex; }
+  .banner b { color: var(--accent); }
+  .banner .btn { margin-left: auto; }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .kpi { padding: 14px 16px; min-width: 0; }
+  .kpi .k-label { font-size: 11px; font-weight: 700; letter-spacing: .6px; color: var(--text-muted); text-transform: uppercase; }
+  .kpi .k-value { font-size: 25px; font-weight: 800; margin-top: 4px; line-height: 1.2; white-space: nowrap; }
+  .kpi .k-value small { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-left: 3px; }
+  .kpi .k-sub { font-size: 12px; color: var(--text-muted); margin-top: 5px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+  .kpi .k-sub b { font-weight: 700; }
+
+  .up { color: var(--red); }
+  .down { color: var(--green); }
+  .muted { color: var(--text-muted); }
+  .tag { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: var(--radius-sm); font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+  .tag.t-accent { background: var(--accent-light); color: var(--accent); }
+  .tag.t-red { background: color-mix(in srgb, var(--red) 13%, transparent); color: var(--red); }
+  .tag.t-green { background: color-mix(in srgb, var(--green) 13%, transparent); color: var(--green); }
+  .tag.t-amber { background: color-mix(in srgb, var(--amber) 15%, transparent); color: var(--amber); }
+  .tag.t-muted { background: var(--surface-alt); color: var(--text-muted); }
+
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
+  .grid2.even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .card { padding: 16px 18px; min-width: 0; }
+  .card h3 { font-size: 13px; font-weight: 800; letter-spacing: .4px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .card h3 .hint { font-size: 11px; font-weight: 500; color: var(--text-muted); letter-spacing: 0; }
+
+  .chart { width: 100%; height: auto; display: block; overflow: visible; }
+  .chart text { font-family: inherit; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+  .legend i.box { height: 9px; width: 9px; }
+
+  /* 主表 */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.rev { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 860px; }
+  table.rev th { text-align: right; font-size: 10.5px; font-weight: 700; letter-spacing: .5px; color: var(--text-muted); padding: 8px 8px; border-bottom: 1px solid var(--glass-border); white-space: nowrap; position: sticky; top: 0; background: var(--glass); }
+  table.rev td { text-align: right; padding: 7px 8px; border-bottom: 1px solid var(--stroke); white-space: nowrap; vertical-align: top; }
+  table.rev th:first-child, table.rev td:first-child { text-align: left; }
+  table.rev th:last-child, table.rev td:last-child { text-align: left; white-space: normal; min-width: 220px; }
+  table.rev tr.q td { background: var(--surface-alt); font-weight: 700; }
+  table.rev tr.y td { background: var(--accent-light); font-weight: 700; }
+  table.rev tr.latest td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+  table.rev td .sub { display: block; font-size: 10.5px; font-weight: 500; color: var(--text-muted); }
+  table.rev td .judge { font-weight: 500; }
+
+  /* 全年 EPS */
+  .fy-row { display: grid; grid-template-columns: 74px 1fr auto; gap: 4px 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--stroke); font-size: 12.5px; }
+  .fy-row:last-child { border-bottom: none; }
+  .fy-row .b { font-weight: 800; }
+  .fy-row .calc { color: var(--text-muted); line-height: 1.6; }
+  .fy-row .calc b { color: var(--text); }
+  .fy-base { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; line-height: 1.7; }
+  .fy-base b { color: var(--text); }
+
+  /* 待辦 */
+  .todo { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--stroke); font-size: 12.5px; }
+  .todo:last-child { border-bottom: none; }
+  .todo .when { min-width: 74px; font-weight: 700; font-size: 12px; }
+  .todo .when .d { display: block; font-size: 10.5px; font-weight: 600; color: var(--text-muted); }
+  .todo .t { font-weight: 700; }
+  .todo .detail { color: var(--text-muted); margin-top: 2px; }
+
+  ul.notes { list-style: none; font-size: 12.5px; }
+  ul.notes li { padding: 6px 0 6px 14px; position: relative; border-bottom: 1px dashed var(--stroke); line-height: 1.6; }
+  ul.notes li:last-child { border-bottom: none; }
+  ul.notes li::before { content: ''; position: absolute; left: 2px; top: 13px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+  .links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .links a { font-size: 12px; color: var(--accent); text-decoration: none; border: 1px solid var(--stroke); padding: 4px 10px; border-radius: var(--radius-sm); }
+  .links a:hover { border-color: var(--accent); }
+
+  .manual-form { display: grid; grid-template-columns: 110px 1fr 1fr auto; gap: 8px; }
+  .manual-form .pp-field { padding: 7px 10px; min-width: 0; width: 100%; }
+  .manual-list { margin-top: 10px; font-size: 12.5px; }
+  .manual-list .m { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px dashed var(--stroke); }
+  .manual-list .m button { margin-left: auto; }
+  .small { font-size: 11.5px; color: var(--text-muted); line-height: 1.6; }
+  .log { margin-top: 12px; font-size: 12px; max-height: 160px; overflow-y: auto; }
+  .log div { padding: 3px 0; color: var(--text-muted); }
+  .log div b { color: var(--text); font-weight: 600; margin-right: 6px; }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+
+  @media (max-width: 900px) {
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid2, .grid2.even { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 520px) {
+    .container { padding: 14px 12px 36px; }
+    .kpi { padding: 12px; }
+    .kpi .k-value { font-size: 21px; }
+    .card { padding: 14px; }
+    .manual-form { grid-template-columns: 1fr 1fr; }
+    .fy-row { grid-template-columns: 60px 1fr; }
+    .fy-row .tag { grid-column: 2; justify-self: start; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="head">
+    <div>
+      <h1><span id="coName">營收追蹤</span><span class="code" id="coCode"></span></h1>
+      <div class="meta" id="meta">載入中…</div>
+    </div>
+    <select class="pp-field" id="coSelect" aria-label="選擇公司" hidden></select>
+  </div>
+
+  <div class="banner glass" id="banner"></div>
+
+  <div id="app"></div>
+</div>
+
+<script src="pp-revenue.js"></script>
+<script>
+(function () {
+  'use strict';
+  const R = window.PPRevenue;
+  const MANUAL_KEY = 'pptools-revenue-manual';   // 手動補登（PPStore 會一起雲端備份）
+  const SEEN_KEY = 'pptools-revenue-seen';        // 上次看過的最新月份，用來顯示「新資料」提示
+  const CO_KEY = 'pptools-revenue-company';
+  const BROKER_COLORS = ['var(--purple)', 'var(--teal)', 'var(--amber)', 'var(--red)'];
+
+  let DATA = null, code = null;
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const f1 = v => v == null ? '–' : (Math.round(v * 10) / 10).toLocaleString('zh-TW', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const f0 = v => v == null ? '–' : Math.round(v).toLocaleString('zh-TW');
+  const f2 = v => v == null ? '–' : Number(v).toFixed(2);
+  const sgn = v => v == null ? '' : v >= 0 ? 'up' : 'down';
+  const pct = (v, d = 1) => v == null ? '–' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
+  const pctSpan = (v, d) => v == null ? '<span class="muted">–</span>' : `<span class="${sgn(v)}">${pct(v, d)}</span>`;
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 無痕模式 */ } }
+  };
+  const brokerName = b => ((DATA.companies[code].brokers || {})[b] || {}).name || b;
+  const brokerColor = (b, list) => BROKER_COLORS[Math.max(0, list.indexOf(b)) % BROKER_COLORS.length];
+  const achTag = a => a == null ? '' : `<span class="tag ${a >= 100 ? 't-red' : a >= 95 ? 't-amber' : 't-green'}">${a.toFixed(a >= 99.5 && a < 100.5 ? 0 : 1)}%</span>`;
+  const daysTo = d => Math.round((new Date(d + 'T00:00:00') - new Date(todayStr() + 'T00:00:00')) / 864e5);
+  function todayStr() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+
+  async function load() {
+    try {
+      const res = await fetch('data/revenue.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      DATA = await res.json();
+    } catch (e) {
+      $('meta').textContent = '';
+      $('app').innerHTML = `<div class="glass empty">讀不到 data/revenue.json（${esc(e.message)}）</div>`;
+      return;
+    }
+    const codes = Object.keys(DATA.companies || {});
+    if (!codes.length) { $('app').innerHTML = '<div class="glass empty">data/revenue.json 裡還沒有追蹤的公司</div>'; return; }
+    const saved = store.get(CO_KEY, null);
+    code = codes.includes(saved) ? saved : codes[0];
+    const sel = $('coSelect');
+    sel.innerHTML = codes.map(c => `<option value="${c}">${c} ${esc(DATA.companies[c].name)}</option>`).join('');
+    sel.value = code;
+    sel.hidden = codes.length < 2;
+    sel.onchange = () => { code = sel.value; store.set(CO_KEY, code); render(); };
+    render();
+  }
+
+  function manualAll() { return store.get(MANUAL_KEY, {}); }
+  function manualOf() { const m = manualAll()[code] || {}; return { monthly: m.monthly || {}, eps: m.eps || {} }; }
+  function saveManual(m) { const all = manualAll(); all[code] = m; store.set(MANUAL_KEY, all); }
+
+  function render() {
+    const raw = DATA.companies[code];
+    const co = R.withManual(raw, manualOf());
+    const A = R.analyze(co, todayStr());
+    const brokers = Object.keys(raw.brokers || {});
+
+    $('coName').textContent = co.name;
+    $('coCode').textContent = code + (co.market ? '・' + ({ TPEX: '上櫃', TWSE: '上市', ESB: '興櫃' }[co.market] || co.market) : '');
+    document.title = co.name + ' 營收追蹤';
+    $('meta').innerHTML = `<span>資料更新 ${esc(DATA.updatedAt || '–')}</span><span>單位：營收百萬元、EPS 元</span>` +
+      (A.latest ? `<span class="tag t-accent">最新 ${A.latest.label}</span>` : '');
+
+    renderBanner(A);
+
+    $('app').innerHTML =
+      kpiHtml(A, co) +
+      `<div class="grid2">
+         <div class="glass card"><h3>月營收<span class="hint">近 18 個月・虛線為單月高點</span></h3>${monthChart(A)}</div>
+         <div class="glass card"><h3>季營收 vs 券商預估</h3>${quarterChart(A, brokers)}</div>
+       </div>
+       <div class="glass card" style="margin-bottom:14px"><h3>月營收＋單季預估達成＋EPS<span class="hint">季合計列＝月加總對比券商預估</span></h3>
+         <div class="table-wrap">${tableHtml(A, brokers)}</div></div>
+       <div class="grid2 even">
+         <div class="glass card"><h3>全年 EPS 檢視</h3>${annualHtml(A, co)}</div>
+         <div class="glass card"><h3>待更新事項<span class="hint">依觀測站公布期限自動產生</span></h3>${pendingHtml(A)}</div>
+       </div>
+       <div class="grid2 even">
+         <div class="glass card"><h3>解讀與資料口徑</h3>${notesHtml(A, co, raw)}</div>
+         <div class="glass card"><h3>手動補登<span class="hint">排程還沒抓到時先自己填，官方資料進來後以官方為準</span></h3>${manualHtml(raw)}</div>
+       </div>`;
+
+    bindManual();
+  }
+
+  /* ── 新資料提示：最新月份比上次看到的新 ── */
+  function renderBanner(A) {
+    const b = $('banner');
+    const seen = store.get(SEEN_KEY, {});
+    const L = A.latest;
+    if (!L) { b.classList.remove('show'); return; }
+    if (!seen[code]) { seen[code] = L.ym; store.set(SEEN_KEY, seen); }
+    if (seen[code] >= L.ym) { b.classList.remove('show'); return; }
+    b.innerHTML = `🆕 <span>新資料：<b>${L.label} 營收 ${f1(L.rev)}</b>，MoM ${pctSpan(L.mom)}、YoY ${L.yoy != null ? pctSpan(L.yoy) : esc(L.yoyNote || '–')}${L.isRecord ? '，<b>創單月新高</b>' : ''}</span>
+      <button class="btn btn-sm" id="seenBtn">知道了</button>`;
+    b.classList.add('show');
+    $('seenBtn').onclick = () => { seen[code] = L.ym; store.set(SEEN_KEY, seen); b.classList.remove('show'); };
+  }
+
+  /* ── KPI ── */
+  function kpiHtml(A, co) {
+    const L = A.latest, Q = A.curQ;
+    const Y = L ? A.years[L.ym.slice(0, 4)] : null;
+    const lastEpsQ = Object.values(A.quarters).filter(q => q.eps != null || q.epsRough != null).pop();
+    const k1 = L ? `<div class="glass kpi"><div class="k-label">最新月營收・${L.label}</div>
+        <div class="k-value">${f1(L.rev)}<small>百萬</small></div>
+        <div class="k-sub"><span>MoM ${pctSpan(L.mom)}</span><span>YoY ${L.yoy != null ? pctSpan(L.yoy) : esc(L.yoyNote || '–')}</span>
+        ${L.isRecord ? '<span class="tag t-red">創新高</span>' : `<span>高點 ${A.high ? R.ymLabel(A.high.ym) + ' ' + f1(A.high.rev) : '–'}</span>`}</div></div>` : '';
+    const k2 = Y ? `<div class="glass kpi"><div class="k-label">${Y.year} 累計・1–${Y.months} 月</div>
+        <div class="k-value">${f1(Y.rev)}<small>百萬</small></div>
+        <div class="k-sub"><span>YoY ${pctSpan(Y.yoy, 0)}</span>${Y.priorYearTotal ? `<span>去年全年 ${f0(Y.priorYearTotal)}</span>` : ''}</div></div>` : '';
+    let k3 = '';
+    if (Q) {
+      const est = Object.entries(Q.revEst);
+      k3 = `<div class="glass kpi"><div class="k-label">${Q.label} 季營收・${Q.months.length}/3 個月</div>
+        <div class="k-value">${f1(Q.rev)}<small>百萬</small></div>
+        <div class="k-sub">${est.length ? est.map(([b, v]) => `<span>${esc(b)} ${f0(v)} ${achTag(Q.revAch[b])}</span>`).join('') : '<span>無券商季營收預估</span>'}
+        ${!Q.complete && est.length ? `<span>剩餘月均需 ${est.map(([b, v]) => esc(b) + ' ' + f1((v - Q.rev) / (3 - Q.months.length))).join('／')}</span>` : ''}</div></div>`;
+    }
+    let k4 = '';
+    if (lastEpsQ) {
+      const actual = lastEpsQ.eps != null;
+      k4 = `<div class="glass kpi"><div class="k-label">${lastEpsQ.label} EPS・${actual ? '已公布' : '粗估'}</div>
+        <div class="k-value">${f2(actual ? lastEpsQ.eps : lastEpsQ.epsRough)}<small>元</small> ${actual ? '' : '<span class="tag t-amber">粗估</span>'}</div>
+        <div class="k-sub">${Object.entries(lastEpsQ.epsEst).map(([b, v]) => `<span>${esc(b)} ${f2(v)} ${achTag(lastEpsQ.epsAch[b])}</span>`).join('') || '<span>無可比預估</span>'}
+        ${!actual ? `<span>財報期限 ${lastEpsQ.reportDeadline.slice(5).replace('-', '/')}</span>` : ''}</div></div>`;
+    }
+    return `<div class="kpis">${k1}${k2}${k3}${k4}</div>`;
+  }
+
+  /* ── 月營收長條圖（SVG） ── */
+  function monthChart(A) {
+    const rows = A.rows.slice(-18);
+    if (!rows.length) return '<div class="empty">尚無月營收</div>';
+    const W = 640, H = 230, padL = 8, padR = 8, top = 22, bottom = 34;
+    const max = Math.max(...rows.map(r => r.rev), A.high ? A.high.rev : 0) * 1.12;
+    const cw = (W - padL - padR) / rows.length, bw = Math.min(34, cw * 0.66);
+    const y = v => top + (H - top - bottom) * (1 - v / max);
+    const qs = [...new Set(rows.map(r => r.q))];
+    let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="月營收長條圖">`;
+    s += `<line x1="${padL}" x2="${W - padR}" y1="${y(0)}" y2="${y(0)}" stroke="var(--stroke)"/>`;
+    if (A.high) {
+      const hy = y(A.high.rev);
+      s += `<line x1="${padL}" x2="${W - padR}" y1="${hy}" y2="${hy}" stroke="var(--red)" stroke-dasharray="4 4" opacity=".7"/>
+            <text x="${W - padR}" y="${hy - 5}" text-anchor="end" font-size="10.5" fill="var(--red)">高點 ${R.ymLabel(A.high.ym)} ${f1(A.high.rev)}</text>`;
+    }
+    rows.forEach((r, i) => {
+      const cx = padL + cw * (i + 0.5), x = cx - bw / 2, yy = y(r.rev), last = i === rows.length - 1;
+      const alt = qs.indexOf(r.q) % 2 === 1;
+      const fill = last ? 'var(--accent)' : `color-mix(in srgb, var(--accent) ${alt ? 38 : 62}%, transparent)`;
+      s += `<g><title>${r.label} 營收 ${f1(r.rev)}｜MoM ${pct(r.mom)}｜YoY ${r.yoy != null ? pct(r.yoy) : (r.yoyNote || '–')}</title>
+        <rect x="${x}" y="${yy}" width="${bw}" height="${y(0) - yy}" rx="2" fill="${fill}"/>
+        <text x="${cx}" y="${yy - 4}" text-anchor="middle" font-size="9.5" font-weight="${last ? 700 : 500}" fill="${last ? 'var(--text)' : 'var(--text-muted)'}">${Math.round(r.rev)}</text>
+        <text x="${cx}" y="${H - bottom + 14}" text-anchor="middle" font-size="9.5" fill="var(--text-muted)">${r.ym.slice(5).replace(/^0/, '')}</text></g>`;
+    });
+    // 季別標籤
+    qs.forEach(q => {
+      const idx = rows.map((r, i) => r.q === q ? i : -1).filter(i => i >= 0);
+      const cx = padL + cw * ((idx[0] + idx[idx.length - 1]) / 2 + 0.5);
+      s += `<text x="${cx}" y="${H - 4}" text-anchor="middle" font-size="10" font-weight="700" fill="var(--text-muted)">${R.quarterLabel(q)}</text>`;
+    });
+    return s + '</svg>';
+  }
+
+  /* ── 季營收 vs 預估 ── */
+  function quarterChart(A, brokers) {
+    const qs = Object.values(A.quarters).filter(q => q.rev != null || Object.keys(q.revEst).length).slice(-6);
+    if (!qs.length) return '<div class="empty">尚無季資料</div>';
+    const W = 420, H = 230, top = 20, bottom = 34, pad = 8;
+    const vals = qs.flatMap(q => [q.rev || 0, ...Object.values(q.revEst)]);
+    const max = Math.max(...vals) * 1.15;
+    const cw = (W - pad * 2) / qs.length, bw = Math.min(46, cw * 0.5);
+    const y = v => top + (H - top - bottom) * (1 - v / max);
+    let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="季營收與預估">`;
+    s += `<line x1="${pad}" x2="${W - pad}" y1="${y(0)}" y2="${y(0)}" stroke="var(--stroke)"/>`;
+    s += `<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="color-mix(in srgb, var(--accent) 22%, transparent)"/><line x1="0" y1="0" x2="0" y2="6" stroke="var(--accent)" stroke-width="2" opacity=".5"/></pattern></defs>`;
+    qs.forEach((q, i) => {
+      const cx = pad + cw * (i + 0.5), x = cx - bw / 2;
+      if (q.rev != null) {
+        const yy = y(q.rev), ly = y(Math.max(q.rev, ...Object.values(q.revEst))) - 6;
+        s += `<g><title>${q.label} 營收 ${f1(q.rev)}（${q.months.length}/3 個月）</title>
+          <rect x="${x}" y="${yy}" width="${bw}" height="${y(0) - yy}" rx="2" fill="${q.complete ? 'var(--accent)' : 'url(#hatch)'}" ${q.complete ? '' : 'stroke="var(--accent)" stroke-dasharray="3 3"'}/>
+          <text x="${cx}" y="${ly}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--text)">${Math.round(q.rev)}${q.complete ? '' : ' (' + q.months.length + '/3)'}</text></g>`;
+      }
+      Object.entries(q.revEst).forEach(([b, v]) => {
+        const yy = y(v), c = brokerColor(b, brokers);
+        s += `<g><title>${esc(brokerName(b))} 預估 ${f0(v)}${q.revAch[b] != null ? '｜達成 ' + q.revAch[b].toFixed(1) + '%' : ''}</title>
+          <line x1="${x - 7}" x2="${x + bw + 7}" y1="${yy}" y2="${yy}" stroke="${c}" stroke-width="3" stroke-linecap="round"/></g>`;
+      });
+      s += `<text x="${cx}" y="${H - bottom + 15}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--text-muted)">${q.label}</text>`;
+      const achs = Object.entries(q.revAch);
+      if (q.complete && achs.length) {
+        s += `<text x="${cx}" y="${H - 4}" text-anchor="middle" font-size="9.5" fill="var(--text-muted)">${achs.map(([b, a]) => Math.round(a) + '%').join('／')}</text>`;
+      }
+    });
+    s += '</svg>';
+    const used = brokers.filter(b => qs.some(q => q.revEst[b] != null));
+    s += `<div class="legend"><span><i class="box" style="background:var(--accent)"></i>實際</span><span><i class="box" style="background:color-mix(in srgb, var(--accent) 22%, transparent);outline:1px dashed var(--accent)"></i>季中累計</span>` +
+      used.map(b => `<span><i style="background:${brokerColor(b, brokers)}"></i>${esc(brokerName(b))} 預估</span>`).join('') + '</div>';
+    return s;
+  }
+
+  /* ── 主表 ── */
+  function tableHtml(A, brokers) {
+    const latestYm = A.latest && A.latest.ym;
+    const estStr = (map, fmt) => Object.entries(map).map(([b, v]) => esc(b) + ' ' + fmt(v)).join('／');
+    let h = `<table class="rev"><thead><tr><th>月份</th><th>營收</th><th>MoM</th><th>YoY</th><th>營收預估</th><th>營收達成率</th><th>EPS</th><th>EPS 預估</th><th>判斷</th></tr></thead><tbody>`;
+    const qsWithRows = new Set(A.rows.map(r => r.q));
+    const years = [...new Set(A.rows.map(r => r.ym.slice(0, 4)))];
+    years.forEach(yr => {
+      [1, 2, 3, 4].map(n => yr + 'Q' + n).filter(q => qsWithRows.has(q)).forEach(qk => {
+        const Q = A.quarters[qk];
+        A.rows.filter(r => r.q === qk).forEach(r => {
+          const srcTag = r.src === 'mops' ? '' : r.src === 'manual' ? ' <span class="tag t-amber" title="手動補登，待官方資料">手動</span>' : '';
+          const judge = [r.isRecord ? '<span class="tag t-red">創新高</span>' : '', esc(r.note)].filter(Boolean).join(' ');
+          h += `<tr class="${r.ym === latestYm ? 'latest' : ''}"><td>${r.label}${srcTag}</td><td><b>${f1(r.rev)}</b></td><td>${pctSpan(r.mom)}</td>
+            <td>${r.yoy != null ? pctSpan(r.yoy) : `<span class="muted">${esc(r.yoyNote || '–')}</span>`}</td><td></td><td></td>
+            <td>${r.eps != null ? f2(r.eps) : '<span class="muted">–</span>'}</td><td></td><td class="judge">${judge}</td></tr>`;
+        });
+        const eps = Q.eps != null ? `<b>${f2(Q.eps)}</b>${Q.epsSrc === 'manual' ? ' <span class="tag t-amber">手動</span>' : ''}${Q.epsAlt ? `<span class="sub" title="${esc(Q.epsAlt)}">多口徑，見備註</span>` : ''}`
+          : Q.epsRough != null ? `<span class="muted">尚未公布</span><span class="sub">粗估約 ${f2(Q.epsRough)}・${Q.reportDeadline.slice(5).replace('-', '/')} 前</span>`
+          : Q.ended ? `<span class="muted">尚未公布</span><span class="sub">${Q.reportDeadline.slice(5).replace('-', '/')} 前</span>` : '<span class="muted">–</span>';
+        const epsEst = Object.keys(Q.epsEst).length ? estStr(Q.epsEst, f2) : `<span class="muted">${esc(Q.epsEstNote || '–')}</span>`;
+        const epsAch = Object.entries(Q.epsAch);
+        h += `<tr class="q"><td>${Q.label} 合計${Q.complete ? '' : `<span class="sub">${Q.months.length}/3 個月</span>`}</td><td>${f0(Q.rev)}</td><td></td><td></td>
+          <td>${Object.keys(Q.revEst).length ? estStr(Q.revEst, f0) : '<span class="muted">–</span>'}${Q.revEstNote ? `<span class="sub">${esc(Q.revEstNote)}</span>` : ''}</td>
+          <td>${Object.entries(Q.revAch).map(([b, a]) => achTag(a)).join(' ／ ') || '<span class="muted">–</span>'}</td>
+          <td>${eps}</td><td>${epsEst}${epsAch.length ? `<span class="sub">${Q.eps != null ? '達成' : '粗估對比'} ${epsAch.map(([b, a]) => b + ' ' + a.toFixed(0) + '%').join('／')}</span>` : ''}</td>
+          <td class="judge">${esc(Q.verdict)}${Q.epsRough != null && Q.eps == null ? `；EPS 粗估約 ${f2(Q.epsRough)}` : ''}</td></tr>`;
+      });
+      const Y = A.years[yr];
+      if (Y) {
+        const yEst = Y.brokers.map(b => esc(b.broker) + ' ' + f2(b.est)).join('／');
+        const press = Y.brokers.filter(b => b.status === '下修壓力').map(b => b.broker);
+        const epsParts = [Y.actualQs.length ? Y.actualQs.join('+') + ' 合計 ' + f2(Y.epsActual) : '', Y.roughQs.length ? Y.roughQs.join('+') + ' 粗估 ' + f2(Y.epsRough) : ''].filter(Boolean);
+        h += `<tr class="y"><td>${yr} 全年</td><td>${f0(Y.rev)}<span class="sub">1–${Y.months} 月累計</span></td><td></td><td>${Y.yoy != null ? pctSpan(Y.yoy, 0) : ''}</td><td></td><td></td>
+          <td>${epsParts.join('<br>') || '–'}</td><td>${yEst || '–'}</td><td class="judge">${press.length ? esc(press.join('、')) + ' 全年有下修壓力' : Y.brokers.length ? '全年預估相對安全' : ''}</td></tr>`;
+      }
+    });
+    return h + '</tbody></table>';
+  }
+
+  /* ── 全年 EPS 缺口 ── */
+  function annualHtml(A, co) {
+    const ys = Object.values(A.years).filter(y => y.brokers.length);
+    if (!ys.length) return '<div class="small">data/revenue.json 的 annual 還沒有券商全年預估。</div>';
+    return ys.map(Y => {
+      const base = `<div class="fy-base"><b>${Y.year}</b>：已公布 ${Y.actualQs.join('、') || '—'} 合計 <b>${f2(Y.epsActual)}</b>` +
+        (Y.roughQs.length ? `＋${Y.roughQs.join('、')} 粗估 <b>${f2(Y.epsRough)}</b>` : '') +
+        (Y.restQs.length ? `，剩 ${Y.restQs.join('、')}` : '') + '</div>';
+      const rows = Y.brokers.map(b => {
+        const cls = b.status === '下修壓力' || b.status === '未達標' ? 't-green' : b.status === '有上修空間' || b.status === '已達標' ? 't-red' : b.status === '相對安全' ? 't-amber' : 't-muted';
+        const calc = Y.restQs.length
+          ? `全年 <b>${f2(b.est)}</b> → ${Y.restQs.join('+')} 需 <b>${f2(b.need)}</b>` + (b.own != null ? `，${esc(b.broker)} 自己估 <b>${f2(b.own)}</b>（${b.gap >= 0 ? '高出' : '低於'} ${Math.abs(b.gap).toFixed(1)}%）` : '')
+          : `全年 <b>${f2(b.est)}</b>，實際 ${f2(Y.epsActual)}`;
+        return `<div class="fy-row"><div class="b">${esc(b.broker)}</div><div class="calc">${calc}</div><span class="tag ${cls}">${b.status}</span></div>`;
+      }).join('');
+      const later = Object.entries(co.annual || {}).filter(([y]) => y > Y.year).map(([y, a]) => `${y}E ${Object.entries(a.epsEst || {}).map(([b, v]) => esc(b) + ' ' + f2(v)).join('／')}`);
+      return base + rows + (later.length ? `<div class="small" style="margin-top:8px">${later.join('<br>')}</div>` : '');
+    }).join('<div style="height:10px"></div>') +
+      '<div class="small" style="margin-top:8px">判斷：剩餘季度所需 EPS 比券商自己對那幾季的預估高 5% 以上 → 下修壓力；低 5% 以上 → 有上修空間。</div>';
+  }
+
+  /* ── 待更新事項 ── */
+  function pendingHtml(A) {
+    if (!A.pending.length) return '<div class="small">目前沒有待更新的事項。</div>';
+    return A.pending.map(p => {
+      let when;
+      if (p.due) {
+        const d = daysTo(p.due);
+        when = `${p.due.slice(5).replace('-', '/')}<span class="d ${p.overdue ? 'up' : ''}">${p.overdue ? '已過期限' : d === 0 ? '今天' : d + ' 天後'}</span>`;
+      } else when = `<span class="d">${esc(p.after || '')}</span>`;
+      return `<div class="todo"><div class="when">${when}</div><div><div class="t">${esc(p.title)}</div><div class="detail">${esc(p.detail)}</div></div></div>`;
+    }).join('') + `<div class="small" style="margin-top:8px">排程每天 08:20／18:40／21:50 自動檢查觀測站，有新資料會更新本頁（設定 Telegram 時也會推播）。</div>`;
+  }
+
+  /* ── 解讀與備註 ── */
+  function notesHtml(A, co, raw) {
+    const items = [];
+    Object.values(A.quarters).forEach(Q => {
+      if (Q.epsAlt) items.push(`${Q.label} EPS 口徑：${esc(Q.epsAlt)}`);
+      if (Q.epsRough != null && Q.eps == null) items.push(`${Q.label} EPS ${f2(Q.epsRough)} 為粗估（${esc(Q.epsRoughNote)}），待財報公布後自動替換。`);
+    });
+    (co.notes || []).forEach(n => items.push(esc(n)));
+    const brokers = Object.entries(raw.brokers || {}).map(([b, info]) => {
+      const ann = Object.entries(raw.annual || {}).map(([y, a]) => (a.epsEst || {})[b]).filter(v => v != null);
+      const qEst = Object.entries(raw.quarters || {}).filter(([, q]) => (q.epsEst || {})[b] != null).map(([q, v]) => R.quarterLabel(q) + 'F ' + v.epsEst[b]);
+      return `${esc(info.name || b)}（${esc(info.date || '')}）：${Object.keys(raw.annual || {}).join('–')}E EPS ${ann.map(f2).join('／')}${qEst.length ? '；季 EPS ' + qEst.join('、') : ''}`;
+    });
+    const log = (raw.log || []).slice(0, 10);
+    return `<ul class="notes">${items.map(i => `<li>${i}</li>`).join('')}</ul>
+      ${brokers.length ? `<div class="small" style="margin-top:10px"><b>券商預估來源</b><br>${brokers.join('<br>')}</div>` : ''}
+      <div class="links">${(co.links || []).map(l => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)} ↗</a>`).join('')}</div>
+      ${log.length ? `<div class="log"><div class="small"><b>自動更新紀錄</b></div>${log.map(l => `<div><b>${esc(l.date)}</b>${esc(l.msg)}</div>`).join('')}</div>` : ''}`;
+  }
+
+  /* ── 手動補登 ── */
+  function manualHtml(raw) {
+    const m = manualOf();
+    const items = [
+      ...Object.entries(m.monthly).map(([k, v]) => ({ kind: 'monthly', k, label: R.ymLabel(k) + ' 營收', v: f1(v), official: (raw.monthly || []).some(x => x.ym === k) })),
+      ...Object.entries(m.eps).map(([k, v]) => ({ kind: 'eps', k, label: R.quarterLabel(k) + ' EPS', v: f2(v), official: ((raw.quarters || {})[k] || {}).eps != null }))
+    ];
+    const next = (() => {
+      const L = (raw.monthly || []).map(x => x.ym).sort().pop();
+      return L ? R.addMonths(L, 1) : '';
+    })();
+    return `<div class="manual-form">
+        <select class="pp-field" id="mKind"><option value="monthly">月營收</option><option value="eps">季 EPS</option></select>
+        <input class="pp-field" id="mKey" placeholder="${next || '2026-10'}" value="${next}" aria-label="期間">
+        <input class="pp-field" id="mVal" type="number" step="0.01" inputmode="decimal" placeholder="百萬元" aria-label="數值">
+        <button class="btn btn-primary btn-sm" id="mAdd">加入</button>
+      </div>
+      <div class="small" style="margin-top:6px">月營收期間填 2026-10，單位百萬元；季 EPS 期間填 2026Q3。只存在這台裝置（會跟著資料中心雲端備份）。</div>
+      <div class="manual-list">${items.map(i => `<div class="m"><span>${esc(i.label)}：<b>${i.v}</b></span>${i.official ? '<span class="tag t-muted">官方已更新，此筆不再使用</span>' : '<span class="tag t-amber">使用中</span>'}
+        <button class="btn btn-sm btn-danger" data-del="${i.kind}|${esc(i.k)}">刪除</button></div>`).join('')}</div>`;
+  }
+
+  function bindManual() {
+    const kind = $('mKind'), key = $('mKey'), val = $('mVal');
+    if (!kind) return;
+    kind.onchange = () => {
+      key.value = '';
+      key.placeholder = kind.value === 'eps' ? '2026Q3' : '2026-10';
+      val.placeholder = kind.value === 'eps' ? '元' : '百萬元';
+    };
+    $('mAdd').onclick = () => {
+      const v = Number(val.value);
+      let k = key.value.trim().toUpperCase();
+      if (!Number.isFinite(v) || val.value === '') { val.focus(); return; }
+      if (kind.value === 'monthly') {
+        k = R.normYm(k);
+        if (!k) { alert('月份格式請填 2026-10'); return; }
+      } else {
+        const mm = k.match(/^(\d{4})\s*Q([1-4])$/) || k.match(/^([1-4])Q(\d{2})$/);
+        if (!mm) { alert('季別格式請填 2026Q3'); return; }
+        k = mm[0].includes('Q') && mm[1].length === 4 ? mm[1] + 'Q' + mm[2] : '20' + mm[2] + 'Q' + mm[1];
+      }
+      const m = manualOf();
+      m[kind.value][k] = v;
+      saveManual(m);
+      render();
+    };
+    document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+      const [kd, k] = b.dataset.del.split('|');
+      const m = manualOf();
+      delete m[kd][k];
+      saveManual(m);
+      render();
+    });
+  }
+
+  if (window.PPTheme && PPTheme.onChange) PPTheme.onChange(() => DATA && render());
+  load();
+})();
+</script>
+</body>
+</html>

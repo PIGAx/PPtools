@@ -1,0 +1,60 @@
+name: Fetch monthly revenue
+
+# 營收追蹤：每天抓公開資訊觀測站（證交所／櫃買 OpenAPI）月營收與季 EPS，
+# 有新資料才 commit data/revenue.json，網站「營收追蹤」模組直接讀這個檔。
+# 月營收最晚次月 10 日公布、OpenAPI 彙總表約隔日更新，每天跑三次就不會漏。
+on:
+  schedule:
+    - cron: '20 0 * * *'     # 08:20 台北
+    - cron: '40 10 * * *'    # 18:40 台北
+    - cron: '50 13 * * *'    # 21:50 台北
+  workflow_dispatch: {}       # 手動觸發：Actions → Fetch monthly revenue → Run workflow
+  push:
+    branches: ['**']
+    paths:
+      - '.github/workflows/fetch-revenue.yml'
+      - 'scripts/fetch-revenue.mjs'
+      - 'pp-revenue.js'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fetch-revenue
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch revenue & EPS
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node scripts/fetch-revenue.mjs
+
+      - name: Commit updated revenue
+        run: |
+          git config user.name "pptools-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/revenue.json
+          if git diff --cached --quiet; then
+            echo "營收無變化，略過 commit。"
+            exit 0
+          fi
+          git commit -m "chore(data): 自動更新營收追蹤 [skip ci]"
+          # 報價排程也會推 commit，撞到就 rebase 後重試
+          for i in 1 2 3 4; do
+            git push && exit 0
+            sleep $((i * 5))
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+          done
+          exit 1
